@@ -1,0 +1,14 @@
+[protocol]
+name = "mydapp"
+scope = "txpipe"
+version = "0.1.0"
+main = "main.tx3"
+
+
+[[bindings]]
+plugin = "rust"
+output_dir = "./rust"
+
+[[bindings]]
+plugin = "typescript"
+output_dir = "./typescript"

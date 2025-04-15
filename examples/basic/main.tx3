@@ -1,0 +1,14 @@
+party A;
+
+party B;
+
+party C;
+
+tx action1() {
+   
+}
+
+tx action2() {}
+
+tx action3() {}
+
