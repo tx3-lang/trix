@@ -4,7 +4,15 @@ party B;
 
 party C;
 
-tx action1() {}
+tx action1() {
+    input source {
+        from: D,
+    }
+
+    input source {
+        from: D,
+    }
+}
 
 tx action2() {}
 
