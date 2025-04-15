@@ -13,7 +13,7 @@ pub struct Config {
     pub profiles: ProfilesConfig,
 
     #[serde(default)]
-    pub bindings: BindingsConfig,
+    pub bindings: Vec<BindingsConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -89,16 +89,7 @@ pub struct TRPConfig {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BindingsConfig {
     pub output_dir: PathBuf,
-    pub contracts: Vec<String>,
-}
-
-impl Default for BindingsConfig {
-    fn default() -> Self {
-        Self {
-            output_dir: PathBuf::from("bindings"),
-            contracts: Vec::new(),
-        }
-    }
+    pub plugin: String,
 }
 
 impl Config {
@@ -124,7 +115,7 @@ impl Config {
             },
             registry: RegistryConfig::default(),
             profiles: ProfilesConfig::default(),
-            bindings: BindingsConfig::default(),
+            bindings: Vec::new(),
         }
     }
 }
