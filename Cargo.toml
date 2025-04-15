@@ -8,3 +8,7 @@ clap = { version = "4.5.36", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 anyhow = "1.0"
+tx3-lang = "0.1.0"
+tx3-bindgen = "0.1.0"
+miette = { version = "7.5.0", features = ["fancy"] }
+thiserror = "2.0.12"

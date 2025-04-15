@@ -1,12 +1,12 @@
-use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
 
 mod commands;
 mod config;
 
 use commands::{bindgen, check, devnet, init, invoke};
 use config::Config;
+use miette::IntoDiagnostic;
+use miette::Result;
 
 #[derive(Parser)]
 #[command(name = "trix")]
@@ -34,8 +34,8 @@ enum Commands {
     Check(check::Args),
 }
 
-fn load_config() -> Result<Config> {
-    let config_path = std::env::current_dir()?.join("trix.toml");
+fn load_config() -> miette::Result<Config> {
+    let config_path = std::env::current_dir().into_diagnostic()?.join("trix.toml");
     if config_path.exists() {
         Config::load(&config_path)
     } else {

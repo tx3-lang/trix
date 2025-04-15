@@ -1,33 +1,5 @@
 [protocol]
 name = "mydapp"
 scope = "txpipe"
+version = "0.1.0"
 main = "main.tx3"
-
-[registry]
-url = "https://registry.dgram.io"
-
-
-[profile.dev]
-env_file = ".env.debug"
-
-[[profile.dev.wallets]]
-name = "alice"
-random_key = true
-initial_balance = 3000
-
-[[profile.dev.wallets]]
-name = "bob"
-random_key = true
-initial_balance = 3000
-
-[profile.dev.network]
-type = "devnet"
-config = "dolos.toml"
-
-[profile.dev.trp]
-url = "http://localhost:3000/trp"
-
-[profile.debug.env]
-mydapp_address = "0x0000000000000000000000000000000000000000"
-
-[profile.preview]
