@@ -20,3 +20,9 @@ thiserror = "2.0.12"
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+[workspace.metadata.release]
+push = false
+publish = false
+tag-name = "v{{version}}"
+pre-release-commit-message = "release: v{{version}}"
