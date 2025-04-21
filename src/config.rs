@@ -19,6 +19,7 @@ pub struct Config {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProtocolConfig {
     pub name: String,
+    pub scope: Option<String>,
     pub version: String,
     pub description: Option<String>,
     pub main: PathBuf,
@@ -88,8 +89,8 @@ pub struct TRPConfig {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BindingsConfig {
-    pub output_dir: PathBuf,
     pub plugin: String,
+    pub output_dir: PathBuf,
 }
 
 impl Config {
@@ -109,6 +110,7 @@ impl Config {
         Self {
             protocol: ProtocolConfig {
                 name: "my-project".to_string(),
+                scope: None,
                 version: "0.1.0".to_string(),
                 description: None,
                 main: PathBuf::from("main.tx3"),

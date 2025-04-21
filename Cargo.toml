@@ -15,6 +15,7 @@ tx3-lang = "0.1.0"
 tx3-bindgen = "0.1.0"
 miette = { version = "7.5.0", features = ["fancy"] }
 thiserror = "2.0.12"
+inquire = "0.7.5"
 
 # The profile that 'dist' will build with
 [profile.dist]
