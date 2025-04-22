@@ -25,7 +25,10 @@ enum Commands {
     Invoke(invoke::Args),
 
     /// Start development network
-    Devnet(devnet::Args),
+    Devnet(devnet::devnet::Args),
+
+    /// Start development network explorer
+    Explorer(devnet::explore::Args),
 
     /// Generate bindings for smart contracts
     Bindgen(bindgen::Args),
@@ -50,7 +53,8 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init(args) => init::run(args, &config),
         Commands::Invoke(args) => invoke::run(args, &config),
-        Commands::Devnet(args) => devnet::run(args, &config),
+        Commands::Devnet(args) => devnet::devnet::run(args, &config),
+        Commands::Explorer(args) => devnet::explore::run(args, &config),
         Commands::Bindgen(args) => bindgen::run(args, &config),
         Commands::Check(args) => check::run(args, &config),
     }

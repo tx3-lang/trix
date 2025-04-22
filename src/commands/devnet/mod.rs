@@ -1,12 +1,5 @@
-use std::{
-    collections::HashMap,
-    fs,
-    io::Write,
-    path::PathBuf,
-    process::{Command, Stdio},
-};
+use std::{collections::HashMap, fs, io::Write, path::PathBuf, process::Command};
 
-use clap::Args as ClapArgs;
 use cryptoxide::{digest::Digest, sha2::Sha256};
 use miette::{Context, IntoDiagnostic, bail};
 use pallas::ledger::addresses::Address;
@@ -14,62 +7,26 @@ use serde::Serialize;
 
 use crate::config::Config;
 
-const CSHELL: &str = include_str!("templates/configs/cshell/cshell.toml");
-const DOLOS: &str = include_str!("templates/configs/dolos/dolos.toml");
+pub mod devnet;
+pub mod explore;
 
-const ALONZO: &str = include_str!("templates/configs/dolos/alonzo.json");
-const BYRON: &str = include_str!("templates/configs/dolos/byron.json");
-const CONWAY: &str = include_str!("templates/configs/dolos/conway.json");
-const SHELLEY: &str = include_str!("templates/configs/dolos/shelley.json");
+const CSHELL: &str = include_str!("../templates/configs/cshell/cshell.toml");
+const DOLOS: &str = include_str!("../templates/configs/dolos/dolos.toml");
 
-#[derive(ClapArgs)]
-pub struct Args {}
+const ALONZO: &str = include_str!("../templates/configs/dolos/alonzo.json");
+const BYRON: &str = include_str!("../templates/configs/dolos/byron.json");
+const CONWAY: &str = include_str!("../templates/configs/dolos/conway.json");
+const SHELLEY: &str = include_str!("../templates/configs/dolos/shelley.json");
 
-pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
-    let home_path = if cfg!(target_os = "windows") {
+fn get_home_path() -> miette::Result<PathBuf> {
+    let home_dir = if cfg!(target_os = "windows") {
         dirs::data_local_dir()
     } else {
         dirs::home_dir()
     }
     .context("Could not determine home directory")?;
 
-    let tmp_path = handle_devnet(&home_path, config)?;
-
-    let mut dolos_config_path = tmp_path.clone();
-    dolos_config_path.push("dolos.toml");
-
-    let mut dolos_path = home_path.clone();
-    if cfg!(target_os = "windows") {
-        dolos_path.push(".tx3/default/bin/dolos.exe");
-    } else {
-        dolos_path.push(".tx3/default/bin/dolos");
-    };
-
-    let mut cmd = Command::new(dolos_path.to_str().unwrap_or_default());
-
-    cmd.args([
-        "-c",
-        dolos_config_path.to_str().unwrap_or_default(),
-        "daemon",
-    ])
-    .stdout(Stdio::inherit())
-    .stderr(Stdio::inherit());
-
-    let mut child = cmd
-        .spawn()
-        .into_diagnostic()
-        .context("failed to spawn dolos devnet")?;
-
-    let status = child
-        .wait()
-        .into_diagnostic()
-        .context("failed to wait for dolos devnet")?;
-
-    if !status.success() {
-        bail!("dolos devnet exited with code: {}", status);
-    }
-
-    Ok(())
+    Ok(home_dir)
 }
 
 fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf> {
@@ -80,7 +37,11 @@ fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf
     let truncated = &hex[..16];
 
     let mut tmp_path = home_path.clone();
-    tmp_path.push(format!(".tx3/tmp/{truncated}_devnet"));
+    tmp_path.push(format!(".tx3"));
+    if !tmp_path.exists() {
+        bail!("run tx3 up cli to prepare the environment first")
+    }
+    tmp_path.push(format!("tmp/{truncated}_devnet"));
 
     if !tmp_path.exists() {
         let tmp_path_str = tmp_path.to_str().unwrap();
