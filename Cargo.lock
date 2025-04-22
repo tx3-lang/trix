@@ -2059,9 +2059,9 @@ dependencies = [
 
 [[package]]
 name = "tx3-bindgen"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b4e846a169840ccba103de6cc648a999ae7a164a75f91d45f9ab62d1aefa154"
+checksum = "a24478a5d16acea41ac8e4aa6f7ba9803cdfd10f12cea6e8e47783f3200a42c5"
 dependencies = [
  "bincode",
  "clap",
@@ -2080,9 +2080,9 @@ dependencies = [
 
 [[package]]
 name = "tx3-lang"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea23f2708a78a3fadeabf63a01082774baa8b417155bc59990de4e93aa5e3bc8"
+checksum = "cbbf800a61204253b814e53a00494f63be8a0d947fb4d7e44e87888b519186ef"
 dependencies = [
  "bincode",
  "hex",
