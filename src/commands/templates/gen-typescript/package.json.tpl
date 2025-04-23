@@ -2,8 +2,8 @@
   "name": "{{project_name}}",
   "version": "{{protocol_version}}",
   "description": "A simple Node.js library for the TX3 protocol",
-  "main": "dist/example.js",
-  "types": "dist/example.d.ts",
+  "main": "dist/{{project_name}}.js",
+  "types": "dist/{{project_name}}.d.ts",
   "scripts": {
     "build": "tsc",
     "test": "tsx ./test"
