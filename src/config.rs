@@ -77,9 +77,9 @@ impl From<KnownChain> for ProfileConfig {
     }
 }
 
-const PUBLIC_PREVIEW_TRP_KEY: &str = "trpjodqbmjblunzpbikpcrl";
-const PUBLIC_PREPROD_TRP_KEY: &str = "trpjodqbmjblunzpbikpcrl";
-const PUBLIC_MAINNET_TRP_KEY: &str = "trpjodqbmjblunzpbikpcrl";
+const PUBLIC_PREVIEW_TRP_KEY: &str = "trp1ffyf88ugcyg6j6n3yuh";
+const PUBLIC_PREPROD_TRP_KEY: &str = "trp1mtg35n2n9lv7yauanfa";
+const PUBLIC_MAINNET_TRP_KEY: &str = "trp1lrnhzcax5064cgxsaup";
 
 const PUBLIC_PREVIEW_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
 const PUBLIC_PREPROD_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
