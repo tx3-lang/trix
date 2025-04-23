@@ -1,14 +1,22 @@
-party A;
+party Sender;
 
-party B;
+party Receiver;
 
-party C;
+tx transfer(
+    quantity: Int
+) {
+    input source {
+        from: Sender,
+        min_amount: Ada(quantity),
+    }
+    
+    output {
+        to: Receiver,
+        amount: Ada(quantity),
+    }
 
-tx action1() {
-   
+    output {
+        to: Sender,
+        amount: source - Ada(quantity) - fees,
+    }
 }
-
-tx action2() {}
-
-tx action3() {}
-

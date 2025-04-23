@@ -30,5 +30,6 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
         .into());
     }
 
+    println!("check passed, no errors found");
     Ok(())
 }
