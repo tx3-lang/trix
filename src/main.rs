@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 mod commands;
 mod config;
 
-use commands::{bindgen, check, devnet, init, invoke};
+use commands::{bindgen, check, devnet, init};
 use config::Config;
 use miette::IntoDiagnostic;
 use miette::Result;
@@ -22,7 +22,7 @@ enum Commands {
     Init(init::Args),
 
     /// Invoke a transaction template
-    Invoke(invoke::Args),
+    Invoke(devnet::invoke::Args),
 
     /// Start development network (powered by Dolos)
     Devnet(devnet::devnet::Args),
@@ -52,7 +52,7 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init(args) => init::run(args, &config),
-        Commands::Invoke(args) => invoke::run(args, &config),
+        Commands::Invoke(args) => devnet::invoke::run(args, &config),
         Commands::Devnet(args) => devnet::devnet::run(args, &config),
         Commands::Explore(args) => devnet::explore::run(args, &config),
         Commands::Bindgen(args) => bindgen::run(args, &config),
