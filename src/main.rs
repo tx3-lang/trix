@@ -24,11 +24,11 @@ enum Commands {
     /// Invoke a transaction template
     Invoke(invoke::Args),
 
-    /// Start development network
+    /// Start development network (powered by Dolos)
     Devnet(devnet::devnet::Args),
 
-    /// Start development network explorer
-    Explorer(devnet::explore::Args),
+    /// Explore a network (powered by CShell)
+    Explore(devnet::explore::Args),
 
     /// Generate bindings for smart contracts
     Bindgen(bindgen::Args),
@@ -54,7 +54,7 @@ fn main() -> Result<()> {
         Commands::Init(args) => init::run(args, &config),
         Commands::Invoke(args) => invoke::run(args, &config),
         Commands::Devnet(args) => devnet::devnet::run(args, &config),
-        Commands::Explorer(args) => devnet::explore::run(args, &config),
+        Commands::Explore(args) => devnet::explore::run(args, &config),
         Commands::Bindgen(args) => bindgen::run(args, &config),
         Commands::Check(args) => check::run(args, &config),
     }

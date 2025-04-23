@@ -30,7 +30,9 @@ fn get_home_path() -> miette::Result<PathBuf> {
 }
 
 fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf> {
-    let value = serde_json::to_vec(&config.profiles.dev.wallets).into_diagnostic()?;
+    let profile = config.profiles.clone().unwrap_or_default().devnet;
+
+    let value = serde_json::to_vec(&profile.wallets).into_diagnostic()?;
     let mut hasher = Sha256::new();
     hasher.input(&value.as_slice());
     let hex = hasher.result_str();
@@ -38,9 +40,11 @@ fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf
 
     let mut tmp_path = home_path.clone();
     tmp_path.push(format!(".tx3"));
+
     if !tmp_path.exists() {
-        bail!("run tx3 up cli to prepare the environment first")
+        bail!("run tx3up to prepare the environment first")
     }
+
     tmp_path.push(format!("tmp/{truncated}_devnet"));
 
     if !tmp_path.exists() {
@@ -65,7 +69,7 @@ fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf
         write_file_toml(&format!("{tmp_path_str}/cshell.toml").into(), &cshell)?;
 
         let mut initial_funds = HashMap::new();
-        for wallet in &config.profiles.dev.wallets {
+        for wallet in &profile.wallets {
             let mut cmd = Command::new(cshell_path.to_str().unwrap_or_default());
             cmd.args([
                 "-s",
@@ -109,7 +113,7 @@ fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf
         let mut dolos =
             serde_json::to_value(toml::from_str::<toml::Value>(DOLOS).into_diagnostic()?)
                 .into_diagnostic()?;
-        map_genisis_path(tmp_path_str, &mut dolos)?;
+        map_genesis_path(tmp_path_str, &mut dolos)?;
         write_file_toml(&format!("{tmp_path_str}/dolos.toml").into(), &dolos)?;
 
         let byron = serde_json::from_str::<serde_json::Value>(BYRON).into_diagnostic()?;
@@ -164,7 +168,7 @@ where
     Ok(())
 }
 
-fn map_genisis_path(path: &str, value: &mut serde_json::Value) -> miette::Result<()> {
+fn map_genesis_path(path: &str, value: &mut serde_json::Value) -> miette::Result<()> {
     if let Some(genesis) = value.get_mut("genesis") {
         if let Some(obj) = genesis.as_object_mut() {
             obj.insert(

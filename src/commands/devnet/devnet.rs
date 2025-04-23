@@ -11,7 +11,7 @@ use super::{get_home_path, handle_devnet};
 pub struct Args {
     /// run devnet as a background process
     #[arg(short, long, default_value_t = false)]
-    detach: bool,
+    background: bool,
 }
 
 pub fn run(args: Args, config: &Config) -> miette::Result<()> {
@@ -22,6 +22,7 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
     dolos_config_path.push("dolos.toml");
 
     let mut dolos_path = home_path.clone();
+
     if cfg!(target_os = "windows") {
         dolos_path.push(".tx3/default/bin/dolos.exe");
     } else {
@@ -29,13 +30,14 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
     };
 
     let mut cmd = Command::new(dolos_path.to_str().unwrap_or_default());
+
     cmd.args([
         "-c",
         dolos_config_path.to_str().unwrap_or_default(),
         "daemon",
     ]);
 
-    if args.detach {
+    if args.background {
         cmd.stdout(Stdio::null()).stderr(Stdio::null());
 
         cmd.spawn()
