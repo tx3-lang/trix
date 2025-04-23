@@ -9,6 +9,7 @@ use crate::config::Config;
 
 pub mod devnet;
 pub mod explore;
+pub mod invoke;
 
 const CSHELL: &str = include_str!("../templates/configs/cshell/cshell.toml");
 const DOLOS: &str = include_str!("../templates/configs/dolos/dolos.toml");
