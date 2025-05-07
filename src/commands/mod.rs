@@ -5,6 +5,7 @@ pub mod bindgen;
 pub mod check;
 pub mod devnet;
 pub mod init;
+pub mod test;
 
 pub(crate) fn find_config() -> Result<PathBuf> {
     let current_dir = std::env::current_dir()?;

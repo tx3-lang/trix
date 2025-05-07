@@ -3,6 +3,7 @@ use clap::{Parser, Subcommand};
 mod commands;
 mod config;
 
+use commands::test;
 use commands::{bindgen, check, devnet, init};
 use config::Config;
 use miette::IntoDiagnostic;
@@ -35,6 +36,9 @@ enum Commands {
 
     /// Check a Tx3 package and all of its dependencies for errors
     Check(check::Args),
+
+    /// Run a Tx3 testing file
+    Test(test::Args),
 }
 
 fn load_config() -> miette::Result<Config> {
@@ -57,5 +61,6 @@ fn main() -> Result<()> {
         Commands::Explore(args) => devnet::explore::run(args, &config),
         Commands::Bindgen(args) => bindgen::run(args, &config),
         Commands::Check(args) => check::run(args, &config),
+        Commands::Test(args) => test::run(args, &config),
     }
 }
