@@ -4,7 +4,6 @@ use crate::config::{BindingsConfig, Config, ProfilesConfig, ProtocolConfig};
 use clap::Args as ClapArgs;
 use inquire::{Confirm, MultiSelect, Text};
 use miette::IntoDiagnostic;
-use serde::Serialize;
 
 // Include template files at compile time
 const TEMPLATE_MAIN_TX3: &str = include_str!("templates/main.tx3.tpl");
