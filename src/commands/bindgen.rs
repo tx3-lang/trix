@@ -168,6 +168,7 @@ struct Transaction {
     function_name: String,
     constant_name: String,
     ir_bytes: BytesHex,
+    ir_version: String,
     parameters: Vec<TxParameter>,
 }
 
@@ -218,6 +219,7 @@ fn generate_arguments(
                 function_name: format!("{}Tx", tx_name).to_case(Case::Camel),
                 constant_name: format!("{}Ir", tx_name).to_case(Case::Camel),
                 ir_bytes: BytesHex(proto_tx.ir_bytes()),
+                ir_version: tx3_lang::ir::IR_VERSION.to_string(),
                 parameters,
             }
         })
