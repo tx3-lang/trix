@@ -11,15 +11,15 @@ pub mod devnet;
 pub mod explore;
 pub mod invoke;
 
-const CSHELL: &str = include_str!("../templates/configs/cshell/cshell.toml");
-const DOLOS: &str = include_str!("../templates/configs/dolos/dolos.toml");
+pub const CSHELL: &str = include_str!("../templates/configs/cshell/cshell.toml");
+pub const DOLOS: &str = include_str!("../templates/configs/dolos/dolos.toml");
 
-const ALONZO: &str = include_str!("../templates/configs/dolos/alonzo.json");
-const BYRON: &str = include_str!("../templates/configs/dolos/byron.json");
-const CONWAY: &str = include_str!("../templates/configs/dolos/conway.json");
-const SHELLEY: &str = include_str!("../templates/configs/dolos/shelley.json");
+pub const ALONZO: &str = include_str!("../templates/configs/dolos/alonzo.json");
+pub const BYRON: &str = include_str!("../templates/configs/dolos/byron.json");
+pub const CONWAY: &str = include_str!("../templates/configs/dolos/conway.json");
+pub const SHELLEY: &str = include_str!("../templates/configs/dolos/shelley.json");
 
-fn get_home_path() -> miette::Result<PathBuf> {
+pub fn get_home_path() -> miette::Result<PathBuf> {
     let home_dir = if cfg!(target_os = "windows") {
         dirs::data_local_dir()
     } else {
@@ -129,7 +129,7 @@ fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf
     return Ok(tmp_path);
 }
 
-fn write_file<T>(path: &PathBuf, content: &T) -> miette::Result<()>
+pub fn write_file<T>(path: &PathBuf, content: &T) -> miette::Result<()>
 where
     T: ?Sized + Serialize,
 {
@@ -149,7 +149,7 @@ where
     Ok(())
 }
 
-fn write_file_toml<T>(path: &PathBuf, content: &T) -> miette::Result<()>
+pub fn write_file_toml<T>(path: &PathBuf, content: &T) -> miette::Result<()>
 where
     T: ?Sized + Serialize,
 {
@@ -169,7 +169,7 @@ where
     Ok(())
 }
 
-fn map_genesis_path(path: &str, value: &mut serde_json::Value) -> miette::Result<()> {
+pub fn map_genesis_path(path: &str, value: &mut serde_json::Value) -> miette::Result<()> {
     if let Some(genesis) = value.get_mut("genesis") {
         if let Some(obj) = genesis.as_object_mut() {
             obj.insert(
@@ -198,7 +198,7 @@ fn map_genesis_path(path: &str, value: &mut serde_json::Value) -> miette::Result
     Ok(())
 }
 
-fn map_shelley_initial_funds(
+pub fn map_shelley_initial_funds(
     initial_funds: HashMap<String, u64>,
     value: &mut serde_json::Value,
 ) -> miette::Result<()> {
