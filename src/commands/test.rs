@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread::sleep,
     time::Duration,
@@ -166,11 +166,11 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
 fn handle_devnet_for_tests(test: &Test) -> miette::Result<Child> {
     let home_path = get_home_path()?;
     let mut tmp_path = home_path.clone();
-    tmp_path.push(format!(".tx3"));
+    tmp_path.push(".tx3");
     if !tmp_path.exists() {
         bail!("run tx3up to prepare the environment first")
     }
-    tmp_path.push(format!("tmp/test_devnet"));
+    tmp_path.push("tmp/test_devnet");
     let tmp_path_str = tmp_path.to_str().unwrap();
 
     fs::create_dir_all(&tmp_path)
@@ -203,7 +203,7 @@ fn handle_devnet_for_tests(test: &Test) -> miette::Result<Child> {
             .context("missing 'testnet' field in cshell 'addresses'")?
             .as_str()
             .unwrap();
-        let address = Address::from_bech32(&address).into_diagnostic()?.to_hex();
+        let address = Address::from_bech32(address).into_diagnostic()?.to_hex();
         initial_funds.insert(address, wallet.balance);
     }
 
@@ -251,7 +251,7 @@ fn handle_devnet_for_tests(test: &Test) -> miette::Result<Child> {
     Ok(child)
 }
 
-fn handle_cshell_transaction(file: &PathBuf, transaction: &Transaction) -> miette::Result<()> {
+fn handle_cshell_transaction(file: &Path, transaction: &Transaction) -> miette::Result<()> {
     let output = handle_cshell_command(vec!["wallet", "list", "--output-format", "json"])?;
 
     let wallets: Vec<CshellWallet> = serde_json::from_slice(&output).into_diagnostic()?;
@@ -290,8 +290,8 @@ fn handle_cshell_transaction(file: &PathBuf, transaction: &Transaction) -> miett
 fn handle_cshell_command(extra_args: Vec<&str>) -> miette::Result<Vec<u8>> {
     let home_path = get_home_path()?;
     let mut tmp_path = home_path.clone();
-    tmp_path.push(format!(".tx3"));
-    tmp_path.push(format!("tmp/test_devnet"));
+    tmp_path.push(".tx3");
+    tmp_path.push("tmp/test_devnet");
 
     let mut cshell_config_path = tmp_path.clone();
     cshell_config_path.push("cshell.toml");
