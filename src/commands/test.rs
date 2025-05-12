@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    error::Error,
     fs,
     path::PathBuf,
     process::{Child, Command, Stdio},
@@ -9,11 +8,9 @@ use std::{
 };
 
 use clap::Args as ClapArgs;
-use jsonrpsee::core::params::ObjectParams;
 use miette::{Context, IntoDiagnostic, bail};
 use pallas::ledger::addresses::Address;
-use serde::Deserialize;
-use tx3_lang::analyzing::Analyzable;
+use serde::{Deserialize, Deserializer, de};
 
 use crate::config::Config;
 
@@ -21,6 +18,9 @@ use super::devnet::{
     ALONZO, BYRON, CONWAY, CSHELL, DOLOS, SHELLEY, get_home_path, map_genesis_path,
     map_shelley_initial_funds, write_file, write_file_toml,
 };
+
+const BLOCK_PRODUCTION_INTERVAL_SECONDS: u64 = 5;
+const BOROS_SPAW_DELAY_SECONDS: u64 = 2;
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -33,13 +33,13 @@ struct Test {
     file: PathBuf,
     wallets: Vec<Wallet>,
     transactions: Vec<Transaction>,
-    expects: Vec<Expect>,
+    expect: Option<Vec<Expect>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Wallet {
     name: String,
-    lovelace: u64,
+    balance: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -47,104 +47,119 @@ struct Transaction {
     description: String,
     template: String,
     args: HashMap<String, serde_json::Value>,
+    #[serde(default)]
+    wait_block: bool,
+    signer: String,
 }
 
 #[derive(Debug, Deserialize)]
 struct Expect {
     wallet: String,
-    lovelace: u64,
+    balance: u64,
 }
 
-pub fn run(args: Args, config: &Config) -> miette::Result<()> {
+#[derive(Debug, Deserialize)]
+struct CshellWallet {
+    name: String,
+    addresses: CshellAddress,
+}
+#[derive(Debug, Deserialize)]
+struct CshellAddress {
+    testnet: String,
+}
+#[derive(Debug, Deserialize)]
+struct CshellBalance {
+    #[serde(deserialize_with = "string_to_u64")]
+    coin: u64,
+}
+
+fn string_to_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    s.parse::<u64>().map_err(de::Error::custom)
+}
+
+pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
     let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
 
-    // let mut devnet_process = run_devnet(&test)?;
+    let mut devnet_process = handle_devnet_for_tests(&test)?;
+    sleep(Duration::from_secs(BOROS_SPAW_DELAY_SECONDS));
 
-    let protocol = tx3_lang::Protocol::from_file(&test.file)
-        .load()
-        .into_diagnostic()
-        .context("parsing tx3 file")?;
+    let mut failed = false;
+    for transaction in &test.transactions {
+        if let Err(err) = handle_cshell_transaction(&test.file, transaction) {
+            eprintln!("Transaction `{}` failed.\n", transaction.description);
+            eprintln!("Error: {err}\n");
+            failed = true;
+        }
 
-    for transaction in test.transactions {
-        let Some(tx) = protocol.txs().find(|tx| tx.name == transaction.template) else {
-            bail!("invalid transaction template")
-        };
-
-        let prototx = protocol.new_tx(&tx.name).unwrap();
-        let params = prototx.find_params();
-
-        let mut builder = ObjectParams::new();
-        builder
-            .insert(
-                "tir",
-                serde_json::json!({
-                    "version": "v1alpha1",
-                    "encoding": "hex",
-                    "bytecode": hex::encode(prototx.ir_bytes())
-                }),
-            )
-            .unwrap();
-        builder.insert("args", transaction.args).unwrap();
-
-        // let response = provider.trp_resolve(&builder).await?;
+        if transaction.wait_block {
+            sleep(Duration::from_secs(BLOCK_PRODUCTION_INTERVAL_SECONDS));
+        }
     }
 
-    // let tx_def = program.txs.first().unwrap();
-    // let res = program.analyze(None);
+    sleep(Duration::from_secs(BLOCK_PRODUCTION_INTERVAL_SECONDS));
 
-    // dbg!(tx_def.is_resolved());
-    // tx3_lang::apply_args(x, Default::default());
+    if let Some(expect) = test.expect {
+        for expect in &expect {
+            // TODO: improve expect adding more options
+            let output = handle_cshell_command(vec![
+                "wallet",
+                "balance",
+                &expect.wallet,
+                "--output-format",
+                "json",
+            ]);
 
-    // let value = tx3_lang::apply_args(template, args)
+            if let Err(err) = output {
+                eprintln!("Error: {err}\n");
+                failed = true;
+                continue;
+            }
 
-    // sleep(Duration::from_secs(5));
+            let output = output.unwrap();
 
-    // devnet_process
-    //     .kill()
-    //     .into_diagnostic()
-    //     .context("failed to stop dolos devnet in background")?;
+            let balance = serde_json::from_slice::<CshellBalance>(&output);
+            if let Err(err) = balance {
+                eprintln!("Error: {err}\n");
+                failed = true;
+                continue;
+            }
+
+            let balance = balance.unwrap();
+
+            if balance.coin != expect.balance {
+                failed = true;
+
+                eprintln!(
+                    "Test Failed: `{}` Balance did not match the expected result.",
+                    expect.wallet
+                );
+                eprintln!("Expected: {}", expect.balance);
+                eprintln!("Received: {}", balance.coin);
+                eprintln!("Hint: Check the tx3 file or the test file.");
+                break;
+            }
+        }
+    }
+
+    if !failed {
+        println!("Test Passed");
+    }
+
+    devnet_process
+        .kill()
+        .into_diagnostic()
+        .context("failed to stop dolos devnet in background")?;
 
     Ok(())
 }
 
-fn run_devnet(test: &Test) -> miette::Result<Child> {
+fn handle_devnet_for_tests(test: &Test) -> miette::Result<Child> {
     let home_path = get_home_path()?;
-    let tmp_path = handle_devnet_for_tests(&home_path, test)?;
-
-    let mut dolos_config_path = tmp_path.clone();
-    dolos_config_path.push("dolos.toml");
-
-    let mut dolos_path = home_path.clone();
-
-    if cfg!(target_os = "windows") {
-        dolos_path.push(".tx3/default/bin/dolos.exe");
-    } else {
-        dolos_path.push(".tx3/default/bin/dolos");
-    };
-
-    let mut cmd = Command::new(dolos_path.to_str().unwrap_or_default());
-
-    let child = cmd
-        .args([
-            "-c",
-            dolos_config_path.to_str().unwrap_or_default(),
-            "daemon",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .into_diagnostic()
-        .context("failed to spawn dolos devnet in background")?;
-
-    Ok(child)
-}
-
-fn handle_devnet_for_tests(home_path: &PathBuf, test: &Test) -> miette::Result<PathBuf> {
-    if !home_path.join(".tx3").exists() {
-        bail!("run tx3up to prepare the environment first")
-    }
-
     let mut tmp_path = home_path.clone();
     tmp_path.push(format!(".tx3"));
     if !tmp_path.exists() {
@@ -157,42 +172,25 @@ fn handle_devnet_for_tests(home_path: &PathBuf, test: &Test) -> miette::Result<P
         .into_diagnostic()
         .context("failed to create target directory")?;
 
-    let mut cshell_config_path = tmp_path.clone();
-    cshell_config_path.push("cshell.toml");
-    let mut cshell_path = home_path.clone();
-    if cfg!(target_os = "windows") {
-        cshell_path.push(".tx3/default/bin/cshell.exe");
-    } else {
-        cshell_path.push(".tx3/default/bin/cshell");
-    };
     let cshell = serde_json::to_value(toml::from_str::<toml::Value>(CSHELL).into_diagnostic()?)
         .into_diagnostic()?;
     write_file_toml(&format!("{tmp_path_str}/cshell.toml").into(), &cshell)?;
 
     let mut initial_funds = HashMap::new();
     for wallet in &test.wallets {
-        let mut cmd = Command::new(cshell_path.to_str().unwrap_or_default());
-        cmd.args([
-            "-s",
-            cshell_config_path.to_str().unwrap_or_default(),
+        let output = handle_cshell_command(vec![
             "wallet",
             "create",
             "--name",
             &wallet.name,
-            "--password",
-            &wallet.name,
+            "--unsafe",
             "--output-format",
             "json",
-        ]);
-        let output = cmd
-            .output()
-            .into_diagnostic()
-            .expect("fail to create devnet wallets");
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("cshell failed to create wallet:\n{}", stderr.trim());
-        }
-        let output: serde_json::Value = serde_json::from_slice(&output.stdout).into_diagnostic()?;
+        ])
+        .context("fail to create devnet wallets")?;
+
+        let output: serde_json::Value = serde_json::from_slice(&output).into_diagnostic()?;
+
         let address = output
             .get("addresses")
             .context("missing 'addresses' field in cshell JSON output")?
@@ -201,7 +199,7 @@ fn handle_devnet_for_tests(home_path: &PathBuf, test: &Test) -> miette::Result<P
             .as_str()
             .unwrap();
         let address = Address::from_bech32(&address).into_diagnostic()?.to_hex();
-        initial_funds.insert(address, wallet.lovelace);
+        initial_funds.insert(address, wallet.balance);
     }
 
     let mut shelley = serde_json::from_str::<serde_json::Value>(SHELLEY).into_diagnostic()?;
@@ -222,5 +220,95 @@ fn handle_devnet_for_tests(home_path: &PathBuf, test: &Test) -> miette::Result<P
     let conway = serde_json::from_str::<serde_json::Value>(CONWAY).into_diagnostic()?;
     write_file(&format!("{tmp_path_str}/conway.json").into(), &conway)?;
 
-    return Ok(tmp_path);
+    let mut dolos_config_path = tmp_path.clone();
+    dolos_config_path.push("dolos.toml");
+
+    let mut dolos_path = home_path.clone();
+    if cfg!(target_os = "windows") {
+        dolos_path.push(".tx3/default/bin/dolos.exe");
+    } else {
+        dolos_path.push(".tx3/default/bin/dolos");
+    };
+
+    let mut cmd = Command::new(dolos_path.to_str().unwrap_or_default());
+    let child = cmd
+        .args([
+            "-c",
+            dolos_config_path.to_str().unwrap_or_default(),
+            "daemon",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .into_diagnostic()
+        .context("failed to spawn dolos devnet in background")?;
+
+    Ok(child)
+}
+
+fn handle_cshell_transaction(file: &PathBuf, transaction: &Transaction) -> miette::Result<()> {
+    let output = handle_cshell_command(vec!["wallet", "list", "--output-format", "json"])?;
+
+    let wallets: Vec<CshellWallet> = serde_json::from_slice(&output).into_diagnostic()?;
+
+    let args: HashMap<String, serde_json::Value> = transaction
+        .args
+        .clone()
+        .into_iter()
+        .map(|mut arg| {
+            if let serde_json::Value::String(s) = &arg.1 {
+                if let Some(wallet) = wallets.iter().find(|w| w.name.eq(s)) {
+                    arg.1 = serde_json::Value::String(wallet.addresses.testnet.clone());
+                }
+            };
+            arg
+        })
+        .collect();
+
+    let transaction_args = serde_json::to_string(&args).into_diagnostic()?;
+
+    handle_cshell_command(vec![
+        "transaction",
+        "--tx3-file",
+        file.to_str().unwrap(),
+        "--tx3-args",
+        &transaction_args,
+        "--tx3-template",
+        &transaction.template,
+        "--signer",
+        &transaction.signer,
+    ])?;
+
+    Ok(())
+}
+
+fn handle_cshell_command(extra_args: Vec<&str>) -> miette::Result<Vec<u8>> {
+    let home_path = get_home_path()?;
+    let mut tmp_path = home_path.clone();
+    tmp_path.push(format!(".tx3"));
+    tmp_path.push(format!("tmp/test_devnet"));
+
+    let mut cshell_config_path = tmp_path.clone();
+    cshell_config_path.push("cshell.toml");
+    let mut cshell_path = home_path.clone();
+    if cfg!(target_os = "windows") {
+        cshell_path.push(".tx3/default/bin/cshell.exe");
+    } else {
+        cshell_path.push(".tx3/default/bin/cshell");
+    };
+
+    let mut cmd = Command::new(cshell_path.to_str().unwrap_or_default());
+
+    let mut args = vec!["-s", cshell_config_path.to_str().unwrap_or_default()];
+    args.extend(extra_args);
+
+    cmd.args(args);
+
+    let output = cmd.output().into_diagnostic()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(miette::Error::msg(stderr.to_string()));
+    }
+
+    Ok(output.stdout)
 }
