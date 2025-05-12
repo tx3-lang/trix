@@ -82,14 +82,16 @@ where
 }
 
 pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
+    println!("== Starting tests ==\n");
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
     let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
 
-    let mut devnet_process = handle_devnet_for_tests(&test)?;
+    let mut devnet_process = handle_devnet_for_tests(&test).context("failed to spaw devnet")?;
     sleep(Duration::from_secs(BOROS_SPAW_DELAY_SECONDS));
 
     let mut failed = false;
     for transaction in &test.transactions {
+        println!("--- Running transaction: {} ---", transaction.description);
         if let Err(err) = handle_cshell_transaction(&test.file, transaction) {
             eprintln!("Transaction `{}` failed.\n", transaction.description);
             eprintln!("Error: {err}\n");
@@ -97,8 +99,11 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
         }
 
         if transaction.wait_block {
+            println!("Waiting next block...");
             sleep(Duration::from_secs(BLOCK_PRODUCTION_INTERVAL_SECONDS));
         }
+
+        println!("Transaction completed \n");
     }
 
     sleep(Duration::from_secs(BLOCK_PRODUCTION_INTERVAL_SECONDS));
@@ -147,7 +152,7 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
     }
 
     if !failed {
-        println!("Test Passed");
+        println!("Test Passed\n");
     }
 
     devnet_process
@@ -271,7 +276,7 @@ fn handle_cshell_transaction(file: &PathBuf, transaction: &Transaction) -> miett
         "transaction",
         "--tx3-file",
         file.to_str().unwrap(),
-        "--tx3-args",
+        "--tx3-args-json",
         &transaction_args,
         "--tx3-template",
         &transaction.template,
