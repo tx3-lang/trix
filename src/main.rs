@@ -6,12 +6,12 @@ mod config;
 use commands::test;
 use commands::{bindgen, check, devnet, init};
 use config::Config;
-use miette::IntoDiagnostic;
-use miette::Result;
+use miette::{IntoDiagnostic as _, Result};
 
 #[derive(Parser)]
 #[command(name = "trix")]
 #[command(about = "Package manager for the Tx3 language", long_about = None)]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -41,13 +41,16 @@ enum Commands {
     Test(test::Args),
 }
 
-fn load_config() -> miette::Result<Config> {
-    let config_path = std::env::current_dir().into_diagnostic()?.join("trix.toml");
-    if config_path.exists() {
-        Config::load(&config_path)
-    } else {
-        Ok(Config::default())
+pub fn load_config() -> Result<Config> {
+    let current_dir = std::env::current_dir().into_diagnostic()?;
+
+    let config_path = current_dir.join("trix.toml");
+
+    if !config_path.exists() {
+        miette::bail!("No trix.toml found in current directory");
     }
+
+    Config::load(&config_path)
 }
 
 fn main() -> Result<()> {
