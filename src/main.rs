@@ -10,6 +10,7 @@ use miette::{IntoDiagnostic as _, Result};
 #[derive(Parser)]
 #[command(name = "trix")]
 #[command(about = "Package manager for the Tx3 language", long_about = None)]
+#[command(version)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
