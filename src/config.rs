@@ -200,6 +200,22 @@ pub struct BindingsConfig {
     pub output_dir: PathBuf,
 }
 
+const DEFAULT_PROJECT_NAME: &str = "my-project";
+
+fn infer_project_name() -> String {
+    let current_dir = match std::env::current_dir() {
+        Ok(dir) => dir,
+        Err(_) => return DEFAULT_PROJECT_NAME.to_string(),
+    };
+
+    let project_name = current_dir
+        .file_name()
+        .and_then(|f| f.to_str())
+        .map(|s| s.to_string());
+
+    project_name.unwrap_or_else(|| DEFAULT_PROJECT_NAME.to_string())
+}
+
 impl Config {
     pub fn load(path: &PathBuf) -> miette::Result<Config> {
         let contents = std::fs::read_to_string(path).into_diagnostic()?;
@@ -212,13 +228,15 @@ impl Config {
         std::fs::write(path, contents).into_diagnostic()?;
         Ok(())
     }
+}
 
-    pub fn default() -> Self {
+impl Default for Config {
+    fn default() -> Self {
         Self {
             protocol: ProtocolConfig {
-                name: "my-project".to_string(),
+                name: infer_project_name(),
                 scope: None,
-                version: "0.1.0".to_string(),
+                version: "0.0.0".to_string(),
                 description: None,
                 main: PathBuf::from("main.tx3"),
             },

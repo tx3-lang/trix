@@ -8,35 +8,74 @@ use miette::IntoDiagnostic;
 // Include template files at compile time
 const TEMPLATE_MAIN_TX3: &str = include_str!("templates/main.tx3.tpl");
 
+const DEFAULT_PROJECT_NAME: &str = "my-project";
+
+fn infer_project_name() -> String {
+    let current_dir = match std::env::current_dir() {
+        Ok(dir) => dir,
+        Err(_) => return DEFAULT_PROJECT_NAME.to_string(),
+    };
+
+    let project_name = current_dir
+        .file_name()
+        .and_then(|f| f.to_str())
+        .map(|s| s.to_string());
+
+    project_name.unwrap_or_else(|| DEFAULT_PROJECT_NAME.to_string())
+}
+
+fn prompt<'a>(msg: &'a str, default: Option<&'a str>, initial: Option<&'a str>) -> Text<'a> {
+    let mut prompt = Text::new(msg);
+
+    if let Some(initial) = initial {
+        prompt = prompt.with_initial_value(initial);
+    } else if let Some(default) = default {
+        prompt = prompt.with_default(default);
+    }
+
+    prompt
+}
+
 #[derive(ClapArgs)]
 pub struct Args {}
 
-pub fn run(_args: Args, _config: &Config) -> miette::Result<()> {
-    // Get current working directory
-    let current_dir = std::env::current_dir().unwrap();
+pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
+    let default_name = infer_project_name();
 
-    let protocol_name = Text::new("Protocol name")
-        .with_default(&current_dir.file_name().unwrap().to_string_lossy())
-        .prompt()
-        .unwrap_or_default();
+    let protocol_name = prompt(
+        "Protocol name:",
+        Some(&default_name),
+        config.map(|c| c.protocol.name.as_ref()),
+    )
+    .prompt()
+    .into_diagnostic()?;
 
-    let owner_scope = match Text::new("Owner scope").prompt_skippable().unwrap() {
-        Some(s) if !s.trim().is_empty() => Some(s),
-        _ => None,
-    };
+    let owner_scope = prompt(
+        "Owner scope:",
+        None,
+        config.and_then(|c| c.protocol.scope.as_ref().map(|s| s.as_str())),
+    )
+    .prompt_skippable()
+    .into_diagnostic()?;
 
-    let description = match Text::new("Description").prompt_skippable().unwrap() {
-        Some(s) if !s.trim().is_empty() => Some(s),
-        _ => None,
-    };
+    let description = prompt(
+        "Description:",
+        None,
+        config.and_then(|c| c.protocol.description.as_ref().map(|s| s.as_str())),
+    )
+    .prompt_skippable()
+    .into_diagnostic()?;
 
-    let version = Text::new("Version")
-        .with_default("0.1.0")
-        .prompt()
-        .unwrap_or_default();
+    let version = prompt(
+        "Version:",
+        Some("0.0.0"),
+        config.map(|c| c.protocol.version.as_ref()),
+    )
+    .prompt()
+    .into_diagnostic()?;
 
     let generate_bindings = MultiSelect::new(
-        "Generate bindings",
+        "Generate bindings for:",
         vec!["Typescript", "Rust", "Go", "Python"],
     )
     .prompt()
