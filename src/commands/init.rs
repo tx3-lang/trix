@@ -53,7 +53,7 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
     let owner_scope = prompt(
         "Owner scope:",
         None,
-        config.and_then(|c| c.protocol.scope.as_ref().map(|s| s.as_str())),
+        config.and_then(|c| c.protocol.scope.as_deref()),
     )
     .prompt_skippable()
     .into_diagnostic()?;
@@ -61,7 +61,7 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
     let description = prompt(
         "Description:",
         None,
-        config.and_then(|c| c.protocol.description.as_ref().map(|s| s.as_str())),
+        config.and_then(|c| c.protocol.description.as_deref()),
     )
     .prompt_skippable()
     .into_diagnostic()?;
