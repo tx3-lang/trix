@@ -41,29 +41,37 @@ enum Commands {
     Test(test::Args),
 }
 
-pub fn load_config() -> Result<Config> {
+pub fn load_config() -> Result<Option<Config>> {
     let current_dir = std::env::current_dir().into_diagnostic()?;
 
     let config_path = current_dir.join("trix.toml");
 
     if !config_path.exists() {
-        miette::bail!("No trix.toml found in current directory");
+        return Ok(None);
     }
 
-    Config::load(&config_path)
+    let config = Config::load(&config_path)?;
+
+    Ok(Some(config))
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config()?;
 
-    match cli.command {
-        Commands::Init(args) => init::run(args, &config),
-        Commands::Invoke(args) => devnet::invoke::run(args, &config),
-        Commands::Devnet(args) => devnet::devnet::run(args, &config),
-        Commands::Explore(args) => devnet::explore::run(args, &config),
-        Commands::Bindgen(args) => bindgen::run(args, &config),
-        Commands::Check(args) => check::run(args, &config),
-        Commands::Test(args) => test::run(args, &config),
+    match config {
+        Some(config) => match cli.command {
+            Commands::Init(args) => init::run(args, Some(&config)),
+            Commands::Invoke(args) => devnet::invoke::run(args, &config),
+            Commands::Devnet(args) => devnet::devnet::run(args, &config),
+            Commands::Explore(args) => devnet::explore::run(args, &config),
+            Commands::Bindgen(args) => bindgen::run(args, &config),
+            Commands::Check(args) => check::run(args, &config),
+            Commands::Test(args) => test::run(args, &config),
+        },
+        None => match cli.command {
+            Commands::Init(_) => init::run(init::Args {}, None),
+            _ => Err(miette::miette!("No trix.toml found in current directory")),
+        },
     }
 }

@@ -213,19 +213,4 @@ impl Config {
         std::fs::write(path, contents).into_diagnostic()?;
         Ok(())
     }
-
-    pub fn default() -> Self {
-        Self {
-            protocol: ProtocolConfig {
-                name: "my-project".to_string(),
-                scope: None,
-                version: "0.1.0".to_string(),
-                description: None,
-                main: PathBuf::from("main.tx3"),
-            },
-            registry: None,
-            profiles: None,
-            bindings: Vec::new(),
-        }
-    }
 }
