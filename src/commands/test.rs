@@ -301,8 +301,13 @@ fn handle_cshell_transaction(file: &Path, transaction: &Transaction) -> miette::
         .into_iter()
         .map(|mut arg| {
             if let serde_json::Value::String(s) = &arg.1 {
-                if let Some(wallet) = wallets.iter().find(|w| w.name.eq(s)) {
-                    arg.1 = serde_json::Value::String(wallet.addresses.testnet.clone());
+                if s.starts_with('@') {
+                    if let Some(wallet) = wallets
+                        .iter()
+                        .find(|w| w.name.eq(s.trim_start_matches('@')))
+                    {
+                        arg.1 = serde_json::Value::String(wallet.addresses.testnet.clone());
+                    }
                 }
             };
             arg
