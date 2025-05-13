@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    fmt::Display,
     fs,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -53,9 +54,38 @@ struct Transaction {
 }
 
 #[derive(Debug, Deserialize)]
-struct Expect {
+#[serde(tag = "type")]
+enum Expect {
+    Balance(ExpectBalance),
+    // TODO: improve expect adding more options
+}
+
+#[derive(Debug, Deserialize)]
+struct ExpectBalance {
     wallet: String,
-    balance: u64,
+    amount: ExpectAmount,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum ExpectAmount {
+    Absolute(u64),
+    Aprox(ExpectAmountAprox),
+}
+#[derive(Debug, Deserialize)]
+struct ExpectAmountAprox {
+    target: u64,
+    threshold: u64,
+}
+impl Display for ExpectAmount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExpectAmount::Absolute(value) => write!(f, "{value}"),
+            ExpectAmount::Aprox(value) => {
+                write!(f, "target: {} threshold: {}", value.target, value.threshold)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -110,43 +140,52 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
 
     if let Some(expect) = test.expect {
         for expect in &expect {
-            // TODO: improve expect adding more options
-            let output = handle_cshell_command(vec![
-                "wallet",
-                "balance",
-                &expect.wallet,
-                "--output-format",
-                "json",
-            ]);
+            match expect {
+                Expect::Balance(expect) => {
+                    let output = handle_cshell_command(vec![
+                        "wallet",
+                        "balance",
+                        &expect.wallet,
+                        "--output-format",
+                        "json",
+                    ]);
 
-            if let Err(err) = output {
-                eprintln!("Error: {err}\n");
-                failed = true;
-                continue;
-            }
+                    if let Err(err) = output {
+                        eprintln!("Error: {err}\n");
+                        failed = true;
+                        continue;
+                    }
+                    let output = output.unwrap();
 
-            let output = output.unwrap();
+                    let balance = serde_json::from_slice::<CshellBalance>(&output);
+                    if let Err(err) = balance {
+                        eprintln!("Error: {err}\n");
+                        failed = true;
+                        continue;
+                    }
+                    let balance = balance.unwrap();
 
-            let balance = serde_json::from_slice::<CshellBalance>(&output);
-            if let Err(err) = balance {
-                eprintln!("Error: {err}\n");
-                failed = true;
-                continue;
-            }
+                    let r#match = match &expect.amount {
+                        ExpectAmount::Absolute(value) => balance.coin == *value,
+                        ExpectAmount::Aprox(value) => {
+                            let lower = value.target.saturating_sub(value.threshold);
+                            let upper = value.target + value.threshold;
+                            balance.coin >= lower && balance.coin <= upper
+                        }
+                    };
+                    if !r#match {
+                        failed = true;
 
-            let balance = balance.unwrap();
+                        eprintln!(
+                            "Test Failed: `{}` Balance did not match the expected result.",
+                            expect.wallet
+                        );
+                        eprintln!("Expected: {}", expect.amount);
+                        eprintln!("Received: {}", balance.coin);
 
-            if balance.coin != expect.balance {
-                failed = true;
-
-                eprintln!(
-                    "Test Failed: `{}` Balance did not match the expected result.",
-                    expect.wallet
-                );
-                eprintln!("Expected: {}", expect.balance);
-                eprintln!("Received: {}", balance.coin);
-                eprintln!("Hint: Check the tx3 file or the test file.");
-                break;
+                        eprintln!("Hint: Check the tx3 file or the test file.");
+                    }
+                }
             }
         }
     }
