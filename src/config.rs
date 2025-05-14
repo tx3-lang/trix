@@ -218,11 +218,19 @@ impl<'de> Deserialize<'de> for KnownChain {
     {
         struct KnownChainVisitor;
 
-        impl<'de> Visitor<'de> for KnownChainVisitor {
+        impl Visitor<'_> for KnownChainVisitor {
             type Value = KnownChain;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a string like 'Devnet' or 'CardanoPreprod'")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<KnownChain, E>
+            where
+                E: serde::de::Error,
+            {
+                v.parse::<KnownChain>()
+                    .map_err(|err| E::custom(err.to_string()))
             }
 
             fn visit_string<E>(self, v: String) -> Result<KnownChain, E>
