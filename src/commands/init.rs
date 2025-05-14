@@ -1,13 +1,12 @@
 use std::path::PathBuf;
 
-use crate::config::{BindingsConfig, Config, ProfilesConfig, ProtocolConfig};
+use crate::config::{BindingsConfig, Config, KnownChain, ProfileConfig, ProtocolConfig};
 use clap::Args as ClapArgs;
-use inquire::{Confirm, MultiSelect, Text};
+use inquire::{Confirm, MultiSelect, Select, Text};
 use miette::IntoDiagnostic;
 
 // Include template files at compile time
 const TEMPLATE_MAIN_TX3: &str = include_str!("templates/main.tx3.tpl");
-
 const DEFAULT_PROJECT_NAME: &str = "my-project";
 
 fn infer_project_name() -> String {
@@ -74,12 +73,36 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
     .prompt()
     .into_diagnostic()?;
 
+    let available_chains = KnownChain::all();
+
+    let chain = Select::new("Chain:", available_chains.clone())
+        .prompt()
+        .unwrap_or_default();
+
+    let network = KnownChain::network(&chain);
+    let network = MultiSelect::new("Network:", network.to_vec())
+        .prompt()
+        .unwrap_or_default();
+
     let generate_bindings = MultiSelect::new(
         "Generate bindings for:",
         vec!["Typescript", "Rust", "Go", "Python"],
     )
     .prompt()
     .unwrap_or_default();
+
+    let mut profiles = vec![KnownChain::Devnet.into()];
+    if !network.is_empty() {
+        let profiles_selected = network
+            .iter()
+            .map(|n| format!("{chain}{n}").parse())
+            .collect::<Result<Vec<KnownChain>, _>>()?
+            .into_iter()
+            .map(ProfileConfig::from)
+            .collect::<Vec<ProfileConfig>>();
+
+        profiles.extend(profiles_selected)
+    }
 
     let config = Config {
         protocol: ProtocolConfig {
@@ -96,7 +119,7 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
                 plugin: binding.to_string().to_lowercase(),
             })
             .collect(),
-        profiles: ProfilesConfig::default().into(),
+        profiles: Some(profiles),
         registry: None,
     };
 

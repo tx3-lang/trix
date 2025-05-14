@@ -31,7 +31,7 @@ fn get_home_path() -> miette::Result<PathBuf> {
 }
 
 fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf> {
-    let profile = config.profiles.clone().unwrap_or_default().devnet;
+    let profile = config.devnet().unwrap_or_default();
 
     let value = serde_json::to_vec(&profile.wallets).into_diagnostic()?;
     let mut hasher = Sha256::new();
