@@ -104,6 +104,7 @@ pub struct WalletConfig {
     pub initial_balance: u64,
 }
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum KnownChain {
     CardanoMainnet,
