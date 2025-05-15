@@ -43,6 +43,7 @@ where
 /// These helpers are useful for dynamically applying different case transformations to strings,
 /// such as converting identifiers to PascalCase, camelCase, CONSTANT_CASE, snake_case, or lower case.
 fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
+    #[allow(clippy::type_complexity)]
     let helpers: &[(&str, fn(&str) -> String)] = &[
         ("pascalCase", |s| s.to_case(Case::Pascal)),
         ("camelCase", |s| s.to_case(Case::Camel)),
@@ -121,11 +122,12 @@ fn load_github_templates(github_url: &str) -> miette::Result<Handlebars<'static>
         if name.contains("bindgen") && name.ends_with(".hbs") {
             // Remove everything before "bindgen/" and strip ".hbs" extension
             let template_name = name
-                .splitn(2, "bindgen/")
-                .nth(1)
+                .split_once("bindgen/")
+                .map(|x| x.1)
                 .unwrap_or(&name)
                 .strip_suffix(".hbs")
-                .unwrap_or_else(|| name.split('/').last().unwrap_or(&name));
+                .unwrap_or_else(|| name.split('/').next_back().unwrap_or(&name));
+
             let mut template_content = String::new();
             file.read_to_string(&mut template_content)
                 .into_diagnostic()?;

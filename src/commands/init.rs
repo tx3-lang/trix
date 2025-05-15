@@ -6,7 +6,9 @@ use inquire::{Confirm, MultiSelect, Select, Text};
 use miette::IntoDiagnostic;
 
 // Include template files at compile time
-const TEMPLATE_MAIN_TX3: &str = include_str!("templates/main.tx3.tpl");
+const TEMPLATE_MAIN_TX3: &str = include_str!("templates/tx3/main.tx3.tpl");
+const TEMPLATE_TEST_TOML: &str = include_str!("templates/tx3/test.toml.tpl");
+
 const DEFAULT_PROJECT_NAME: &str = "my-project";
 
 fn infer_project_name() -> String {
@@ -52,7 +54,7 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
     let owner_scope = prompt(
         "Owner scope:",
         None,
-        config.and_then(|c| c.protocol.scope.as_ref().map(|s| s.as_str())),
+        config.and_then(|c| c.protocol.scope.as_deref()),
     )
     .prompt_skippable()
     .into_diagnostic()?;
@@ -60,7 +62,7 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
     let description = prompt(
         "Description:",
         None,
-        config.and_then(|c| c.protocol.description.as_ref().map(|s| s.as_str())),
+        config.and_then(|c| c.protocol.description.as_deref()),
     )
     .prompt_skippable()
     .into_diagnostic()?;
@@ -135,6 +137,8 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
     if confirm {
         std::fs::write("trix.toml", toml_string).into_diagnostic()?;
         std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
+        std::fs::create_dir("tests").into_diagnostic()?;
+        std::fs::write("tests/transaction.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
     }
 
     Ok(())

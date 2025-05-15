@@ -1,4 +1,10 @@
-use std::{collections::HashMap, fs, io::Write, path::PathBuf, process::Command};
+use std::{
+    collections::HashMap,
+    fs,
+    io::Write,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use cryptoxide::{digest::Digest, sha2::Sha256};
 use miette::{Context, IntoDiagnostic, bail};
@@ -7,19 +13,20 @@ use serde::Serialize;
 
 use crate::config::Config;
 
+#[allow(clippy::module_inception)]
 pub mod devnet;
 pub mod explore;
 pub mod invoke;
 
-const CSHELL: &str = include_str!("../templates/configs/cshell/cshell.toml");
-const DOLOS: &str = include_str!("../templates/configs/dolos/dolos.toml");
+pub const CSHELL: &str = include_str!("../templates/configs/cshell/cshell.toml");
+pub const DOLOS: &str = include_str!("../templates/configs/dolos/dolos.toml");
 
-const ALONZO: &str = include_str!("../templates/configs/dolos/alonzo.json");
-const BYRON: &str = include_str!("../templates/configs/dolos/byron.json");
-const CONWAY: &str = include_str!("../templates/configs/dolos/conway.json");
-const SHELLEY: &str = include_str!("../templates/configs/dolos/shelley.json");
+pub const ALONZO: &str = include_str!("../templates/configs/dolos/alonzo.json");
+pub const BYRON: &str = include_str!("../templates/configs/dolos/byron.json");
+pub const CONWAY: &str = include_str!("../templates/configs/dolos/conway.json");
+pub const SHELLEY: &str = include_str!("../templates/configs/dolos/shelley.json");
 
-fn get_home_path() -> miette::Result<PathBuf> {
+pub fn get_home_path() -> miette::Result<PathBuf> {
     let home_dir = if cfg!(target_os = "windows") {
         dirs::data_local_dir()
     } else {
@@ -30,17 +37,17 @@ fn get_home_path() -> miette::Result<PathBuf> {
     Ok(home_dir)
 }
 
-fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf> {
+fn handle_devnet(home_path: &Path, config: &Config) -> miette::Result<PathBuf> {
     let profile = config.devnet().unwrap_or_default();
 
     let value = serde_json::to_vec(&profile.wallets).into_diagnostic()?;
     let mut hasher = Sha256::new();
-    hasher.input(&value.as_slice());
+    hasher.input(value.as_slice());
     let hex = hasher.result_str();
     let truncated = &hex[..16];
 
-    let mut tmp_path = home_path.clone();
-    tmp_path.push(format!(".tx3"));
+    let mut tmp_path = home_path.to_path_buf();
+    tmp_path.push(".tx3");
 
     if !tmp_path.exists() {
         bail!("run tx3up to prepare the environment first")
@@ -58,7 +65,7 @@ fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf
         let mut cshell_config_path = tmp_path.clone();
         cshell_config_path.push("cshell.toml");
 
-        let mut cshell_path = home_path.clone();
+        let mut cshell_path = home_path.to_path_buf();
         if cfg!(target_os = "windows") {
             cshell_path.push(".tx3/default/bin/cshell.exe");
         } else {
@@ -103,7 +110,7 @@ fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf
                 .context("missing 'testnet' field in cshell 'addresses'")?
                 .as_str()
                 .unwrap();
-            let address = Address::from_bech32(&address).into_diagnostic()?.to_hex();
+            let address = Address::from_bech32(address).into_diagnostic()?.to_hex();
             initial_funds.insert(address, wallet.initial_balance);
         }
 
@@ -126,14 +133,14 @@ fn handle_devnet(home_path: &PathBuf, config: &Config) -> miette::Result<PathBuf
         let conway = serde_json::from_str::<serde_json::Value>(CONWAY).into_diagnostic()?;
         write_file(&format!("{tmp_path_str}/conway.json").into(), &conway)?;
     }
-    return Ok(tmp_path);
+    Ok(tmp_path)
 }
 
-fn write_file<T>(path: &PathBuf, content: &T) -> miette::Result<()>
+pub fn write_file<T>(path: &PathBuf, content: &T) -> miette::Result<()>
 where
     T: ?Sized + Serialize,
 {
-    let mut new_file = fs::File::create(&path)
+    let mut new_file = fs::File::create(path)
         .into_diagnostic()
         .context(format!("Failed to create file: {:?}", path))?;
 
@@ -149,7 +156,7 @@ where
     Ok(())
 }
 
-fn write_file_toml<T>(path: &PathBuf, content: &T) -> miette::Result<()>
+pub fn write_file_toml<T>(path: &PathBuf, content: &T) -> miette::Result<()>
 where
     T: ?Sized + Serialize,
 {
@@ -157,7 +164,7 @@ where
         .into_diagnostic()
         .context(format!("Failed to serialize TOML for file: {:?}", path))?;
 
-    let mut new_file = fs::File::create(&path)
+    let mut new_file = fs::File::create(path)
         .into_diagnostic()
         .context(format!("Failed to create file: {:?}", path))?;
 
@@ -169,7 +176,7 @@ where
     Ok(())
 }
 
-fn map_genesis_path(path: &str, value: &mut serde_json::Value) -> miette::Result<()> {
+pub fn map_genesis_path(path: &str, value: &mut serde_json::Value) -> miette::Result<()> {
     if let Some(genesis) = value.get_mut("genesis") {
         if let Some(obj) = genesis.as_object_mut() {
             obj.insert(
@@ -198,7 +205,7 @@ fn map_genesis_path(path: &str, value: &mut serde_json::Value) -> miette::Result
     Ok(())
 }
 
-fn map_shelley_initial_funds(
+pub fn map_shelley_initial_funds(
     initial_funds: HashMap<String, u64>,
     value: &mut serde_json::Value,
 ) -> miette::Result<()> {
