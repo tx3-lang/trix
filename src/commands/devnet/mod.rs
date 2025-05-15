@@ -86,8 +86,7 @@ fn handle_devnet(home_path: &Path, config: &Config) -> miette::Result<PathBuf> {
                 "create",
                 "--name",
                 &wallet.name,
-                "--password",
-                &wallet.name,
+                "--unsafe",
                 "--output-format",
                 "json",
             ]);
