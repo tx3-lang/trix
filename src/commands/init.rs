@@ -114,7 +114,7 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
         std::fs::write("trix.toml", toml_string).into_diagnostic()?;
         std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
         std::fs::create_dir("tests").into_diagnostic()?;
-        std::fs::write("tests/transaction.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
+        std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
     }
 
     Ok(())
