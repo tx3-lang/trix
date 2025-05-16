@@ -94,10 +94,8 @@ impl Display for ExpectAmount {
     }
 }
 
-fn ensure_test_home(test: &Test) -> miette::Result<PathBuf> {
-    let hashable = serde_json::to_vec(test).into_diagnostic()?;
-
-    let test_home = crate::home::consistent_tmp_dir("test", &hashable)?;
+fn ensure_test_home(test: &Test, hashable: &[u8]) -> miette::Result<PathBuf> {
+    let test_home = crate::home::consistent_tmp_dir("test", hashable)?;
 
     // if the test with the exact hash already exists, we assume it's already initialized
     if test_home.exists() {
@@ -179,7 +177,7 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
     let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
 
-    let test_home = ensure_test_home(&test)?;
+    let test_home = ensure_test_home(&test, test_content.as_bytes())?;
 
     let mut dolos = crate::spawn::dolos::daemon(&test_home, true)?;
 
