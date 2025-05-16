@@ -133,8 +133,6 @@ pub fn transaction(
         signer,
     ]);
 
-    dbg!(&cmd);
-
     let output = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
