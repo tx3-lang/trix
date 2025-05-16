@@ -1,9 +1,7 @@
 use clap::Args as ClapArgs;
 use miette::{Context, IntoDiagnostic, bail};
-use pallas::ledger::addresses::Address;
-use std::{collections::HashMap, path::Path};
 
-use crate::config::{Config, ProfileConfig};
+use crate::config::Config;
 
 #[derive(ClapArgs)]
 pub struct Args {

@@ -1,6 +1,3 @@
-use std::fs;
-use std::process::{Command, Stdio};
-
 use clap::Args as ClapArgs;
 use miette::{Context, IntoDiagnostic, bail};
 

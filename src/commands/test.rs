@@ -67,10 +67,10 @@ enum ExpectAmount {
 impl ExpectAmount {
     pub fn matches(&self, value: u64) -> bool {
         match self {
-            ExpectAmount::Absolute(value) => value == value,
-            ExpectAmount::Aprox(spec) => {
-                let lower = spec.target.saturating_sub(spec.threshold);
-                let upper = spec.target + spec.threshold;
+            ExpectAmount::Absolute(x) => x.eq(&value),
+            ExpectAmount::Aprox(x) => {
+                let lower = x.target.saturating_sub(x.threshold);
+                let upper = x.target + x.threshold;
                 value >= lower && value <= upper
             }
         }
@@ -94,7 +94,7 @@ impl Display for ExpectAmount {
     }
 }
 
-pub fn ensure_test_home(test: &Test) -> miette::Result<PathBuf> {
+fn ensure_test_home(test: &Test) -> miette::Result<PathBuf> {
     let hashable = serde_json::to_vec(test).into_diagnostic()?;
 
     let test_home = crate::home::consistent_tmp_dir("test", &hashable)?;
@@ -162,7 +162,7 @@ fn trigger_transaction(
     };
 
     let output = crate::spawn::cshell::transaction(
-        &home,
+        home,
         tx3_file,
         &serde_json::json!(args),
         &transaction.template,

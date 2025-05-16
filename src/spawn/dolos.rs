@@ -1,8 +1,7 @@
-use miette::{Context as _, IntoDiagnostic as _, bail};
+use miette::{Context as _, IntoDiagnostic as _};
 use serde_json::Value;
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };

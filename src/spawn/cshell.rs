@@ -128,9 +128,9 @@ pub fn transaction(
         "--tx3-args-json",
         serde_json::to_string(tx3_args_json).unwrap().as_str(),
         "--tx3-template",
-        &tx3_template,
+        tx3_template,
         "--signer",
-        &signer,
+        signer,
     ]);
 
     dbg!(&cmd);
@@ -180,7 +180,7 @@ pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBa
             config_path.to_str().unwrap_or_default(),
             "wallet",
             "balance",
-            &wallet_name,
+            wallet_name,
             "--output-format",
             "json",
         ])
