@@ -197,10 +197,13 @@ pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBa
 pub fn explorer(home: &Path) -> miette::Result<Child> {
     let tool_path = crate::home::tool_path("cshell")?;
 
+    let config_path = home.join("cshell.toml");
+
     let mut cmd = Command::new(&tool_path);
 
+    cmd.args(["-s", config_path.to_str().unwrap_or_default(), "explorer"]);
+
     let child = cmd
-        .args(["-s", home.to_str().unwrap_or_default(), "explorer"])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
