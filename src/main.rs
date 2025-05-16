@@ -3,8 +3,8 @@ use clap::{Parser, Subcommand};
 mod commands;
 mod config;
 
-use commands::test;
 use commands::{bindgen, check, devnet, init};
+use commands::{bytecode, test};
 use config::Config;
 use miette::{IntoDiagnostic as _, Result};
 
@@ -39,6 +39,9 @@ enum Commands {
 
     /// Run a Tx3 testing file
     Test(test::Args),
+
+    /// Generate Tx3 Bytecode
+    Bytecode(bytecode::Args),
 }
 
 pub fn load_config() -> Result<Option<Config>> {
@@ -68,6 +71,7 @@ fn main() -> Result<()> {
             Commands::Bindgen(args) => bindgen::run(args, &config),
             Commands::Check(args) => check::run(args, &config),
             Commands::Test(args) => test::run(args, &config),
+            Commands::Bytecode(args) => bytecode::run(args, &config),
         },
         None => match cli.command {
             Commands::Init(_) => init::run(init::Args {}, None),
