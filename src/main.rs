@@ -2,6 +2,8 @@ use clap::{Parser, Subcommand};
 
 mod commands;
 mod config;
+mod home;
+mod spawn;
 
 use commands::test;
 use commands::{bindgen, check, devnet, init};
