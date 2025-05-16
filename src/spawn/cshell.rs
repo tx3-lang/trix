@@ -150,10 +150,12 @@ pub fn transaction(
 pub fn transation_interactive(home: &Path, tx3_file: &Path) -> miette::Result<Child> {
     let tool_path = crate::home::tool_path("cshell")?;
 
+    let config_path = home.join("cshell.toml");
+
     let child = Command::new(&tool_path)
         .args([
             "-s",
-            home.to_str().unwrap_or_default(),
+            config_path.to_str().unwrap_or_default(),
             "transaction",
             "--tx3-file",
             tx3_file.to_str().unwrap_or_default(),
