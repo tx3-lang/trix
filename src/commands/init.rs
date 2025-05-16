@@ -6,8 +6,8 @@ use inquire::{Confirm, MultiSelect, Text};
 use miette::IntoDiagnostic;
 
 // Include template files at compile time
-const TEMPLATE_MAIN_TX3: &str = include_str!("templates/tx3/main.tx3.tpl");
-const TEMPLATE_TEST_TOML: &str = include_str!("templates/tx3/test.toml.tpl");
+const TEMPLATE_MAIN_TX3: &str = include_str!("../templates/tx3/main.tx3.tpl");
+const TEMPLATE_TEST_TOML: &str = include_str!("../templates/tx3/test.toml.tpl");
 
 const DEFAULT_PROJECT_NAME: &str = "my-project";
 
