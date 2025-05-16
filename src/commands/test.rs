@@ -177,7 +177,7 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
     let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
 
-    let test_home = ensure_test_home(&test, &test_content.as_bytes())?;
+    let test_home = ensure_test_home(&test, test_content.as_bytes())?;
 
     let mut dolos = crate::spawn::dolos::daemon(&test_home, true)?;
 
