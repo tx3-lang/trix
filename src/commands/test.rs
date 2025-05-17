@@ -102,12 +102,12 @@ fn ensure_test_home(test: &Test, hashable: &[u8]) -> miette::Result<PathBuf> {
         return Ok(test_home);
     }
 
-    let cshell_config = crate::spawn::cshell::initialize_config(&test_home)?;
+    crate::spawn::cshell::initialize_config(&test_home)?;
 
     let mut initial_funds = HashMap::new();
 
     for wallet in &test.wallets {
-        let output = crate::spawn::cshell::wallet_create(&cshell_config, &wallet.name)?;
+        let output = crate::spawn::cshell::wallet_create(&test_home, &wallet.name)?;
 
         let address = output
             .get("addresses")
@@ -180,6 +180,7 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
     let test_home = ensure_test_home(&test, test_content.as_bytes())?;
 
     let mut dolos = crate::spawn::dolos::daemon(&test_home, true)?;
+    println!("Dolos daemon started");
 
     sleep(Duration::from_secs(BOROS_SPAW_DELAY_SECONDS));
 

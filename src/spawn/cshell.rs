@@ -48,11 +48,13 @@ pub fn initialize_config(root: &Path) -> miette::Result<PathBuf> {
 pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_json::Value> {
     let tool_path = crate::home::tool_path("cshell")?;
 
+    let config_path = home.join("cshell.toml");
+
     let mut cmd = Command::new(&tool_path);
 
     cmd.args([
         "-s",
-        home.to_str().unwrap_or_default(),
+        config_path.to_str().unwrap_or_default(),
         "wallet",
         "create",
         "--name",
