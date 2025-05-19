@@ -19,7 +19,10 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
 
         let hex = hex::encode(prototx.ir_bytes());
 
-        println!("{} {hex}", tx.name);
+        println!("tx: {}", tx.name);
+        println!("bytecode: {hex}");
+        println!("encoding: hex",);
+        println!("version: {}\n", tx3_lang::ir::IR_VERSION);
     }
 
     Ok(())
