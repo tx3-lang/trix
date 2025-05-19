@@ -11,14 +11,13 @@ balance = 5000000
 [[transactions]]
 description = "bob sends 2 ada to alice"
 template = "transfer"
-signer = "bob"
-wait_block = true
+signers = ["bob"]
 args = { quantity = 2000000, sender = "@bob", receiver = "@alice" }
 
 [[transactions]]
 description = "alice sends 2 ada to bob"
 template = "transfer"
-signer = "alice"
+signers = ["alice"]
 args = { quantity = 2000000, sender = "@alice", receiver = "@bob" }
 
 [[expect]]
