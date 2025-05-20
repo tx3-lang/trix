@@ -19,7 +19,7 @@ const CARDANO_MAINNET_PUBLIC_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
 pub struct Config {
     pub protocol: ProtocolConfig,
     pub registry: Option<RegistryConfig>,
-    pub profiles: Option<Vec<ProfileConfig>>,
+    pub profiles: Option<HashMap<String, ProfileConfig>>,
     pub bindings: Vec<BindingsConfig>,
 }
 
@@ -40,8 +40,8 @@ impl Config {
         if let Some(profiles) = &self.profiles {
             return profiles
                 .iter()
-                .find(|p| p.chain.eq(&KnownChain::Devnet))
-                .cloned();
+                .find(|(_, p)| p.chain.eq(&KnownChain::Devnet))
+                .map(|(_, p)| p.clone());
         }
         None
     }
@@ -190,6 +190,7 @@ impl FromStr for KnownChain {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "Devnet" => Ok(Self::Devnet),
+            "CardanoDevnet" => Ok(Self::Devnet),
             "CardanoMainnet" => Ok(Self::Cardano(CardanoNetwork::Mainnet)),
             "CardanoPreview" => Ok(Self::Cardano(CardanoNetwork::Preview)),
             "CardanoPreprod" => Ok(Self::Cardano(CardanoNetwork::Preprod)),
