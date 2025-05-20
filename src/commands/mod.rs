@@ -1,5 +1,5 @@
 pub mod bindgen;
-pub mod bytecode;
+pub mod build;
 pub mod check;
 pub mod devnet;
 pub mod init;
