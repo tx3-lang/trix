@@ -5,8 +5,8 @@ mod config;
 mod home;
 mod spawn;
 
-use commands::test;
 use commands::{bindgen, check, devnet, init};
+use commands::{build, test};
 use config::Config;
 use miette::{IntoDiagnostic as _, Result};
 
@@ -41,6 +41,9 @@ enum Commands {
 
     /// Run a Tx3 testing file
     Test(test::Args),
+
+    /// Build a Tx3 file
+    Build(build::Args),
 }
 
 pub fn load_config() -> Result<Option<Config>> {
@@ -70,6 +73,7 @@ fn main() -> Result<()> {
             Commands::Bindgen(args) => bindgen::run(args, &config),
             Commands::Check(args) => check::run(args, &config),
             Commands::Test(args) => test::run(args, &config),
+            Commands::Build(args) => build::run(args, &config),
         },
         None => match cli.command {
             Commands::Init(_) => init::run(init::Args {}, None),
