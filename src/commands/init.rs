@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::config::{BindingsConfig, Config, ProfilesConfig, ProtocolConfig};
+use crate::config::{BindingsConfig, Config, ProfilesConfig, ProtocolConfig, RegistryConfig};
 use clap::Args as ClapArgs;
 use inquire::{Confirm, MultiSelect, Text};
 use miette::IntoDiagnostic;
@@ -89,6 +89,8 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
             version,
             description,
             main: "main.tx3".into(),
+            readme: None,
+            blueprint: None,
         },
         bindings: generate_bindings
             .iter()
@@ -98,7 +100,7 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
             })
             .collect(),
         profiles: ProfilesConfig::default().into(),
-        registry: None,
+        registry: RegistryConfig::default(),
     };
 
     let toml_string = toml::to_string_pretty(&config).into_diagnostic()?;
