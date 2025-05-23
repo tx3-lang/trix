@@ -279,12 +279,10 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
         std::fs::create_dir_all(&bindgen.output_dir).into_diagnostic()?;
 
         let profile = config
-            .profiles
-            .clone()
+            .devnet()
             .unwrap_or_default()
-            .devnet
             .trp
-            .unwrap_or_else(|| TrpConfig::from(KnownChain::CardanoDevnet));
+            .unwrap_or_else(|| TrpConfig::from(KnownChain::Devnet));
 
         let job = Job {
             name: config.protocol.name.clone(),

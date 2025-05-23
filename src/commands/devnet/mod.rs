@@ -11,11 +11,7 @@ pub mod explore;
 pub mod invoke;
 
 pub fn ensure_devnet_home(config: &Config) -> miette::Result<PathBuf> {
-    let profile = config
-        .profiles
-        .as_ref()
-        .map(|profiles| profiles.devnet.clone())
-        .unwrap_or_default();
+    let profile = config.devnet().unwrap_or_default();
 
     let profile_hashable = serde_json::to_vec(&profile).into_diagnostic()?;
 
