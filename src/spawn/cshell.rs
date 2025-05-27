@@ -138,6 +138,8 @@ pub fn transaction(
         "--signer",
         signer,
         unsafe_arg,
+        "--output-format",
+        "json",
     ]);
 
     let output = cmd
