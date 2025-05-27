@@ -20,30 +20,32 @@ pub fn ensure_devnet_home(config: &Config) -> miette::Result<PathBuf> {
     let profile_hashable = serde_json::to_vec(&profile).into_diagnostic()?;
 
     let devnet_home = crate::home::consistent_tmp_dir("devnet", &profile_hashable)?;
-    println!("devnet home initialized at: {}", devnet_home.display());
+    if !devnet_home.exists() {
+        println!("devnet home initialized at: {}", devnet_home.display());
 
-    let cshell_config = crate::spawn::cshell::initialize_config(&devnet_home)?;
-    println!("cshell config initialized at: {}", cshell_config.display());
+        let cshell_config = crate::spawn::cshell::initialize_config(&devnet_home)?;
+        println!("cshell config initialized at: {}", cshell_config.display());
 
-    let mut initial_funds = HashMap::new();
+        let mut initial_funds = HashMap::new();
 
-    for wallet in &profile.wallets {
-        let output = crate::spawn::cshell::wallet_create(&devnet_home, &wallet.name)?;
+        for wallet in &profile.wallets {
+            let output = crate::spawn::cshell::wallet_create(&devnet_home, &wallet.name)?;
 
-        let address = output
-            .get("addresses")
-            .context("missing 'addresses' field in cshell JSON output")?
-            .get("testnet")
-            .context("missing 'testnet' field in cshell 'addresses'")?
-            .as_str()
-            .unwrap();
+            let address = output
+                .get("addresses")
+                .context("missing 'addresses' field in cshell JSON output")?
+                .get("testnet")
+                .context("missing 'testnet' field in cshell 'addresses'")?
+                .as_str()
+                .unwrap();
 
-        let address = Address::from_bech32(address).into_diagnostic()?.to_hex();
-        initial_funds.insert(address, wallet.initial_balance);
+            let address = Address::from_bech32(address).into_diagnostic()?.to_hex();
+            initial_funds.insert(address, wallet.initial_balance);
+        }
+
+        let dolos_config = crate::spawn::dolos::initialize_config(&devnet_home, &initial_funds)?;
+        println!("dolos config initialized at: {}", dolos_config.display());
     }
-
-    let dolos_config = crate::spawn::dolos::initialize_config(&devnet_home, &initial_funds)?;
-    println!("dolos config initialized at: {}", dolos_config.display());
 
     Ok(devnet_home)
 }
