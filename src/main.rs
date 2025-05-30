@@ -76,7 +76,7 @@ fn main() -> Result<()> {
             Commands::Build(args) => build::run(args, &config),
         },
         None => match cli.command {
-            Commands::Init(_) => init::run(init::Args {}, None),
+            Commands::Init(args) => init::run(args, None),
             _ => Err(miette::miette!("No trix.toml found in current directory")),
         },
     }
