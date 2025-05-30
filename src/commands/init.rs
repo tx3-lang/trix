@@ -37,6 +37,19 @@ fn prompt<'a>(msg: &'a str, default: Option<&'a str>, initial: Option<&'a str>) 
     prompt
 }
 
+fn apply(config: Config) -> miette::Result<()> {
+    let toml_string = toml::to_string_pretty(&config).into_diagnostic()?;
+
+    println!("\n{}", toml_string);
+
+    std::fs::write("trix.toml", toml_string).into_diagnostic()?;
+    std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
+    std::fs::create_dir("tests").into_diagnostic()?;
+    std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
+
+    Ok(())
+}
+
 #[derive(ClapArgs)]
 pub struct Args {
     /// Use default configuration
@@ -47,10 +60,10 @@ pub struct Args {
 pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
     let default_name = infer_project_name();
 
-    let config = if args.yes {
-        Config {
+    if args.yes {
+        let config = Config {
             protocol: ProtocolConfig {
-                name: default_name,
+                name: default_name.clone(),
                 scope: None,
                 version: "0.0.0".into(),
                 description: None,
@@ -59,89 +72,77 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             bindings: Vec::default(),
             profiles: ProfilesConfig::default().into(),
             registry: None,
-        }
-    } else {
-        let protocol_name = prompt(
-            "Protocol name:",
-            Some(&default_name),
-            config.map(|c| c.protocol.name.as_ref()),
-        )
-        .prompt()
-        .into_diagnostic()?;
+        };
 
-        let owner_scope = prompt(
-            "Owner scope:",
-            None,
-            config.and_then(|c| c.protocol.scope.as_deref()),
-        )
-        .prompt_skippable()
-        .into_diagnostic()?;
+        return apply(config);
+    }
 
-        let description = prompt(
-            "Description:",
-            None,
-            config.and_then(|c| c.protocol.description.as_deref()),
-        )
-        .prompt_skippable()
-        .into_diagnostic()?;
+    let protocol_name = prompt(
+        "Protocol name:",
+        Some(&default_name),
+        config.map(|c| c.protocol.name.as_ref()),
+    )
+    .prompt()
+    .into_diagnostic()?;
 
-        let version = prompt(
-            "Version:",
-            Some("0.0.0"),
-            config.map(|c| c.protocol.version.as_ref()),
-        )
-        .prompt()
-        .into_diagnostic()?;
+    let owner_scope = prompt(
+        "Owner scope:",
+        None,
+        config.and_then(|c| c.protocol.scope.as_deref()),
+    )
+    .prompt_skippable()
+    .into_diagnostic()?;
 
-        let generate_bindings = MultiSelect::new(
-            "Generate bindings for:",
-            vec!["Typescript", "Rust", "Go", "Python"],
-        )
+    let description = prompt(
+        "Description:",
+        None,
+        config.and_then(|c| c.protocol.description.as_deref()),
+    )
+    .prompt_skippable()
+    .into_diagnostic()?;
+
+    let version = prompt(
+        "Version:",
+        Some("0.0.0"),
+        config.map(|c| c.protocol.version.as_ref()),
+    )
+    .prompt()
+    .into_diagnostic()?;
+
+    let generate_bindings = MultiSelect::new(
+        "Generate bindings for:",
+        vec!["Typescript", "Rust", "Go", "Python"],
+    )
+    .prompt()
+    .unwrap_or_default();
+
+    let config = Config {
+        protocol: ProtocolConfig {
+            name: protocol_name,
+            scope: owner_scope,
+            version,
+            description,
+            main: "main.tx3".into(),
+        },
+        bindings: generate_bindings
+            .iter()
+            .map(|binding| BindingsConfig {
+                output_dir: PathBuf::from(format!("./gen/{}", binding.to_string().to_lowercase())),
+                plugin: binding.to_string().to_lowercase(),
+            })
+            .collect(),
+        profiles: ProfilesConfig::default().into(),
+        registry: None,
+    };
+
+    let confirm = Confirm::new("Is this OK?")
+        .with_default(true)
         .prompt()
         .unwrap_or_default();
 
-        let config = Config {
-            protocol: ProtocolConfig {
-                name: protocol_name,
-                scope: owner_scope,
-                version,
-                description,
-                main: "main.tx3".into(),
-            },
-            bindings: generate_bindings
-                .iter()
-                .map(|binding| BindingsConfig {
-                    output_dir: PathBuf::from(format!(
-                        "./gen/{}",
-                        binding.to_string().to_lowercase()
-                    )),
-                    plugin: binding.to_string().to_lowercase(),
-                })
-                .collect(),
-            profiles: ProfilesConfig::default().into(),
-            registry: None,
-        };
-
-        let confirm = Confirm::new("Is this OK?")
-            .with_default(true)
-            .prompt()
-            .unwrap_or_default();
-
-        if !confirm {
-            return Ok(());
-        }
-
-        config
-    };
-
-    let toml_string = toml::to_string_pretty(&config).into_diagnostic()?;
-
-    println!("\n{}", toml_string);
-
-    std::fs::write("trix.toml", toml_string).into_diagnostic()?;
-    std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
-    std::fs::create_dir("tests").into_diagnostic()?;
-    std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
+    if confirm {
+        apply(config)?
+    }
 
     Ok(())
 }
