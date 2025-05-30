@@ -38,84 +38,110 @@ fn prompt<'a>(msg: &'a str, default: Option<&'a str>, initial: Option<&'a str>) 
 }
 
 #[derive(ClapArgs)]
-pub struct Args {}
+pub struct Args {
+    /// Use default configuration
+    #[arg(short, long)]
+    yes: bool,
+}
 
-pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
+pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
     let default_name = infer_project_name();
 
-    let protocol_name = prompt(
-        "Protocol name:",
-        Some(&default_name),
-        config.map(|c| c.protocol.name.as_ref()),
-    )
-    .prompt()
-    .into_diagnostic()?;
+    let config = if args.yes {
+        Config {
+            protocol: ProtocolConfig {
+                name: default_name,
+                scope: None,
+                version: "0.0.0".into(),
+                description: None,
+                main: "main.tx3".into(),
+            },
+            bindings: Vec::default(),
+            profiles: ProfilesConfig::default().into(),
+            registry: None,
+        }
+    } else {
+        let protocol_name = prompt(
+            "Protocol name:",
+            Some(&default_name),
+            config.map(|c| c.protocol.name.as_ref()),
+        )
+        .prompt()
+        .into_diagnostic()?;
 
-    let owner_scope = prompt(
-        "Owner scope:",
-        None,
-        config.and_then(|c| c.protocol.scope.as_deref()),
-    )
-    .prompt_skippable()
-    .into_diagnostic()?;
+        let owner_scope = prompt(
+            "Owner scope:",
+            None,
+            config.and_then(|c| c.protocol.scope.as_deref()),
+        )
+        .prompt_skippable()
+        .into_diagnostic()?;
 
-    let description = prompt(
-        "Description:",
-        None,
-        config.and_then(|c| c.protocol.description.as_deref()),
-    )
-    .prompt_skippable()
-    .into_diagnostic()?;
+        let description = prompt(
+            "Description:",
+            None,
+            config.and_then(|c| c.protocol.description.as_deref()),
+        )
+        .prompt_skippable()
+        .into_diagnostic()?;
 
-    let version = prompt(
-        "Version:",
-        Some("0.0.0"),
-        config.map(|c| c.protocol.version.as_ref()),
-    )
-    .prompt()
-    .into_diagnostic()?;
+        let version = prompt(
+            "Version:",
+            Some("0.0.0"),
+            config.map(|c| c.protocol.version.as_ref()),
+        )
+        .prompt()
+        .into_diagnostic()?;
 
-    let generate_bindings = MultiSelect::new(
-        "Generate bindings for:",
-        vec!["Typescript", "Rust", "Go", "Python"],
-    )
-    .prompt()
-    .unwrap_or_default();
+        let generate_bindings = MultiSelect::new(
+            "Generate bindings for:",
+            vec!["Typescript", "Rust", "Go", "Python"],
+        )
+        .prompt()
+        .unwrap_or_default();
 
-    let config = Config {
-        protocol: ProtocolConfig {
-            name: protocol_name,
-            scope: owner_scope,
-            version,
-            description,
-            main: "main.tx3".into(),
-        },
-        bindings: generate_bindings
-            .iter()
-            .map(|binding| BindingsConfig {
-                output_dir: PathBuf::from(format!("./gen/{}", binding.to_string().to_lowercase())),
-                plugin: binding.to_string().to_lowercase(),
-            })
-            .collect(),
-        profiles: ProfilesConfig::default().into(),
-        registry: None,
+        let config = Config {
+            protocol: ProtocolConfig {
+                name: protocol_name,
+                scope: owner_scope,
+                version,
+                description,
+                main: "main.tx3".into(),
+            },
+            bindings: generate_bindings
+                .iter()
+                .map(|binding| BindingsConfig {
+                    output_dir: PathBuf::from(format!(
+                        "./gen/{}",
+                        binding.to_string().to_lowercase()
+                    )),
+                    plugin: binding.to_string().to_lowercase(),
+                })
+                .collect(),
+            profiles: ProfilesConfig::default().into(),
+            registry: None,
+        };
+
+        let confirm = Confirm::new("Is this OK?")
+            .with_default(true)
+            .prompt()
+            .unwrap_or_default();
+
+        if !confirm {
+            return Ok(());
+        }
+
+        config
     };
 
     let toml_string = toml::to_string_pretty(&config).into_diagnostic()?;
 
     println!("\n{}", toml_string);
 
-    let confirm = Confirm::new("Is this OK?")
-        .with_default(true)
-        .prompt()
-        .unwrap_or_default();
-
-    if confirm {
-        std::fs::write("trix.toml", toml_string).into_diagnostic()?;
-        std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
-        std::fs::create_dir("tests").into_diagnostic()?;
-        std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
-    }
+    std::fs::write("trix.toml", toml_string).into_diagnostic()?;
+    std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
+    std::fs::create_dir("tests").into_diagnostic()?;
+    std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
 
     Ok(())
 }
