@@ -114,6 +114,7 @@ pub fn transaction(
     tx3_args_json: &serde_json::Value,
     tx3_template: &str,
     signer: &str,
+    r#unsafe: bool,
 ) -> miette::Result<serde_json::Value> {
     let tool_path = crate::home::tool_path("cshell")?;
 
@@ -121,10 +122,13 @@ pub fn transaction(
 
     let mut cmd = Command::new(&tool_path);
 
+    let unsafe_arg = if r#unsafe { "--unsafe" } else { "" };
+
     cmd.args([
         "-s",
         config_path.to_str().unwrap_or_default(),
-        "transaction",
+        "tx",
+        "new",
         "--tx3-file",
         tx3_file.to_str().unwrap(),
         "--tx3-args-json",
@@ -133,6 +137,9 @@ pub fn transaction(
         tx3_template,
         "--signer",
         signer,
+        unsafe_arg,
+        "--output-format",
+        "json",
     ]);
 
     let output = cmd
@@ -158,7 +165,8 @@ pub fn transation_interactive(home: &Path, tx3_file: &Path) -> miette::Result<Ch
         .args([
             "-s",
             config_path.to_str().unwrap_or_default(),
-            "transaction",
+            "tx",
+            "new",
             "--tx3-file",
             tx3_file.to_str().unwrap_or_default(),
         ])
