@@ -1,0 +1,33 @@
+name: "Install tx3 CLI tools"
+description: "Installs tools to run the tx3 environment"
+
+inputs:
+  tx3up_version:
+    description: "Version of tx3up (e.g. v0.4.2). Leave empty to use latest."
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install tx3up
+      run: |
+        if [ -n "${{ inputs.tx3up_version }}" ]; then
+          url="https://github.com/tx3-lang/up/releases/download/${{ inputs.tx3up_version }}/tx3up-installer.sh"
+        else
+          url="https://github.com/tx3-lang/up/releases/latest/download/tx3up-installer.sh"
+        fi
+
+        curl --proto '=https' --tlsv1.2 -LsSf "$url" | sh
+      shell: bash
+
+    - name: Install tools
+      run: tx3up
+      shell: bash
+
+    - name: Set tx3 environment variables
+      shell: bash
+      run: |
+        echo "TX3_ROOT=/root/.tx3" >> "$GITHUB_ENV"
+        echo "/root/.tx3/default/bin" >> "$GITHUB_PATH"
+
