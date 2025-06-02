@@ -1,8 +1,8 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
-use crate::config::{BindingsConfig, Config, ProfilesConfig, ProtocolConfig};
+use crate::config::{BindingsConfig, Config, KnownChain, ProfileConfig, ProtocolConfig};
 use clap::Args as ClapArgs;
-use inquire::{Confirm, MultiSelect, Text};
+use inquire::{Confirm, MultiSelect, Select, Text};
 use miette::IntoDiagnostic;
 
 // Include template files at compile time
@@ -109,12 +109,39 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
     .prompt()
     .into_diagnostic()?;
 
+    let available_chains = KnownChain::all();
+
+    let chain = Select::new("Chain:", available_chains.clone())
+        .prompt()
+        .unwrap_or_default();
+
+    let network = KnownChain::network(&chain);
+    let network = MultiSelect::new("Network:", network.to_vec())
+        .prompt()
+        .unwrap_or_default();
+
     let generate_bindings = MultiSelect::new(
         "Generate bindings for:",
         vec!["Typescript", "Rust", "Go", "Python"],
     )
     .prompt()
     .unwrap_or_default();
+
+    let mut profiles: HashMap<String, ProfileConfig> = HashMap::new();
+    profiles.insert(KnownChain::Devnet.to_string(), KnownChain::Devnet.into());
+
+    if !network.is_empty() {
+        let profiles_selected = network
+            .iter()
+            .map(|n| {
+                let key = format!("{chain}{n}");
+                let value = key.parse::<KnownChain>()?.into();
+                Ok((key, value))
+            })
+            .collect::<Result<HashMap<String, ProfileConfig>, miette::Error>>()?;
+
+        profiles.extend(profiles_selected)
+    }
 
     let config = Config {
         protocol: ProtocolConfig {
@@ -131,7 +158,7 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
                 plugin: binding.to_string().to_lowercase(),
             })
             .collect(),
-        profiles: ProfilesConfig::default().into(),
+        profiles: Some(profiles),
         registry: None,
     };
 

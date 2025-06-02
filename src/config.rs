@@ -1,13 +1,50 @@
-use miette::IntoDiagnostic as _;
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, path::PathBuf};
+use miette::{IntoDiagnostic as _, bail};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
+use std::{
+    collections::HashMap,
+    fmt::{self, Display},
+    path::PathBuf,
+    str::FromStr,
+};
+
+const CARDANO_PREVIEW_PUBLIC_TRP_KEY: &str = "trp1ffyf88ugcyg6j6n3yuh";
+const CARDANO_PREPROD_PUBLIC_TRP_KEY: &str = "trp1mtg35n2n9lv7yauanfa";
+const CARDANO_MAINNET_PUBLIC_TRP_KEY: &str = "trp1lrnhzcax5064cgxsaup";
+
+const CARDANO_PREVIEW_PUBLIC_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
+const CARDANO_PREPROD_PUBLIC_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
+const CARDANO_MAINNET_PUBLIC_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub protocol: ProtocolConfig,
     pub registry: Option<RegistryConfig>,
-    pub profiles: Option<ProfilesConfig>,
+    pub profiles: Option<HashMap<String, ProfileConfig>>,
     pub bindings: Vec<BindingsConfig>,
+}
+
+impl Config {
+    pub fn load(path: &PathBuf) -> miette::Result<Config> {
+        let contents = std::fs::read_to_string(path).into_diagnostic()?;
+        let config = toml::from_str(&contents).into_diagnostic()?;
+        Ok(config)
+    }
+
+    pub fn save(&self, path: &PathBuf) -> miette::Result<()> {
+        let contents = toml::to_string_pretty(self).into_diagnostic()?;
+        std::fs::write(path, contents).into_diagnostic()?;
+        Ok(())
+    }
+
+    pub fn devnet(&self) -> Option<ProfileConfig> {
+        if let Some(profiles) = &self.profiles {
+            return profiles
+                .iter()
+                .find(|(_, p)| p.chain.eq(&KnownChain::Devnet))
+                .map(|(_, p)| p.clone());
+        }
+        None
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -32,23 +69,16 @@ impl Default for RegistryConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ProfilesConfig {
-    pub devnet: ProfileConfig,
-    pub preview: Option<ProfileConfig>,
-    pub preprod: Option<ProfileConfig>,
-    pub mainnet: Option<ProfileConfig>,
-}
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct ProfileConfig {
+    pub chain: KnownChain,
+    pub env_file: Option<String>,
 
-impl Default for ProfilesConfig {
-    fn default() -> Self {
-        Self {
-            devnet: KnownChain::CardanoDevnet.into(),
-            preview: Some(KnownChain::CardanoPreview.into()),
-            preprod: Some(KnownChain::CardanoPreprod.into()),
-            mainnet: Some(KnownChain::CardanoMainnet.into()),
-        }
-    }
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wallets: Vec<WalletConfig>,
+
+    pub trp: Option<TrpConfig>,
+    pub u5c: Option<U5cConfig>,
 }
 
 impl From<KnownChain> for ProfileConfig {
@@ -57,7 +87,7 @@ impl From<KnownChain> for ProfileConfig {
             chain: chain.clone(),
             env_file: None,
             wallets: match chain {
-                KnownChain::CardanoDevnet => vec![
+                KnownChain::Devnet => vec![
                     WalletConfig {
                         name: "alice".to_string(),
                         random_key: true,
@@ -77,26 +107,6 @@ impl From<KnownChain> for ProfileConfig {
     }
 }
 
-const PUBLIC_PREVIEW_TRP_KEY: &str = "trp1ffyf88ugcyg6j6n3yuh";
-const PUBLIC_PREPROD_TRP_KEY: &str = "trp1mtg35n2n9lv7yauanfa";
-const PUBLIC_MAINNET_TRP_KEY: &str = "trp1lrnhzcax5064cgxsaup";
-
-const PUBLIC_PREVIEW_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
-const PUBLIC_PREPROD_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
-const PUBLIC_MAINNET_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
-
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct ProfileConfig {
-    pub chain: KnownChain,
-    pub env_file: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub wallets: Vec<WalletConfig>,
-
-    pub trp: Option<TrpConfig>,
-    pub u5c: Option<U5cConfig>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WalletConfig {
     pub name: String,
@@ -104,18 +114,137 @@ pub struct WalletConfig {
     pub initial_balance: u64,
 }
 
-#[allow(clippy::enum_variant_names)]
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum KnownChain {
-    CardanoMainnet,
-    CardanoPreview,
-    CardanoPreprod,
-    CardanoDevnet,
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub enum CardanoNetwork {
+    Mainnet,
+    Preprod,
+    Preview,
+}
+impl CardanoNetwork {
+    pub fn all() -> Vec<String> {
+        vec![
+            CardanoNetwork::Mainnet,
+            CardanoNetwork::Preprod,
+            CardanoNetwork::Preview,
+        ]
+        .into_iter()
+        .map(|c| c.to_string())
+        .collect()
+    }
+}
+impl Display for CardanoNetwork {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            CardanoNetwork::Mainnet => "Mainnet",
+            CardanoNetwork::Preprod => "Preprod",
+            CardanoNetwork::Preview => "Preview",
+        };
+        write!(f, "{name}")
+    }
+}
+impl FromStr for CardanoNetwork {
+    type Err = miette::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Mainnet" => Ok(Self::Mainnet),
+            "Preprod" => Ok(Self::Preprod),
+            "Preview" => Ok(Self::Preview),
+            _ => bail!("invalid cardano network"),
+        }
+    }
 }
 
-impl Default for KnownChain {
-    fn default() -> Self {
-        Self::CardanoDevnet
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum KnownChain {
+    #[default]
+    Devnet,
+    Cardano(CardanoNetwork),
+}
+impl KnownChain {
+    pub fn all() -> Vec<String> {
+        vec!["Cardano".into()]
+    }
+
+    pub fn network(chain: &str) -> Vec<String> {
+        match chain {
+            "Cardano" => CardanoNetwork::all(),
+            _ => Vec::new(),
+        }
+    }
+}
+
+impl Display for KnownChain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Devnet => "Devnet",
+            Self::Cardano(_) => "Cardano",
+        };
+        write!(f, "{name}")
+    }
+}
+
+impl FromStr for KnownChain {
+    type Err = miette::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Devnet" => Ok(Self::Devnet),
+            "CardanoDevnet" => Ok(Self::Devnet),
+            "CardanoMainnet" => Ok(Self::Cardano(CardanoNetwork::Mainnet)),
+            "CardanoPreview" => Ok(Self::Cardano(CardanoNetwork::Preview)),
+            "CardanoPreprod" => Ok(Self::Cardano(CardanoNetwork::Preprod)),
+            _ => bail!(format!("Unknown chain: {}", s)),
+        }
+    }
+}
+
+impl Serialize for KnownChain {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let s = match self {
+            KnownChain::Devnet => self.to_string(),
+            KnownChain::Cardano(c) => format!("{self}{c}"),
+        };
+        serializer.serialize_str(&s)
+    }
+}
+
+impl<'de> Deserialize<'de> for KnownChain {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct KnownChainVisitor;
+
+        impl Visitor<'_> for KnownChainVisitor {
+            type Value = KnownChain;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a string like 'Devnet' or 'CardanoPreprod'")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<KnownChain, E>
+            where
+                E: serde::de::Error,
+            {
+                v.parse::<KnownChain>()
+                    .map_err(|err| E::custom(err.to_string()))
+            }
+
+            fn visit_string<E>(self, v: String) -> Result<KnownChain, E>
+            where
+                E: serde::de::Error,
+            {
+                v.as_str()
+                    .parse::<KnownChain>()
+                    .map_err(|err| E::custom(err.to_string()))
+            }
+        }
+
+        deserializer.deserialize_string(KnownChainVisitor)
     }
 }
 
@@ -128,30 +257,32 @@ pub struct TrpConfig {
 impl From<KnownChain> for TrpConfig {
     fn from(chain: KnownChain) -> Self {
         match chain {
-            KnownChain::CardanoMainnet => Self {
-                url: "https://cardano-mainnet.trp-m1.demeter.run".to_string(),
-                headers: HashMap::from([(
-                    "dmtr-api-key".to_string(),
-                    PUBLIC_MAINNET_TRP_KEY.to_string(),
-                )]),
-            },
-            KnownChain::CardanoPreview => Self {
-                url: "https://cardano-preview.trp-m1.demeter.run".to_string(),
-                headers: HashMap::from([(
-                    "dmtr-api-key".to_string(),
-                    PUBLIC_PREVIEW_TRP_KEY.to_string(),
-                )]),
-            },
-            KnownChain::CardanoPreprod => Self {
-                url: "https://cardano-preprod.trp-m1.demeter.run".to_string(),
-                headers: HashMap::from([(
-                    "dmtr-api-key".to_string(),
-                    PUBLIC_PREPROD_TRP_KEY.to_string(),
-                )]),
-            },
-            KnownChain::CardanoDevnet => Self {
+            KnownChain::Devnet => Self {
                 url: "http://localhost:3000/trp".to_string(),
                 headers: HashMap::new(),
+            },
+            KnownChain::Cardano(chain) => match chain {
+                CardanoNetwork::Mainnet => Self {
+                    url: "https://cardano-mainnet.trp-m1.demeter.run".to_string(),
+                    headers: HashMap::from([(
+                        "dmtr-api-key".to_string(),
+                        CARDANO_MAINNET_PUBLIC_TRP_KEY.to_string(),
+                    )]),
+                },
+                CardanoNetwork::Preview => Self {
+                    url: "https://cardano-preview.trp-m1.demeter.run".to_string(),
+                    headers: HashMap::from([(
+                        "dmtr-api-key".to_string(),
+                        CARDANO_PREVIEW_PUBLIC_TRP_KEY.to_string(),
+                    )]),
+                },
+                CardanoNetwork::Preprod => Self {
+                    url: "https://cardano-preprod.trp-m1.demeter.run".to_string(),
+                    headers: HashMap::from([(
+                        "dmtr-api-key".to_string(),
+                        CARDANO_PREPROD_PUBLIC_TRP_KEY.to_string(),
+                    )]),
+                },
             },
         }
     }
@@ -166,30 +297,32 @@ pub struct U5cConfig {
 impl From<KnownChain> for U5cConfig {
     fn from(chain: KnownChain) -> Self {
         match chain {
-            KnownChain::CardanoMainnet => Self {
-                url: "https://mainnet.utxorpc-v0.demeter.run".to_string(),
-                headers: HashMap::from([(
-                    "dmtr-api-key".to_string(),
-                    PUBLIC_MAINNET_U5C_KEY.to_string(),
-                )]),
-            },
-            KnownChain::CardanoPreview => Self {
-                url: "https://preview.utxorpc-v0.demeter.run".to_string(),
-                headers: HashMap::from([(
-                    "dmtr-api-key".to_string(),
-                    PUBLIC_PREVIEW_U5C_KEY.to_string(),
-                )]),
-            },
-            KnownChain::CardanoPreprod => Self {
-                url: "https://preprod.utxorpc-v0.demeter.run".to_string(),
-                headers: HashMap::from([(
-                    "dmtr-api-key".to_string(),
-                    PUBLIC_PREPROD_U5C_KEY.to_string(),
-                )]),
-            },
-            KnownChain::CardanoDevnet => Self {
+            KnownChain::Devnet => Self {
                 url: "http://localhost:3000/u5c".to_string(),
                 headers: HashMap::new(),
+            },
+            KnownChain::Cardano(chain) => match chain {
+                CardanoNetwork::Mainnet => Self {
+                    url: "https://mainnet.utxorpc-v0.demeter.run".to_string(),
+                    headers: HashMap::from([(
+                        "dmtr-api-key".to_string(),
+                        CARDANO_MAINNET_PUBLIC_U5C_KEY.to_string(),
+                    )]),
+                },
+                CardanoNetwork::Preview => Self {
+                    url: "https://preview.utxorpc-v0.demeter.run".to_string(),
+                    headers: HashMap::from([(
+                        "dmtr-api-key".to_string(),
+                        CARDANO_PREVIEW_PUBLIC_U5C_KEY.to_string(),
+                    )]),
+                },
+                CardanoNetwork::Preprod => Self {
+                    url: "https://preprod.utxorpc-v0.demeter.run".to_string(),
+                    headers: HashMap::from([(
+                        "dmtr-api-key".to_string(),
+                        CARDANO_PREPROD_PUBLIC_U5C_KEY.to_string(),
+                    )]),
+                },
             },
         }
     }
@@ -199,18 +332,4 @@ impl From<KnownChain> for U5cConfig {
 pub struct BindingsConfig {
     pub plugin: String,
     pub output_dir: PathBuf,
-}
-
-impl Config {
-    pub fn load(path: &PathBuf) -> miette::Result<Config> {
-        let contents = std::fs::read_to_string(path).into_diagnostic()?;
-        let config = toml::from_str(&contents).into_diagnostic()?;
-        Ok(config)
-    }
-
-    pub fn save(&self, path: &PathBuf) -> miette::Result<()> {
-        let contents = toml::to_string_pretty(self).into_diagnostic()?;
-        std::fs::write(path, contents).into_diagnostic()?;
-        Ok(())
-    }
 }
