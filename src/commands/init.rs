@@ -37,11 +37,45 @@ fn prompt<'a>(msg: &'a str, default: Option<&'a str>, initial: Option<&'a str>) 
     prompt
 }
 
-#[derive(ClapArgs)]
-pub struct Args {}
+fn apply(config: Config) -> miette::Result<()> {
+    let toml_string = toml::to_string_pretty(&config).into_diagnostic()?;
 
-pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
+    println!("\n{}", toml_string);
+
+    std::fs::write("trix.toml", toml_string).into_diagnostic()?;
+    std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
+    std::fs::create_dir("tests").into_diagnostic()?;
+    std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
+
+    Ok(())
+}
+
+#[derive(ClapArgs)]
+pub struct Args {
+    /// Use default configuration
+    #[arg(short, long)]
+    yes: bool,
+}
+
+pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
     let default_name = infer_project_name();
+
+    if args.yes {
+        let config = Config {
+            protocol: ProtocolConfig {
+                name: default_name.clone(),
+                scope: None,
+                version: "0.0.0".into(),
+                description: None,
+                main: "main.tx3".into(),
+            },
+            bindings: Vec::default(),
+            profiles: ProfilesConfig::default().into(),
+            registry: None,
+        };
+
+        return apply(config);
+    }
 
     let protocol_name = prompt(
         "Protocol name:",
@@ -101,20 +135,13 @@ pub fn run(_args: Args, config: Option<&Config>) -> miette::Result<()> {
         registry: None,
     };
 
-    let toml_string = toml::to_string_pretty(&config).into_diagnostic()?;
-
-    println!("\n{}", toml_string);
-
     let confirm = Confirm::new("Is this OK?")
         .with_default(true)
         .prompt()
         .unwrap_or_default();
 
     if confirm {
-        std::fs::write("trix.toml", toml_string).into_diagnostic()?;
-        std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
-        std::fs::create_dir("tests").into_diagnostic()?;
-        std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
+        apply(config)?
     }
 
     Ok(())
