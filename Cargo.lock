@@ -2946,10 +2946,12 @@ name = "trix"
 version = "0.8.0"
 dependencies = [
  "anyhow",
+ "bip39",
  "clap",
  "convert_case",
  "cryptoxide 0.5.0",
  "dirs",
+ "ed25519-bip32",
  "handlebars",
  "hex",
  "inquire",
