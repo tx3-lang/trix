@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use miette::{Context, IntoDiagnostic as _};
+use miette::{Context, IntoDiagnostic};
 use pallas::ledger::addresses::Address;
 
 use crate::config::Config;

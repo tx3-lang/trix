@@ -29,6 +29,8 @@ reqwest = { version = "0.12.15", features = ["blocking", "json"] }
 tempfile = "3.10"
 zip = "2.6.1"
 convert_case = "0.8.0"
+ed25519-bip32 = "0.4.1"
+bip39 = "2.1.0"
 
 # The profile that 'dist' will build with
 [profile.dist]
