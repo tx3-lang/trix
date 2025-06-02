@@ -28,5 +28,4 @@ runs:
     - name: Set tx3 environment variables
       shell: bash
       run: |
-        echo "/root/.tx3/default/bin:$PATH" >> $GITHUB_PATH
-
+        echo "$HOME/.tx3/default/bin:$PATH" >> $GITHUB_PATH
