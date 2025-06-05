@@ -1,6 +1,6 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use miette::{Context, IntoDiagnostic as _};
+use miette::{Context, IntoDiagnostic};
 use pallas::ledger::addresses::Address;
 
 use crate::config::Config;
@@ -28,7 +28,7 @@ pub fn ensure_devnet_home(config: &Config) -> miette::Result<PathBuf> {
     let mut initial_funds = HashMap::new();
 
     for wallet in &profile.wallets {
-        let output = crate::spawn::cshell::wallet_create(&cshell_config, &wallet.name)?;
+        let output = crate::spawn::cshell::wallet_create(&devnet_home, &wallet.name)?;
 
         let address = output
             .get("addresses")

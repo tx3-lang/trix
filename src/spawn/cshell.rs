@@ -3,6 +3,9 @@ use std::{
     process::{Child, Command, Stdio},
 };
 
+use bip39::Mnemonic;
+use cryptoxide::{digest::Digest, sha2::Sha256};
+
 use miette::{Context as _, IntoDiagnostic as _, bail};
 use serde::{Deserialize, Deserializer, de};
 
@@ -45,6 +48,16 @@ pub fn initialize_config(root: &Path) -> miette::Result<PathBuf> {
     Ok(config_path)
 }
 
+fn generate_deterministic_mnemonic(input: &str) -> miette::Result<Mnemonic> {
+    let mut hasher = Sha256::new();
+    hasher.input(input.as_bytes());
+    let hash = hasher.result_str();
+
+    let entropy = &hash[..16];
+
+    Mnemonic::from_entropy(entropy.as_bytes()).into_diagnostic()
+}
+
 pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_json::Value> {
     let tool_path = crate::home::tool_path("cshell")?;
 
@@ -52,13 +65,17 @@ pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_jso
 
     let mut cmd = Command::new(&tool_path);
 
+    let mnemonic = generate_deterministic_mnemonic(wallet_name)?.to_string();
+
     cmd.args([
         "-s",
         config_path.to_str().unwrap_or_default(),
         "wallet",
-        "create",
+        "restore",
         "--name",
         wallet_name,
+        "--mnemonic",
+        &mnemonic,
         "--unsafe",
         "--output-format",
         "json",
@@ -114,6 +131,7 @@ pub fn transaction(
     tx3_args_json: &serde_json::Value,
     tx3_template: &str,
     signer: &str,
+    r#unsafe: bool,
 ) -> miette::Result<serde_json::Value> {
     let tool_path = crate::home::tool_path("cshell")?;
 
@@ -121,10 +139,13 @@ pub fn transaction(
 
     let mut cmd = Command::new(&tool_path);
 
+    let unsafe_arg = if r#unsafe { "--unsafe" } else { "" };
+
     cmd.args([
         "-s",
         config_path.to_str().unwrap_or_default(),
-        "transaction",
+        "tx",
+        "new",
         "--tx3-file",
         tx3_file.to_str().unwrap(),
         "--tx3-args-json",
@@ -133,6 +154,9 @@ pub fn transaction(
         tx3_template,
         "--signer",
         signer,
+        unsafe_arg,
+        "--output-format",
+        "json",
     ]);
 
     let output = cmd
@@ -158,7 +182,8 @@ pub fn transation_interactive(home: &Path, tx3_file: &Path) -> miette::Result<Ch
         .args([
             "-s",
             config_path.to_str().unwrap_or_default(),
-            "transaction",
+            "tx",
+            "new",
             "--tx3-file",
             tx3_file.to_str().unwrap_or_default(),
         ])

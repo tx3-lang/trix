@@ -165,6 +165,7 @@ fn trigger_transaction(
         &serde_json::json!(args),
         &transaction.template,
         &signer,
+        true,
     )?;
 
     println!("Invoke output: {:#?}", output);
