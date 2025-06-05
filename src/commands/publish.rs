@@ -3,7 +3,6 @@ use clap::Args as ClapArgs;
 use miette::IntoDiagnostic as _;
 use serde::{Deserialize, Serialize};
 
-const JSON_MEDIA_TYPE: &str = "application/json";
 const MARKDOWN_MEDIA_TYPE: &str = "text/markdown";
 const PROTOCOL_MEDIA_TYPE: &str = "application/tx3";
 
@@ -17,8 +16,7 @@ pub struct ImageMetadata {
     pub scope: String,
     pub published_date: i64,
     pub repository_url: Option<String>,
-    pub blueprint_url: Option<String>,
-    pub protocol_url: Option<String>,
+    pub description: Option<String>,
 }
 
 fn get_oci_client(config: &Config) -> oci_client::Client {
@@ -77,13 +75,9 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
         oci_client::client::ImageLayer::new(
             protocol.as_bytes().to_vec(),
             PROTOCOL_MEDIA_TYPE.to_string(),
-            Some(std::collections::BTreeMap::from([
-                ("org.opencontainers.image.title".to_string(), "protocol.tx3".to_string())
-            ])),
+            None,
         )
     ];
-
-    let protocol_url = Some(format!("{}/v2/{}/{}/blobs/{}", config.registry.url, scope, name, image_layers[image_layers.len()-1].sha256_digest()));
     
     if config.protocol.readme.is_some() {
         let readme = std::fs::read_to_string(config.protocol.readme.clone().unwrap()).into_diagnostic()?;
@@ -91,26 +85,9 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
             oci_client::client::ImageLayer::new(
                 readme.as_bytes().to_vec(),
                 MARKDOWN_MEDIA_TYPE.to_string(),
-                Some(std::collections::BTreeMap::from([
-                    ("org.opencontainers.image.title".to_string(), "README.md".to_string())
-                ])),
+                None,
             )
         );
-    }
-
-    let mut blueprint_url = None;
-    if config.protocol.blueprint.is_some() {
-        let blueprint = std::fs::read_to_string(config.protocol.blueprint.clone().unwrap()).into_diagnostic()?;
-        image_layers.push(
-            oci_client::client::ImageLayer::new(
-                blueprint.as_bytes().to_vec(),
-                JSON_MEDIA_TYPE.to_string(),
-                Some(std::collections::BTreeMap::from([
-                    ("org.opencontainers.image.title".to_string(), "blueprint.json".to_string())
-                ])),
-            )
-        );
-        blueprint_url = Some(format!("{}/v2/{}/{}/blobs/{}", config.registry.url, scope, name, image_layers[image_layers.len()-1].sha256_digest()));
     }
 
     let image_config = oci_client::client::Config {
@@ -118,14 +95,11 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
             name: name.clone(),
             scope: scope.clone(),
             published_date,
-            blueprint_url,
-            protocol_url,
             repository_url: None,
+            description: config.protocol.description.clone(),
         }).into_diagnostic()?,
-        media_type: JSON_MEDIA_TYPE.to_string(),
-        annotations: Some(std::collections::BTreeMap::from([
-            ("org.opencontainers.image.title".to_string(), "metadata.json".to_string())
-        ])),
+        media_type: oci_client::manifest::IMAGE_CONFIG_MEDIA_TYPE.to_string(),
+        annotations: None,
     };
 
     let image_manifest = oci_client::manifest::OciImageManifest::build(
