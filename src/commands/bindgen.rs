@@ -363,7 +363,7 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                     |ty| match ty {
                         tx3_lang::ir::Type::Int => "int64".to_string(),
                         tx3_lang::ir::Type::Bool => "bool".to_string(),
-                        tx3_lang::ir::Type::Bytes => "[]byte".to_string(),
+                        tx3_lang::ir::Type::Bytes => "Bytes".to_string(),
                         tx3_lang::ir::Type::Unit => "struct{}".to_string(),
                         tx3_lang::ir::Type::Address => "string".to_string(),
                         tx3_lang::ir::Type::UtxoRef => "string".to_string(),
