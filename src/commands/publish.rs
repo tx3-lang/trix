@@ -7,6 +7,7 @@ const MARKDOWN_MEDIA_TYPE: &str = "text/markdown";
 const PROTOCOL_MEDIA_TYPE: &str = "application/tx3";
 
 #[derive(ClapArgs)]
+/// Arguments for the publish command (UNSTABLE - experimental feature)
 pub struct Args {}
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -57,6 +58,9 @@ fn get_image_url(config: &Config) -> String {
 }
 
 pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
+    eprintln!("⚠️  WARNING: The 'publish' command is UNSTABLE and experimental.");
+    eprintln!("   This feature may change or be removed in future versions.");
+    eprintln!("   Use at your own risk.\n");
     
     if config.protocol.scope.is_none() {
         return Err(miette::miette!("No scope found in trix.toml"));

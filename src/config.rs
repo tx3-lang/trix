@@ -18,7 +18,6 @@ pub struct ProtocolConfig {
     pub description: Option<String>,
     pub main: PathBuf,
     pub readme: Option<PathBuf>,
-    pub blueprint: Option<PathBuf>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

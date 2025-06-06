@@ -69,7 +69,6 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
                 description: None,
                 main: "main.tx3".into(),
                 readme: None,
-                blueprint: None,
             },
             bindings: Vec::default(),
             profiles: ProfilesConfig::default().into(),
@@ -126,7 +125,6 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             description,
             main: "main.tx3".into(),
             readme: None,
-            blueprint: None,
         },
         bindings: generate_bindings
             .iter()

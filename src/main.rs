@@ -44,7 +44,8 @@ enum Commands {
     /// Build a Tx3 file
     Build(build::Args),
 
-    /// Publish a Tx3 package into the registry
+    /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
+    #[command(hide = true)]
     Publish(publish::Args),
 }
 
