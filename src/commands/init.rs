@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::config::{BindingsConfig, Config, ProfilesConfig, ProtocolConfig};
+use crate::config::{BindingsConfig, Config, ProfilesConfig, ProtocolConfig, RegistryConfig};
 use clap::Args as ClapArgs;
 use inquire::{Confirm, MultiSelect, Text};
 use miette::IntoDiagnostic;
@@ -68,10 +68,11 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
                 version: "0.0.0".into(),
                 description: None,
                 main: "main.tx3".into(),
+                readme: None,
             },
             bindings: Vec::default(),
             profiles: ProfilesConfig::default().into(),
-            registry: None,
+            registry: RegistryConfig::default(),
         };
 
         return apply(config);
@@ -123,6 +124,7 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             version,
             description,
             main: "main.tx3".into(),
+            readme: None,
         },
         bindings: generate_bindings
             .iter()
@@ -132,7 +134,7 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             })
             .collect(),
         profiles: ProfilesConfig::default().into(),
-        registry: None,
+        registry: RegistryConfig::default(),
     };
 
     let confirm = Confirm::new("Is this OK?")
