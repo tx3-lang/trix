@@ -58,10 +58,17 @@ fn get_image_url(config: &Config) -> String {
 }
 
 pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
-    eprintln!("⚠️  WARNING: The 'publish' command is UNSTABLE and experimental.");
-    eprintln!("   This feature may change or be removed in future versions.");
-    eprintln!("   Use at your own risk.\n");
-    
+    #[cfg(feature = "unstable")]
+    {
+        _run(_args, config)
+    }
+    #[cfg(not(feature = "unstable"))]
+    {
+        Err(miette::miette!("The publish command is currently unstable and requires the `unstable` feature to be enabled."))
+    }
+}
+
+pub fn _run(_args: Args, config: &Config) -> miette::Result<()> {    
     if config.protocol.scope.is_none() {
         return Err(miette::miette!("No scope found in trix.toml"));
     }
