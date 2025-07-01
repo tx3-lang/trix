@@ -3,6 +3,7 @@ use std::{
     fmt::Display,
     fs,
     io::{self, BufRead, Write},
+    str::FromStr,
 };
 
 use crate::config::{Config, ProfileConfig};
@@ -85,20 +86,21 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
             let prototx = protocol.new_tx(&tx.name).unwrap();
             let hex = hex::encode(prototx.ir_bytes());
 
-            let mut args = HashMap::new();
+            let mut args = serde_json::Map::new();
             for (key, kind) in prototx.find_params().iter() {
                 let tx3_type = Tx3Type(kind.clone());
 
                 if let Some(envs) = envs.as_ref() {
                     if let Some((_, value)) = envs.iter().find(|(k, _)| k.eq_ignore_ascii_case(key))
                     {
-                        args.insert(key.clone(), value.clone());
+                        args.insert(key.clone(), tx3_type.env_to_value(value));
                         continue;
                     }
                 }
 
-                args.insert(key.clone(), tx3_type.to_string());
+                args.insert(key.clone(), serde_json::Value::String(tx3_type.to_string()));
             }
+            let args_value = serde_json::Value::Object(args);
 
             json!({
                 "tir": {
@@ -106,7 +108,7 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
                     "encoding": "hex",
                     "version": tx3_lang::ir::IR_VERSION
                 },
-                "args": args
+                "args": args_value
             })
         })
         .collect::<Vec<_>>();
@@ -127,6 +129,41 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
 }
 
 struct Tx3Type(ir::Type);
+impl Tx3Type {
+    pub fn env_to_value(&self, value: &str) -> serde_json::Value {
+        match &self.0 {
+            ir::Type::Undefined => serde_json::Value::Null,
+            ir::Type::Unit => serde_json::Value::String(String::from(value)),
+            ir::Type::Int => match serde_json::Number::from_str(value) {
+                Ok(number) => serde_json::Value::Number(number),
+                Err(error) => {
+                    eprintln!("failed to parse env to number: {} {}", value, error);
+                    serde_json::Value::String(self.to_string())
+                }
+            },
+            ir::Type::Bool => match bool::from_str(value) {
+                Ok(bool) => serde_json::Value::Bool(bool),
+                Err(error) => {
+                    eprintln!("failed to parse env to bool: {} {}", value, error);
+                    serde_json::Value::String(self.to_string())
+                }
+            },
+            ir::Type::Bytes => match value.starts_with("0x") {
+                true => serde_json::Value::String(String::from(value)),
+                false => {
+                    eprintln!(
+                        "for bytes type, the env should be base16 and start with 0x: {}",
+                        value
+                    );
+                    serde_json::Value::String(self.to_string())
+                }
+            },
+            ir::Type::Address => serde_json::Value::String(String::from(value)),
+            _ => serde_json::Value::String(self.to_string()),
+        }
+    }
+}
+
 impl Display for Tx3Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.0 {
