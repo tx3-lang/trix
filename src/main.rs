@@ -5,8 +5,7 @@ mod config;
 mod home;
 mod spawn;
 
-use commands::{bindgen, check, devnet, init};
-use commands::{build, test};
+use commands::{bindgen, check, devnet, init, build, test, publish};
 use config::Config;
 use miette::{IntoDiagnostic as _, Result};
 
@@ -44,6 +43,10 @@ enum Commands {
 
     /// Build a Tx3 file
     Build(build::Args),
+
+    /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
+    #[command(hide = true)]
+    Publish(publish::Args),
 }
 
 pub fn load_config() -> Result<Option<Config>> {
@@ -60,7 +63,8 @@ pub fn load_config() -> Result<Option<Config>> {
     Ok(Some(config))
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config()?;
 
@@ -74,6 +78,7 @@ fn main() -> Result<()> {
             Commands::Check(args) => check::run(args, &config),
             Commands::Test(args) => test::run(args, &config),
             Commands::Build(args) => build::run(args, &config),
+            Commands::Publish(args) => publish::run(args, &config),
         },
         None => match cli.command {
             Commands::Init(args) => init::run(args, None),
