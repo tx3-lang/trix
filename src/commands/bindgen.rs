@@ -9,7 +9,7 @@ use tx3_lang::Protocol;
 
 use convert_case::{Case, Casing};
 use handlebars::{Context, Handlebars, Helper, Output, RenderContext, RenderErrorReason};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use tempfile::TempDir;
 use zip::ZipArchive;
 
@@ -68,7 +68,7 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
 /// 5. Registers each found template with Handlebars, using its path relative to `bindgen/` (without the `.hbs` extension)
 ///
 /// Returns a Handlebars registry with the loaded templates.
-fn load_github_templates(github_url: &str) -> miette::Result<Handlebars<'static>> {
+async fn load_github_templates(github_url: &str) -> miette::Result<Handlebars<'static>> {
     // Parse GitHub URL
     let parts: Vec<&str> = github_url.split('/').collect();
     if parts.len() < 2 {
@@ -91,7 +91,7 @@ fn load_github_templates(github_url: &str) -> miette::Result<Handlebars<'static>
 
     // Download the zip file
     let client = Client::new();
-    let response = client.get(&zip_url).send().into_diagnostic()?;
+    let response = client.get(&zip_url).send().await.into_diagnostic()?;
 
     if !response.status().is_success() {
         return Err(miette::miette!(
@@ -105,7 +105,7 @@ fn load_github_templates(github_url: &str) -> miette::Result<Handlebars<'static>
     let zip_path = temp_dir.path().join("rust-template.zip");
 
     // Save the zip file
-    let content = response.bytes().into_diagnostic()?;
+    let content = response.bytes().await.into_diagnostic()?;
     std::fs::write(&zip_path, &content).into_diagnostic()?;
 
     // Extract the zip file
@@ -249,13 +249,13 @@ fn generate_arguments(
     })
 }
 
-fn execute_bindgen(
+async fn execute_bindgen(
     job: &Job,
     github_url: &str,
     get_type_for_field: fn(&tx3_lang::ir::Type) -> String,
     version: &str,
 ) -> miette::Result<()> {
-    let handlebars = load_github_templates(github_url)?;
+    let handlebars = load_github_templates(github_url).await?;
 
     // Create the destination directory if it doesn't exist
     std::fs::create_dir_all(&job.dest_path).into_diagnostic()?;
@@ -272,7 +272,7 @@ fn execute_bindgen(
     Ok(())
 }
 
-pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
+pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
     for bindgen in config.bindings.iter() {
         let protocol = Protocol::from_file(config.protocol.main.clone()).load()?;
 
@@ -310,11 +310,13 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::List => "Vec<tx3_lang::ArgValue>".to_string(),
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
                         tx3_lang::ir::Type::AnyAsset => "tx3_lang::ArgValue".to_string(),
+                        tx3_lang::ir::Type::Utxo => "tx3_lang::ArgValue".to_string(),
                         tx3_lang::ir::Type::Undefined => unreachable!(),
                         _ => unreachable!(),
                     },
                     &config.protocol.version,
-                )?;
+                )
+                .await?;
                 println!("Rust bindgen successful");
             }
             "typescript" => {
@@ -331,11 +333,13 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Undefined => "any".to_string(),
                         tx3_lang::ir::Type::Unit => "void".to_string(),
                         tx3_lang::ir::Type::AnyAsset => "any".to_string(),
+                        tx3_lang::ir::Type::Utxo => "any".to_string(),
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
                         _ => unreachable!(),
                     },
                     &config.protocol.version,
-                )?;
+                )
+                .await?;
                 println!("Typescript bindgen successful");
             }
             "python" => {
@@ -353,10 +357,11 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
                         tx3_lang::ir::Type::AnyAsset => "str".to_string(),
                         tx3_lang::ir::Type::Undefined => "Any".to_string(),
-                        _ => unreachable!(),
+                        tx3_lang::ir::Type::Utxo => "Any".to_string(),
                     },
                     &config.protocol.version,
-                )?;
+                )
+                .await?;
                 println!("Python bindgen successful");
             }
             "go" => {
@@ -373,11 +378,13 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::List => "[]interface{}".to_string(),
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
                         tx3_lang::ir::Type::AnyAsset => "string".to_string(),
+                        tx3_lang::ir::Type::Utxo => "interface{}".to_string(),
                         tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
                         _ => unreachable!(),
                     },
                     &config.protocol.version,
-                )?;
+                )
+                .await?;
                 println!("Go bindgen successful");
             }
             plugin => {
@@ -397,11 +404,12 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                             tx3_lang::ir::Type::Custom(name) => name.clone(),
                             tx3_lang::ir::Type::AnyAsset => "{str}".to_string(),
                             tx3_lang::ir::Type::Undefined => "{undefined}".to_string(),
-                            _ => unreachable!(),
+                            tx3_lang::ir::Type::Utxo => "{utxo}".to_string(),
                         }
                     },
                     &config.protocol.version,
-                )?;
+                )
+                .await?;
                 println!("{} bindgen successful", &plugin);
             }
         };
