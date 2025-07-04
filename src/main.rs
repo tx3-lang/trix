@@ -5,7 +5,7 @@ mod config;
 mod home;
 mod spawn;
 
-use commands::{bindgen, check, devnet, init, build, test, publish};
+use commands::{bindgen, build, check, devnet, init, publish, test};
 use config::Config;
 use miette::{IntoDiagnostic as _, Result};
 
@@ -74,7 +74,7 @@ async fn main() -> Result<()> {
             Commands::Invoke(args) => devnet::invoke::run(args, &config),
             Commands::Devnet(args) => devnet::devnet::run(args, &config),
             Commands::Explore(args) => devnet::explore::run(args, &config),
-            Commands::Bindgen(args) => bindgen::run(args, &config),
+            Commands::Bindgen(args) => bindgen::run(args, &config).await,
             Commands::Check(args) => check::run(args, &config),
             Commands::Test(args) => test::run(args, &config),
             Commands::Build(args) => build::run(args, &config),
