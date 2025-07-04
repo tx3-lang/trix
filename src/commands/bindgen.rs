@@ -203,7 +203,7 @@ fn generate_arguments(
         .protocol
         .txs()
         .map(|tx_def| {
-            let tx_name = tx_def.name.as_str();
+            let tx_name = tx_def.name.value.as_str();
             let proto_tx = job.protocol.new_tx(tx_name).unwrap();
 
             let parameters: Vec<TxParameter> = proto_tx
@@ -311,6 +311,7 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
                         tx3_lang::ir::Type::AnyAsset => "tx3_lang::ArgValue".to_string(),
                         tx3_lang::ir::Type::Undefined => unreachable!(),
+                        _ => unreachable!(),
                     },
                     &config.protocol.version,
                 )?;
@@ -331,6 +332,7 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Unit => "void".to_string(),
                         tx3_lang::ir::Type::AnyAsset => "any".to_string(),
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
+                        _ => unreachable!(),
                     },
                     &config.protocol.version,
                 )?;
@@ -351,6 +353,7 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
                         tx3_lang::ir::Type::AnyAsset => "str".to_string(),
                         tx3_lang::ir::Type::Undefined => "Any".to_string(),
+                        _ => unreachable!(),
                     },
                     &config.protocol.version,
                 )?;
@@ -371,6 +374,7 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
                         tx3_lang::ir::Type::AnyAsset => "string".to_string(),
                         tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
+                        _ => unreachable!(),
                     },
                     &config.protocol.version,
                 )?;
@@ -393,6 +397,7 @@ pub fn run(_args: Args, config: &Config) -> miette::Result<()> {
                             tx3_lang::ir::Type::Custom(name) => name.clone(),
                             tx3_lang::ir::Type::AnyAsset => "{str}".to_string(),
                             tx3_lang::ir::Type::Undefined => "{undefined}".to_string(),
+                            _ => unreachable!(),
                         }
                     },
                     &config.protocol.version,

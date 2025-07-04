@@ -24,7 +24,7 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
     let values = protocol
         .txs()
         .map(|tx| {
-            let prototx = protocol.new_tx(&tx.name).unwrap();
+            let prototx = protocol.new_tx(&tx.name.value).unwrap();
 
             let hex = hex::encode(prototx.ir_bytes());
 
