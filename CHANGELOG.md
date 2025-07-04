@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [0.11.0] - 2025-07-04
 
 ### 🚀 Features
 
@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 
 - Apply upstream changes to AST identity names (#57)
 - Make bindgen cmd async to avoid nested tokio runtime (#58)
+
+### ⚙️ Miscellaneous Tasks
+
+- Automate changelog via git-cliff
 
 ## [0.10.0] - 2025-06-06
 
