@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.1] - 2025-07-05
+
+### ⚙️ Miscellaneous Tasks
+
+- Update tx3-lang to v0.7.1
+
 ## [0.11.0] - 2025-07-04
 
 ### 🚀 Features
@@ -13,9 +19,14 @@ All notable changes to this project will be documented in this file.
 - Apply upstream changes to AST identity names (#57)
 - Make bindgen cmd async to avoid nested tokio runtime (#58)
 
+### 💼 Other
+
+- V0.11.0
+
 ### ⚙️ Miscellaneous Tasks
 
 - Automate changelog via git-cliff
+- Update deprecated windows runner label
 
 ## [0.10.0] - 2025-06-06
 
