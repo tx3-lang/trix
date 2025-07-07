@@ -3265,9 +3265,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tx3-lang"
-version = "0.7.1"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "caaf36a74abb4a2633b8c382bc9eba8b7a00fb70c146fbc7c1d54f14794b51dc"
+checksum = "b920a74d0ee62f0ff63844333f9e81badfe705b6a01fbc94b52ec410873e716d"
 dependencies = [
  "bincode",
  "hex",
