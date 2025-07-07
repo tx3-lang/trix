@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [0.11.1] - 2025-07-05
 
+### 💼 Other
+
+- V0.11.1
+
 ### ⚙️ Miscellaneous Tasks
 
 - Update tx3-lang to v0.7.1
