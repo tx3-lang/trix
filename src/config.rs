@@ -28,7 +28,7 @@ pub struct RegistryConfig {
 impl Default for RegistryConfig {
     fn default() -> Self {
         Self {
-            url: "https://registry.dgram.io".to_string(),
+            url: "https://tx3.land".to_string(),
         }
     }
 }
