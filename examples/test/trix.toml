@@ -1,11 +1,12 @@
-bindings = []
-
 [protocol]
 name = "test"
 scope = ""
 version = "0.0.0"
 description = ""
 main = "main.tx3"
+
+[registry]
+url = "https://registry.dgram.io"
 
 [profiles.devnet]
 chain = "CardanoDevnet"
@@ -28,3 +29,7 @@ chain = "CardanoPreprod"
 
 [profiles.mainnet]
 chain = "CardanoMainnet"
+
+[[bindings]]
+plugin = "typescript"
+output_dir = "./gen/typescript"

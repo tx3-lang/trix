@@ -5,7 +5,7 @@ mod config;
 mod home;
 mod spawn;
 
-use commands::{bindgen, build, check, devnet, init, publish, test};
+use commands::{bindgen, build, check, devnet, init, inspect, publish, test};
 use config::Config;
 use miette::{IntoDiagnostic as _, Result};
 
@@ -37,6 +37,9 @@ enum Commands {
 
     /// Check a Tx3 package and all of its dependencies for errors
     Check(check::Args),
+
+    /// Inspect a Tx3 file
+    Inspect(inspect::Args),
 
     /// Run a Tx3 testing file
     Test(test::Args),
@@ -76,6 +79,7 @@ async fn main() -> Result<()> {
             Commands::Explore(args) => devnet::explore::run(args, &config),
             Commands::Bindgen(args) => bindgen::run(args, &config).await,
             Commands::Check(args) => check::run(args, &config),
+            Commands::Inspect(args) => inspect::run(args, &config),
             Commands::Test(args) => test::run(args, &config),
             Commands::Build(args) => build::run(args, &config),
             Commands::Publish(args) => publish::run(args, &config),
