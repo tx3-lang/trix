@@ -4,8 +4,7 @@ scope = "txpipe"
 main = "main.tx3"
 
 [registry]
-url = "https://registry.dgram.io"
-
+url = "https://tx3.land"
 
 [profile.dev]
 env_file = ".env.debug"
