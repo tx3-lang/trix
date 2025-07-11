@@ -6,3 +6,4 @@ pub mod init;
 pub mod inspect;
 pub mod publish;
 pub mod test;
+pub mod wallet;
