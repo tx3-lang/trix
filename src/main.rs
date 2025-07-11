@@ -5,7 +5,7 @@ mod config;
 mod home;
 mod spawn;
 
-use commands::{bindgen, build, check, devnet, init, inspect, publish, test};
+use commands::{bindgen, build, check, devnet, init, inspect, publish, test, wallet};
 use config::Config;
 use miette::{IntoDiagnostic as _, Result};
 
@@ -47,6 +47,9 @@ enum Commands {
     /// Build a Tx3 file
     Build(build::Args),
 
+    /// Manage wallets
+    Wallet(wallet::Args),
+
     /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
     #[command(hide = true)]
     Publish(publish::Args),
@@ -82,6 +85,7 @@ async fn main() -> Result<()> {
             Commands::Inspect(args) => inspect::run(args, &config),
             Commands::Test(args) => test::run(args, &config),
             Commands::Build(args) => build::run(args, &config),
+            Commands::Wallet(args) => wallet::run(args, &config),
             Commands::Publish(args) => publish::run(args, &config),
         },
         None => match cli.command {
