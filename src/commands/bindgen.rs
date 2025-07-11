@@ -311,8 +311,8 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
                         tx3_lang::ir::Type::AnyAsset => "tx3_lang::ArgValue".to_string(),
                         tx3_lang::ir::Type::Utxo => "tx3_lang::ArgValue".to_string(),
+                        tx3_lang::ir::Type::Tuple => "Vec<tx3_lang::ArgValue>".to_string(),
                         tx3_lang::ir::Type::Undefined => unreachable!(),
-                        _ => unreachable!(),
                     },
                     &config.protocol.version,
                 )
@@ -335,7 +335,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::AnyAsset => "any".to_string(),
                         tx3_lang::ir::Type::Utxo => "any".to_string(),
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
-                        _ => unreachable!(),
+                        tx3_lang::ir::Type::Tuple => "any[]".to_string(),
                     },
                     &config.protocol.version,
                 )
@@ -358,6 +358,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::AnyAsset => "str".to_string(),
                         tx3_lang::ir::Type::Undefined => "Any".to_string(),
                         tx3_lang::ir::Type::Utxo => "Any".to_string(),
+                        tx3_lang::ir::Type::Tuple => "list[Any]".to_string(),
                     },
                     &config.protocol.version,
                 )
@@ -380,7 +381,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::AnyAsset => "string".to_string(),
                         tx3_lang::ir::Type::Utxo => "interface{}".to_string(),
                         tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
-                        _ => unreachable!(),
+                        tx3_lang::ir::Type::Tuple => "[]interface{}".to_string(),
                     },
                     &config.protocol.version,
                 )
@@ -405,6 +406,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                             tx3_lang::ir::Type::AnyAsset => "{str}".to_string(),
                             tx3_lang::ir::Type::Undefined => "{undefined}".to_string(),
                             tx3_lang::ir::Type::Utxo => "{utxo}".to_string(),
+                            tx3_lang::ir::Type::Tuple => "{tuple}".to_string(),
                         }
                     },
                     &config.protocol.version,
