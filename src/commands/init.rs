@@ -72,7 +72,7 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             },
             bindings: Vec::default(),
             profiles: ProfilesConfig::default().into(),
-            registry: RegistryConfig::default(),
+            registry: Some(RegistryConfig::default()),
         };
 
         return apply(config);
@@ -134,7 +134,7 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             })
             .collect(),
         profiles: ProfilesConfig::default().into(),
-        registry: RegistryConfig::default(),
+        registry: Some(RegistryConfig::default()),
     };
 
     let confirm = Confirm::new("Is this OK?")

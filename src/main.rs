@@ -4,10 +4,12 @@ mod commands;
 mod config;
 mod home;
 mod spawn;
+mod update_checker;
 
 use commands::{bindgen, build, check, devnet, init, inspect, publish, test};
 use config::Config;
 use miette::{IntoDiagnostic as _, Result};
+use update_checker::UpdateChecker;
 
 #[derive(Parser)]
 #[command(name = "trix")]
@@ -70,6 +72,10 @@ pub fn load_config() -> Result<Option<Config>> {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config()?;
+
+    if let Ok(update_checker) = UpdateChecker::new() {
+        update_checker.run().await;
+    }
 
     match config {
         Some(config) => match cli.command {
