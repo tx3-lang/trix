@@ -55,7 +55,7 @@ enum Commands {
     #[command(hide = true)]
     Publish(publish::Args),
 
-    /// Manage telemetry config
+    /// Telemetry configuration. Trix collects anonymous usage data to improve the tool.
     Telemetry(telemetry::Args),
 }
 

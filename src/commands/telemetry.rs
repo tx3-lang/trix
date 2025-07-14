@@ -10,8 +10,11 @@ pub struct Args {
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Enable telemetry (anonymous usage data collection)
     On,
+    /// Disable telemetry
     Off,
+    /// Show the current telemetry status
     Status,
 }
 
