@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 
 mod commands;
 mod config;
+mod global;
 mod home;
 mod spawn;
 
@@ -73,6 +74,8 @@ pub fn load_config() -> Result<Option<Config>> {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config()?;
+
+    global::ensure_global_config()?;
 
     match config {
         Some(config) => match cli.command {
