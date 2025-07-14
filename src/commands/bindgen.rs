@@ -4,7 +4,7 @@ use std::{collections::HashMap, path::PathBuf};
 use crate::config::{Config, KnownChain, TrpConfig};
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use tx3_lang::Protocol;
 
 use convert_case::{Case, Casing};
@@ -15,6 +15,94 @@ use zip::ZipArchive;
 
 #[derive(ClapArgs)]
 pub struct Args {}
+
+/// Parses command-line style options string into a HashMap
+///
+/// Supports formats like:
+/// - "--template=standalone --feature=async,types --target=node"
+/// - "--template standalone --feature async,types --target node"
+///
+/// Values with commas are split into multiple values for the same key
+fn parse_options_string(options_str: &str) -> HashMap<String, Vec<String>> {
+    let mut options = HashMap::new();
+    let mut chars = options_str.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '-' && chars.peek() == Some(&'-') {
+            chars.next(); // consume second '-'
+
+            // Read the key
+            let mut key = String::new();
+            while let Some(&ch) = chars.peek() {
+                if ch == '=' || ch == ' ' || ch == '\t' {
+                    break;
+                }
+                key.push(chars.next().unwrap());
+            }
+
+            // Skip whitespace and '='
+            while let Some(&ch) = chars.peek() {
+                if ch == ' ' || ch == '\t' || ch == '=' {
+                    chars.next();
+                } else {
+                    break;
+                }
+            }
+
+            // Read the value
+            let mut value = String::new();
+            let mut in_quotes = false;
+            let mut quote_char = ' ';
+
+            while let Some(&ch) = chars.peek() {
+                if (ch == '"' || ch == '\'') && !in_quotes {
+                    in_quotes = true;
+                    quote_char = ch;
+                    chars.next();
+                } else if ch == quote_char && in_quotes {
+                    chars.next();
+                    break;
+                } else if (ch == ' ' || ch == '\t') && !in_quotes {
+                    break;
+                } else if ch == '-' && chars.nth(1) == Some('-') && !in_quotes {
+                    // Next argument starting, back up
+                    break;
+                } else {
+                    value.push(chars.next().unwrap());
+                }
+            }
+
+            if !key.is_empty() {
+                // Split comma-separated values
+                let values: Vec<String> = if value.contains(',') {
+                    value.split(',').map(|s| s.trim().to_string()).collect()
+                } else {
+                    vec![value]
+                };
+
+                options.entry(key).or_insert_with(Vec::new).extend(values);
+            }
+        } else {
+            // Skip non-option characters
+        }
+    }
+
+    options
+}
+
+/// Configuration structure for bindgen templates
+#[derive(Debug, Deserialize)]
+struct BindgenConfig {
+    /// Map of template set names to their file lists
+    #[serde(flatten)]
+    template_sets: HashMap<String, Vec<String>>,
+}
+
+/// Structure returned by load_github_templates containing handlebars and optional config
+struct TemplateBundle {
+    handlebars: Handlebars<'static>,
+    config: Option<BindgenConfig>,
+}
 
 fn make_helper<F>(name: &'static str, f: F) -> impl handlebars::HelperDef + Send + Sync + 'static
 where
@@ -65,10 +153,11 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
 /// 2. Downloads the repository as a ZIP file from GitHub
 /// 3. Extracts the ZIP to a temporary directory
 /// 4. Finds all `.hbs` files inside any `bindgen` directory in the archive
-/// 5. Registers each found template with Handlebars, using its path relative to `bindgen/` (without the `.hbs` extension)
+/// 5. Optionally loads a `config.toml` file from the `bindgen` directory
+/// 6. Registers each found template with Handlebars, using its path relative to `bindgen/` (without the `.hbs` extension)
 ///
-/// Returns a Handlebars registry with the loaded templates.
-async fn load_github_templates(github_url: &str) -> miette::Result<Handlebars<'static>> {
+/// Returns a TemplateBundle containing the Handlebars registry and optional configuration.
+async fn load_github_templates(github_url: &str) -> miette::Result<TemplateBundle> {
     // Parse GitHub URL
     let parts: Vec<&str> = github_url.split('/').collect();
     if parts.len() < 2 {
@@ -102,7 +191,7 @@ async fn load_github_templates(github_url: &str) -> miette::Result<Handlebars<'s
 
     // Create a temporary directory to extract files
     let temp_dir = TempDir::new().into_diagnostic()?;
-    let zip_path = temp_dir.path().join("rust-template.zip");
+    let zip_path = temp_dir.path().join("bindgen-template.zip");
 
     // Save the zip file
     let content = response.bytes().await.into_diagnostic()?;
@@ -114,10 +203,22 @@ async fn load_github_templates(github_url: &str) -> miette::Result<Handlebars<'s
 
     // Register handlebars templates
     let mut handlebars = Handlebars::new();
+    let mut config: Option<BindgenConfig> = None;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).into_diagnostic()?;
         let name = file.name().to_owned();
+
+        // Check for config.toml in bindgen directory
+        if name.contains("bindgen") && name.ends_with("config.toml") {
+            let mut config_content = String::new();
+            file.read_to_string(&mut config_content).into_diagnostic()?;
+
+            config = toml::from_str::<BindgenConfig>(&config_content)
+                .into_diagnostic()
+                .ok();
+            continue;
+        }
 
         if name.contains("bindgen") && name.ends_with(".hbs") {
             // Remove everything before "bindgen/" and strip ".hbs" extension
@@ -143,7 +244,7 @@ async fn load_github_templates(github_url: &str) -> miette::Result<Handlebars<'s
 
     register_handlebars_helpers(&mut handlebars);
 
-    Ok(handlebars)
+    Ok(TemplateBundle { handlebars, config })
 }
 
 struct BytesHex(Vec<u8>);
@@ -254,20 +355,71 @@ async fn execute_bindgen(
     github_url: &str,
     get_type_for_field: fn(&tx3_lang::ir::Type) -> String,
     version: &str,
+    binding_options: &HashMap<String, Vec<String>>,
 ) -> miette::Result<()> {
-    let handlebars = load_github_templates(github_url).await?;
+    let template_bundle = load_github_templates(github_url).await?;
 
     // Create the destination directory if it doesn't exist
     std::fs::create_dir_all(&job.dest_path).into_diagnostic()?;
 
     let handlebars_params = generate_arguments(job, get_type_for_field, version)?;
 
-    handlebars.get_templates().iter().for_each(|(name, _)| {
-        let template_content = handlebars.render(name, &handlebars_params).unwrap();
-        let output_path = job.dest_path.join(name);
-        std::fs::write(&output_path, template_content).unwrap();
-        // println!("Generated file: {}", output_path.display());
-    });
+    // Determine which templates to process
+    let templates_to_process: Vec<String> = if let Some(config) = &template_bundle.config {
+        // If config exists, use the specified template sets from binding options
+        let mut selected_templates = Vec::new();
+
+        // Check binding options for template sets
+        if let Some(template_options) = binding_options.get("template") {
+            for template_name in template_options {
+                if let Some(templates) = config.template_sets.get(template_name) {
+                    selected_templates.extend(templates.clone());
+                }
+            }
+        }
+
+        // If no templates selected, use "all" as default
+        if selected_templates.is_empty() {
+            config.template_sets.get("all").cloned().unwrap_or_else(|| {
+                // If "all" doesn't exist either, use all available templates
+                template_bundle
+                    .handlebars
+                    .get_templates()
+                    .keys()
+                    .cloned()
+                    .collect()
+            })
+        } else {
+            selected_templates
+        }
+    } else {
+        // No config file, use all templates
+        template_bundle
+            .handlebars
+            .get_templates()
+            .keys()
+            .cloned()
+            .collect()
+    };
+
+    // Process only the selected templates
+    for template_file in templates_to_process {
+        let template_name = template_file.strip_suffix(".hbs").unwrap_or(&template_file);
+
+        if template_bundle
+            .handlebars
+            .get_template(template_name)
+            .is_some()
+        {
+            let template_content = template_bundle
+                .handlebars
+                .render(template_name, &handlebars_params)
+                .unwrap();
+            let output_path = job.dest_path.join(&template_name);
+            std::fs::write(&output_path, template_content).unwrap();
+            // println!("Generated file: {}", output_path.display());
+        }
+    }
 
     Ok(())
 }
@@ -295,26 +447,21 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
             env_args: HashMap::new(),
         };
 
+        // Parse options string into HashMap
+        let parsed_options = if let Some(options_str) = &bindgen.options {
+            parse_options_string(options_str)
+        } else {
+            HashMap::new()
+        };
+
         match bindgen.plugin.as_str() {
             "rust" => {
                 execute_bindgen(
                     &job,
                     "tx3-lang/rust-sdk",
-                    |ty| match ty {
-                        tx3_lang::ir::Type::Int => "i64".to_string(),
-                        tx3_lang::ir::Type::Bool => "bool".to_string(),
-                        tx3_lang::ir::Type::Bytes => "Vec<u8>".to_string(),
-                        tx3_lang::ir::Type::Unit => "()".to_string(),
-                        tx3_lang::ir::Type::Address => "tx3_lang::ArgValue".to_string(),
-                        tx3_lang::ir::Type::UtxoRef => "tx3_lang::ArgValue".to_string(),
-                        tx3_lang::ir::Type::List => "Vec<tx3_lang::ArgValue>".to_string(),
-                        tx3_lang::ir::Type::Custom(name) => name.clone(),
-                        tx3_lang::ir::Type::AnyAsset => "tx3_lang::ArgValue".to_string(),
-                        tx3_lang::ir::Type::Utxo => "tx3_lang::ArgValue".to_string(),
-                        tx3_lang::ir::Type::Undefined => unreachable!(),
-                        _ => unreachable!(),
-                    },
+                    |_| "ArgValue".to_string(),
                     &config.protocol.version,
+                    &parsed_options,
                 )
                 .await?;
                 println!("Rust bindgen successful");
@@ -335,9 +482,9 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::AnyAsset => "any".to_string(),
                         tx3_lang::ir::Type::Utxo => "any".to_string(),
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
-                        _ => unreachable!(),
                     },
                     &config.protocol.version,
+                    &parsed_options,
                 )
                 .await?;
                 println!("Typescript bindgen successful");
@@ -360,6 +507,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Utxo => "Any".to_string(),
                     },
                     &config.protocol.version,
+                    &parsed_options,
                 )
                 .await?;
                 println!("Python bindgen successful");
@@ -380,9 +528,9 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::AnyAsset => "string".to_string(),
                         tx3_lang::ir::Type::Utxo => "interface{}".to_string(),
                         tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
-                        _ => unreachable!(),
                     },
                     &config.protocol.version,
+                    &parsed_options,
                 )
                 .await?;
                 println!("Go bindgen successful");
@@ -391,23 +539,9 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                 execute_bindgen(
                     &job,
                     plugin,
-                    |ty| {
-                        // TODO: Which values we should use by default?
-                        match ty {
-                            tx3_lang::ir::Type::Int => "{int}".to_string(),
-                            tx3_lang::ir::Type::Bool => "{bool}".to_string(),
-                            tx3_lang::ir::Type::Bytes => "{bytes}".to_string(),
-                            tx3_lang::ir::Type::Unit => "{unit}".to_string(),
-                            tx3_lang::ir::Type::List => "{list}".to_string(),
-                            tx3_lang::ir::Type::Address => "{address}".to_string(),
-                            tx3_lang::ir::Type::UtxoRef => "{str}".to_string(),
-                            tx3_lang::ir::Type::Custom(name) => name.clone(),
-                            tx3_lang::ir::Type::AnyAsset => "{str}".to_string(),
-                            tx3_lang::ir::Type::Undefined => "{undefined}".to_string(),
-                            tx3_lang::ir::Type::Utxo => "{utxo}".to_string(),
-                        }
-                    },
+                    |_| "ArgValue".to_string(), // Default type for unknown plugins
                     &config.protocol.version,
+                    &parsed_options,
                 )
                 .await?;
                 println!("{} bindgen successful", &plugin);
@@ -416,4 +550,66 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_options_string() {
+        // Test basic key=value pairs
+        let options = parse_options_string("--template=standalone --target=node");
+        assert_eq!(
+            options.get("template"),
+            Some(&vec!["standalone".to_string()])
+        );
+        assert_eq!(options.get("target"), Some(&vec!["node".to_string()]));
+
+        // Test comma-separated values
+        let options = parse_options_string("--feature=async,types,serde");
+        assert_eq!(
+            options.get("feature"),
+            Some(&vec![
+                "async".to_string(),
+                "types".to_string(),
+                "serde".to_string()
+            ])
+        );
+
+        // Test mixed formats
+        let options = parse_options_string(
+            "--template=standalone --feature=async,types --target=node --debug",
+        );
+        assert_eq!(
+            options.get("template"),
+            Some(&vec!["standalone".to_string()])
+        );
+        assert_eq!(
+            options.get("feature"),
+            Some(&vec!["async".to_string(), "types".to_string()])
+        );
+        assert_eq!(options.get("target"), Some(&vec!["node".to_string()]));
+        assert_eq!(options.get("debug"), Some(&vec!["".to_string()]));
+
+        // Test space-separated format
+        let options = parse_options_string("--template standalone --feature async,types");
+        assert_eq!(
+            options.get("template"),
+            Some(&vec!["standalone".to_string()])
+        );
+        assert_eq!(
+            options.get("feature"),
+            Some(&vec!["async".to_string(), "types".to_string()])
+        );
+
+        // Test quoted values
+        let options = parse_options_string("--name=\"my project\" --path='/some/path'");
+        assert_eq!(options.get("name"), Some(&vec!["my project".to_string()]));
+        assert_eq!(options.get("path"), Some(&vec!["/some/path".to_string()]));
+
+        // Test empty string
+        let options = parse_options_string("");
+        assert!(options.is_empty());
+    }
 }

@@ -131,6 +131,7 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             .map(|binding| BindingsConfig {
                 output_dir: PathBuf::from(format!("./gen/{}", binding.to_string().to_lowercase())),
                 plugin: binding.to_string().to_lowercase(),
+                options: None,
             })
             .collect(),
         profiles: ProfilesConfig::default().into(),

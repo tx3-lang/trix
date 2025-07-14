@@ -200,6 +200,10 @@ impl From<KnownChain> for U5cConfig {
 pub struct BindingsConfig {
     pub plugin: String,
     pub output_dir: PathBuf,
+    /// Additional options for the binding generation in command-line argument format
+    /// Example: "--template=standalone --feature=async,types --target=node"
+    /// This will be parsed and used by kickstart library for template processing
+    pub options: Option<String>,
 }
 
 impl Config {
