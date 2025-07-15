@@ -77,7 +77,7 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
 /// 2. Downloads the repository as a ZIP file from GitHub
 /// 3. Extracts the ZIP to a temporary directory
 /// 4. Finds all `.hbs` files inside any `bindgen` directory in the archive
-/// 5. Optionally loads a `config.toml` file from the `bindgen` directory
+/// 5. Optionally loads a `trix-bindgen.toml` file from the `bindgen` directory
 /// 6. Registers each found template with Handlebars, using its path relative to `bindgen/` (without the `.hbs` extension)
 ///
 /// Returns a TemplateBundle containing the Handlebars registry and optional configuration.
