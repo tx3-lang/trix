@@ -19,9 +19,7 @@ pub struct Args {}
 /// Configuration structure for bindgen templates
 #[derive(Debug, Deserialize)]
 struct BindgenConfig {
-    /// Map of template set names to their file lists
-    #[serde(flatten)]
-    template_sets: HashMap<String, Vec<String>>,
+    protocol_files: Option<Vec<String>>,
 }
 
 /// Structure returned by load_github_templates containing handlebars and optional config
@@ -135,8 +133,8 @@ async fn load_github_templates(github_url: &str) -> miette::Result<TemplateBundl
         let mut file = archive.by_index(i).into_diagnostic()?;
         let name = file.name().to_owned();
 
-        // Check for config.toml in bindgen directory
-        if name.contains("bindgen") && name.ends_with("config.toml") {
+        // Check for trix-bindgen.toml in bindgen directory
+        if name.contains("bindgen") && name.ends_with("trix-bindgen.toml") {
             let mut config_content = String::new();
             file.read_to_string(&mut config_content).into_diagnostic()?;
 
@@ -290,42 +288,26 @@ async fn execute_bindgen(
 
     let handlebars_params = generate_arguments(job, get_type_for_field, version)?;
 
-    // Determine which templates to process
-    let templates_to_process: Vec<String> = if let Some(config) = &template_bundle.config {
-        // If config exists, use the specified template sets from binding options
-        let mut selected_templates = Vec::new();
+    let standalone = binding_options.as_ref().and_then(|opts| opts.standalone).unwrap_or(false);
 
-        // Check binding options for template sets
-        if let Some(options) = binding_options {
-            if let Some(template_name) = &options.template {
-                if let Some(templates) = config.template_sets.get(template_name) {
-                    selected_templates.extend(templates.clone());
-                }
-            }
-        }
-
-        // If no templates selected, use "all" as default
-        if selected_templates.is_empty() {
-            config.template_sets.get("all").cloned().unwrap_or_else(|| {
-                // If "all" doesn't exist either, use all available templates
-                template_bundle
-                    .handlebars
-                    .get_templates()
-                    .keys()
-                    .cloned()
-                    .collect()
-            })
-        } else {
-            selected_templates
-        }
-    } else {
-        // No config file, use all templates
-        template_bundle
+    let all_files = template_bundle
             .handlebars
             .get_templates()
             .keys()
             .cloned()
-            .collect()
+            .collect();
+
+    let templates_to_process = if standalone {
+        all_files
+    } else {
+        // If not standalone, use the config's protocol_files if available
+        template_bundle
+            .config
+            .as_ref()
+            .and_then(|c| c.protocol_files.clone())
+            .unwrap_or_else(|| {
+                all_files
+            })
     };
 
     // Process only the selected templates
