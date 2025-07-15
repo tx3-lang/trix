@@ -1,13 +1,16 @@
 [package]
 name = "trix"
 description = "The Tx3 package manager"
-version = "0.10.0"
+version = "0.12.0"
 edition = "2024"
 repository = "https://github.com/tx3-lang/trix"
 homepage = "https://github.com/tx3-lang/trix"
 
 [dependencies]
-tx3-lang = "0.6.0"
+tx3-lang = "0.8.2"
+# tx3-lang = { path = "../tx3/crates/tx3-lang" }
+# tx3-lang = { git = "https://github.com/tx3-lang/tx3.git" }
+
 clap = { version = "4.5.36", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
@@ -21,7 +24,7 @@ cryptoxide = "0.5.0"
 pallas = "0.32.0"
 hex = "0.4.3"
 handlebars = "6.3.2"
-reqwest = { version = "0.12.15", features = ["blocking", "json"] }
+reqwest = { version = "0.12.15", features = ["json"] }
 tempfile = "3.10"
 zip = "3.0.0"
 convert_case = "0.8.0"
@@ -45,3 +48,4 @@ push = false
 publish = false
 tag-name = "v{{version}}"
 pre-release-commit-message = "release: v{{version}}"
+pre-release-hook = ["git", "cliff", "-o", "CHANGELOG.md", "--tag", "{{version}}"]

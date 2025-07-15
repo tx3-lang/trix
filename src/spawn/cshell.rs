@@ -53,9 +53,9 @@ fn generate_deterministic_mnemonic(input: &str) -> miette::Result<Mnemonic> {
     hasher.input(input.as_bytes());
     let hash = hasher.result_str();
 
-    let entropy = &hash[..16];
+    let entropy: [u8; 32] = hash[..32].as_bytes().try_into().unwrap();
 
-    Mnemonic::from_entropy(entropy.as_bytes()).into_diagnostic()
+    Mnemonic::from_entropy(&entropy).into_diagnostic()
 }
 
 pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_json::Value> {
