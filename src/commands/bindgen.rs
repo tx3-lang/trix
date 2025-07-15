@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::config::{Config, KnownChain, TrpConfig};
+use crate::config::{BindingOptions, Config, KnownChain, TrpConfig};
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
 use serde::{Deserialize, Serialize, Serializer};
@@ -15,80 +15,6 @@ use zip::ZipArchive;
 
 #[derive(ClapArgs)]
 pub struct Args {}
-
-/// Parses command-line style options string into a HashMap
-///
-/// Supports formats like:
-/// - "--template=standalone --feature=async,types --target=node"
-/// - "--template standalone --feature async,types --target node"
-///
-/// Values with commas are split into multiple values for the same key
-fn parse_options_string(options_str: &str) -> HashMap<String, Vec<String>> {
-    let mut options = HashMap::new();
-    let mut chars = options_str.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if ch == '-' && chars.peek() == Some(&'-') {
-            chars.next(); // consume second '-'
-
-            // Read the key
-            let mut key = String::new();
-            while let Some(&ch) = chars.peek() {
-                if ch == '=' || ch == ' ' || ch == '\t' {
-                    break;
-                }
-                key.push(chars.next().unwrap());
-            }
-
-            // Skip whitespace and '='
-            while let Some(&ch) = chars.peek() {
-                if ch == ' ' || ch == '\t' || ch == '=' {
-                    chars.next();
-                } else {
-                    break;
-                }
-            }
-
-            // Read the value
-            let mut value = String::new();
-            let mut in_quotes = false;
-            let mut quote_char = ' ';
-
-            while let Some(&ch) = chars.peek() {
-                if (ch == '"' || ch == '\'') && !in_quotes {
-                    in_quotes = true;
-                    quote_char = ch;
-                    chars.next();
-                } else if ch == quote_char && in_quotes {
-                    chars.next();
-                    break;
-                } else if (ch == ' ' || ch == '\t') && !in_quotes {
-                    break;
-                } else if ch == '-' && chars.nth(1) == Some('-') && !in_quotes {
-                    // Next argument starting, back up
-                    break;
-                } else {
-                    value.push(chars.next().unwrap());
-                }
-            }
-
-            if !key.is_empty() {
-                // Split comma-separated values
-                let values: Vec<String> = if value.contains(',') {
-                    value.split(',').map(|s| s.trim().to_string()).collect()
-                } else {
-                    vec![value]
-                };
-
-                options.entry(key).or_insert_with(Vec::new).extend(values);
-            }
-        } else {
-            // Skip non-option characters
-        }
-    }
-
-    options
-}
 
 /// Configuration structure for bindgen templates
 #[derive(Debug, Deserialize)]
@@ -355,7 +281,7 @@ async fn execute_bindgen(
     github_url: &str,
     get_type_for_field: fn(&tx3_lang::ir::Type) -> String,
     version: &str,
-    binding_options: &HashMap<String, Vec<String>>,
+    binding_options: &Option<BindingOptions>,
 ) -> miette::Result<()> {
     let template_bundle = load_github_templates(github_url).await?;
 
@@ -370,8 +296,8 @@ async fn execute_bindgen(
         let mut selected_templates = Vec::new();
 
         // Check binding options for template sets
-        if let Some(template_options) = binding_options.get("template") {
-            for template_name in template_options {
+        if let Some(options) = binding_options {
+            if let Some(template_name) = &options.template {
                 if let Some(templates) = config.template_sets.get(template_name) {
                     selected_templates.extend(templates.clone());
                 }
@@ -447,13 +373,6 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
             env_args: HashMap::new(),
         };
 
-        // Parse options string into HashMap
-        let parsed_options = if let Some(options_str) = &bindgen.options {
-            parse_options_string(options_str)
-        } else {
-            HashMap::new()
-        };
-
         match bindgen.plugin.as_str() {
             "rust" => {
                 execute_bindgen(
@@ -461,7 +380,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                     "tx3-lang/rust-sdk",
                     |_| "ArgValue".to_string(),
                     &config.protocol.version,
-                    &parsed_options,
+                    &bindgen.options,
                 )
                 .await?;
                 println!("Rust bindgen successful");
@@ -484,7 +403,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
                     },
                     &config.protocol.version,
-                    &parsed_options,
+                    &bindgen.options,
                 )
                 .await?;
                 println!("Typescript bindgen successful");
@@ -507,7 +426,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Utxo => "Any".to_string(),
                     },
                     &config.protocol.version,
-                    &parsed_options,
+                    &bindgen.options,
                 )
                 .await?;
                 println!("Python bindgen successful");
@@ -530,7 +449,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
                     },
                     &config.protocol.version,
-                    &parsed_options,
+                    &bindgen.options,
                 )
                 .await?;
                 println!("Go bindgen successful");
@@ -541,7 +460,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                     plugin,
                     |_| "ArgValue".to_string(), // Default type for unknown plugins
                     &config.protocol.version,
-                    &parsed_options,
+                    &bindgen.options,
                 )
                 .await?;
                 println!("{} bindgen successful", &plugin);
@@ -550,66 +469,4 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parse_options_string() {
-        // Test basic key=value pairs
-        let options = parse_options_string("--template=standalone --target=node");
-        assert_eq!(
-            options.get("template"),
-            Some(&vec!["standalone".to_string()])
-        );
-        assert_eq!(options.get("target"), Some(&vec!["node".to_string()]));
-
-        // Test comma-separated values
-        let options = parse_options_string("--feature=async,types,serde");
-        assert_eq!(
-            options.get("feature"),
-            Some(&vec![
-                "async".to_string(),
-                "types".to_string(),
-                "serde".to_string()
-            ])
-        );
-
-        // Test mixed formats
-        let options = parse_options_string(
-            "--template=standalone --feature=async,types --target=node --debug",
-        );
-        assert_eq!(
-            options.get("template"),
-            Some(&vec!["standalone".to_string()])
-        );
-        assert_eq!(
-            options.get("feature"),
-            Some(&vec!["async".to_string(), "types".to_string()])
-        );
-        assert_eq!(options.get("target"), Some(&vec!["node".to_string()]));
-        assert_eq!(options.get("debug"), Some(&vec!["".to_string()]));
-
-        // Test space-separated format
-        let options = parse_options_string("--template standalone --feature async,types");
-        assert_eq!(
-            options.get("template"),
-            Some(&vec!["standalone".to_string()])
-        );
-        assert_eq!(
-            options.get("feature"),
-            Some(&vec!["async".to_string(), "types".to_string()])
-        );
-
-        // Test quoted values
-        let options = parse_options_string("--name=\"my project\" --path='/some/path'");
-        assert_eq!(options.get("name"), Some(&vec!["my project".to_string()]));
-        assert_eq!(options.get("path"), Some(&vec!["/some/path".to_string()]));
-
-        // Test empty string
-        let options = parse_options_string("");
-        assert!(options.is_empty());
-    }
 }
