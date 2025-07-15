@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2025-07-11
+
+### 🚀 Features
+
+- Introduce inspect cmd (#64)
+- Introduce wallet command (#67)
+
+### ⚙️ Miscellaneous Tasks
+
+- Set default registry url (#61)
+
+## [0.11.2] - 2025-07-07
+
+### 💼 Other
+
+- V0.11.2
+
 ## [0.11.1] - 2025-07-05
 
 ### 💼 Other

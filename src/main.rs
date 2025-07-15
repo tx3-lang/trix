@@ -2,11 +2,12 @@ use clap::{Parser, Subcommand};
 
 mod commands;
 mod config;
+mod global;
 mod home;
 mod spawn;
 mod update_checker;
 
-use commands::{bindgen, build, check, devnet, init, inspect, publish, test};
+use commands::{bindgen, build, check, devnet, init, inspect, publish, telemetry, test, wallet};
 use config::Config;
 use miette::{IntoDiagnostic as _, Result};
 use update_checker::UpdateChecker;
@@ -49,9 +50,15 @@ enum Commands {
     /// Build a Tx3 file
     Build(build::Args),
 
+    /// Manage wallets
+    Wallet(wallet::Args),
+
     /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
     #[command(hide = true)]
     Publish(publish::Args),
+
+    /// Telemetry configuration. Trix collects anonymous usage data to improve the tool.
+    Telemetry(telemetry::Args),
 }
 
 pub fn load_config() -> Result<Option<Config>> {
@@ -72,6 +79,8 @@ pub fn load_config() -> Result<Option<Config>> {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = load_config()?;
+  
+    global::ensure_global_config()?;
 
     if let Ok(update_checker) = UpdateChecker::new() {
         update_checker.run().await;
@@ -88,10 +97,13 @@ async fn main() -> Result<()> {
             Commands::Inspect(args) => inspect::run(args, &config),
             Commands::Test(args) => test::run(args, &config),
             Commands::Build(args) => build::run(args, &config),
+            Commands::Wallet(args) => wallet::run(args, &config),
             Commands::Publish(args) => publish::run(args, &config),
+            Commands::Telemetry(args) => telemetry::run(args),
         },
         None => match cli.command {
             Commands::Init(args) => init::run(args, None),
+            Commands::Telemetry(args) => telemetry::run(args),
             _ => Err(miette::miette!("No trix.toml found in current directory")),
         },
     }

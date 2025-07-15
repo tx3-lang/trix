@@ -5,4 +5,6 @@ pub mod devnet;
 pub mod init;
 pub mod inspect;
 pub mod publish;
+pub mod telemetry;
 pub mod test;
+pub mod wallet;

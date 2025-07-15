@@ -3409,7 +3409,7 @@ dependencies = [
 
 [[package]]
 name = "trix"
-version = "0.11.2"
+version = "0.12.0"
 dependencies = [
  "anyhow",
  "bip39",
@@ -3446,8 +3446,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tx3-lang"
-version = "0.7.2"
-source = "git+https://github.com/tx3-lang/tx3.git#adaf944b1662090895040323893201b296955036"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bea8fb2e4346de691f5004e08aea16313a84799f7fe8af5da3fd848d54e99baa"
 dependencies = [
  "bincode",
  "hex",

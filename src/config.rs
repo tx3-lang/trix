@@ -151,7 +151,7 @@ impl From<KnownChain> for TrpConfig {
                 )]),
             },
             KnownChain::CardanoDevnet => Self {
-                url: "http://localhost:3000/trp".to_string(),
+                url: "http://localhost:8164".to_string(),
                 headers: HashMap::new(),
             },
         }
