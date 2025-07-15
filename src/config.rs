@@ -5,7 +5,7 @@ use std::{collections::HashMap, path::PathBuf};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub protocol: ProtocolConfig,
-    pub registry: RegistryConfig,
+    pub registry: Option<RegistryConfig>,
     pub profiles: Option<ProfilesConfig>,
     pub bindings: Vec<BindingsConfig>,
 }
