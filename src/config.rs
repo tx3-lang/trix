@@ -197,9 +197,15 @@ impl From<KnownChain> for U5cConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BindingOptions {
+    pub standalone: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BindingsConfig {
     pub plugin: String,
     pub output_dir: PathBuf,
+    pub options: Option<BindingOptions>,
 }
 
 impl Config {
