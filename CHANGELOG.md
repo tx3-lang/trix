@@ -2,12 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0] - 2025-07-18
+
+### 🚀 Features
+
+- Implement opt out mechanism for telemetry (#69)
+- Enhance build command (#56)
+- Add evergreen notifications (#68)
+- *(bindgen)* Add support for plugin options in trix.toml (#70)
+
+### 🐛 Bug Fixes
+
+- Use correct default TRP endpoint (#72)
+- Adjust to latest tx3 IR types
+
+### ⚙️ Miscellaneous Tasks
+
+- Update tx3-lang to v0.9.0
+- Remove update checker now migrated to tx3up
+
 ## [0.12.0] - 2025-07-11
 
 ### 🚀 Features
 
 - Introduce inspect cmd (#64)
 - Introduce wallet command (#67)
+
+### 💼 Other
+
+- V0.12.0
 
 ### ⚙️ Miscellaneous Tasks
 
