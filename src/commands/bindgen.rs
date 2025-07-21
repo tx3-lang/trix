@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::config::{BindingOptions, Config, KnownChain, TrpConfig};
+use crate::config::{Config, KnownChain, TrpConfig};
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
 use serde::{Deserialize, Serialize, Serializer};
@@ -16,16 +16,24 @@ use zip::ZipArchive;
 #[derive(ClapArgs)]
 pub struct Args {}
 
+#[derive(Debug, Deserialize)]
+struct IncludeOptions {
+    name: String,
+    value: serde_json::Value,
+    path: String,
+}
+
 /// Configuration structure for bindgen templates
 #[derive(Debug, Deserialize)]
 struct BindgenConfig {
-    protocol_files: Option<Vec<String>>,
+    default_path: Option<String>,
+    include: Option<Vec<IncludeOptions>>,
 }
 
 /// Structure returned by load_github_templates containing handlebars and optional config
 struct TemplateBundle {
     handlebars: Handlebars<'static>,
-    config: Option<BindgenConfig>,
+    static_files: Vec<(String, String)>
 }
 
 fn make_helper<F>(name: &'static str, f: F) -> impl handlebars::HelperDef + Send + Sync + 'static
@@ -81,7 +89,7 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
 /// 6. Registers each found template with Handlebars, using its path relative to `bindgen/` (without the `.hbs` extension)
 ///
 /// Returns a TemplateBundle containing the Handlebars registry and optional configuration.
-async fn load_github_templates(github_url: &str) -> miette::Result<TemplateBundle> {
+async fn load_github_templates(github_url: &str, temp_dir: &TempDir, options: &HashMap<String, serde_json::Value>) -> miette::Result<TemplateBundle> {
     // Parse GitHub URL
     let parts: Vec<&str> = github_url.split('/').collect();
     if parts.len() < 2 {
@@ -113,8 +121,6 @@ async fn load_github_templates(github_url: &str) -> miette::Result<TemplateBundl
         ));
     }
 
-    // Create a temporary directory to extract files
-    let temp_dir = TempDir::new().into_diagnostic()?;
     let zip_path = temp_dir.path().join("bindgen-template.zip");
 
     // Save the zip file
@@ -125,33 +131,93 @@ async fn load_github_templates(github_url: &str) -> miette::Result<TemplateBundl
     let file = std::fs::File::open(&zip_path).into_diagnostic()?;
     let mut archive = ZipArchive::new(file).into_diagnostic()?;
 
+    let mut config: Option<BindgenConfig> = None;
+    let mut bindgen_path = PathBuf::new();
+
+    // Get root_dir
+    let root_dir_name = archive.name_for_index(0).unwrap_or("");
+
+    bindgen_path.push(root_dir_name);
+    bindgen_path.push("bindgen/");
+
+    // Check for trix-bindgen.toml in the root directory
+    let toml_name = bindgen_path.join("trix-bindgen.toml").to_string_lossy().to_string();
+
+    if let Ok(mut config_file) = archive.by_name(&toml_name) {
+        let mut config_content = String::new();
+        config_file.read_to_string(&mut config_content).into_diagnostic()?;
+
+        config = toml::from_str::<BindgenConfig>(&config_content)
+            .into_diagnostic()
+            .ok();
+    }
+
+    // Update bindgen_path based on config include options
+    if let Some(config) = &config {
+        let mut path_found = false;
+        if let Some(includes) = &config.include {
+            for include in includes {
+                // Extract the key after "options." from include.name
+                let option_key = include.name.strip_prefix("options.").unwrap_or(&include.name);
+                // Check if options has the key corresponding to the extracted key
+                if let Some(option_value) = options.get(option_key) {
+                    // Check if the value matches include.value
+                    if option_value == &include.value {
+                        // Concatenate include.path to bindgen_path
+                        bindgen_path.push(include.path.clone());
+                        path_found = true;
+                        break; // Use the first matching include
+                    }
+                }
+            }
+        }
+
+        if !path_found {
+            if let Some(default_path) = &config.default_path {
+                bindgen_path.push(default_path);
+            }
+        }
+    }
+
     // Register handlebars templates
     let mut handlebars = Handlebars::new();
-    let mut config: Option<BindgenConfig> = None;
+    let mut static_files = Vec::new();
 
-    for i in 0..archive.len() {
+    let bindgen_path_string = bindgen_path.to_string_lossy().to_string();
+    let archive_bindgen_index = archive.index_for_name(&bindgen_path_string).unwrap_or(0);
+
+    // Skip files that are not in the bindgen_path or are the bindgen_path itself
+    for i in archive_bindgen_index..archive.len() {
         let mut file = archive.by_index(i).into_diagnostic()?;
         let name = file.name().to_owned();
 
-        // Check for trix-bindgen.toml in bindgen directory
-        if name.contains("bindgen") && name.ends_with("trix-bindgen.toml") {
-            let mut config_content = String::new();
-            file.read_to_string(&mut config_content).into_diagnostic()?;
-
-            config = toml::from_str::<BindgenConfig>(&config_content)
-                .into_diagnostic()
-                .ok();
+        // If the file is a directory or doesn't belong to bindgen_path we want, skip it
+        if file.is_dir() {
             continue;
         }
 
-        if name.contains("bindgen") && name.ends_with(".hbs") {
-            // Remove everything before "bindgen/" and strip ".hbs" extension
-            let template_name = name
-                .split_once("bindgen/")
-                .map(|x| x.1)
-                .unwrap_or(&name)
-                .strip_suffix(".hbs")
-                .unwrap_or_else(|| name.split('/').next_back().unwrap_or(&name));
+        if !name.starts_with(&bindgen_path_string) {
+            break; // Stop processing if we reach a file outside the bindgen path
+        }
+
+        // Check for trix-bindgen.toml in bindgen directory
+        if name.ends_with("trix-bindgen.toml") {
+            // let mut config_content = String::new();
+            // file.read_to_string(&mut config_content).into_diagnostic()?;
+
+            // config = toml::from_str::<BindgenConfig>(&config_content)
+            //     .into_diagnostic()
+            //     .ok();
+            continue;
+        }
+
+        // Remove everything before "bindgen/" and strip ".hbs" extension
+        let template_name = name
+            .strip_prefix(&bindgen_path_string)
+            .unwrap_or(&name);
+            
+        if name.ends_with(".hbs") {
+            let template_name = template_name.strip_suffix(".hbs").unwrap_or(&name);
 
             let mut template_content = String::new();
             file.read_to_string(&mut template_content)
@@ -163,12 +229,23 @@ async fn load_github_templates(github_url: &str) -> miette::Result<TemplateBundl
                 .into_diagnostic()?;
 
             // println!("Registered template: {}", template_name);
+            continue;
+        }
+
+        if file.is_file() {
+            let dest_path = temp_dir.path().join(template_name);
+            if let Some(parent) = dest_path.parent() {
+                std::fs::create_dir_all(parent).into_diagnostic()?;
+            }
+            let mut out_file = std::fs::File::create(&dest_path).into_diagnostic()?;
+            std::io::copy(&mut file, &mut out_file).into_diagnostic()?;
+            static_files.push((dest_path.display().to_string(), template_name.to_string()));
         }
     }
 
     register_handlebars_helpers(&mut handlebars);
 
-    Ok(TemplateBundle { handlebars, config })
+    Ok(TemplateBundle { handlebars, static_files })
 }
 
 struct BytesHex(Vec<u8>);
@@ -208,6 +285,7 @@ struct HandlebarsData {
     transactions: Vec<Transaction>,
     headers: HashMap<String, String>,
     env_vars: HashMap<String, String>,
+    options: HashMap<String, serde_json::Value>,
 }
 
 struct Job {
@@ -217,6 +295,7 @@ struct Job {
     trp_endpoint: String,
     trp_headers: HashMap<String, String>,
     env_args: HashMap<String, String>,
+    options: HashMap<String, serde_json::Value>,
 }
 
 fn generate_arguments(
@@ -271,6 +350,7 @@ fn generate_arguments(
         transactions,
         headers,
         env_vars,
+        options: job.options.clone(),
     })
 }
 
@@ -279,55 +359,43 @@ async fn execute_bindgen(
     github_url: &str,
     get_type_for_field: fn(&tx3_lang::ir::Type) -> String,
     version: &str,
-    binding_options: &Option<BindingOptions>,
 ) -> miette::Result<()> {
-    let template_bundle = load_github_templates(github_url).await?;
+    // Create a temporary directory to extract files
+    let temp_dir = TempDir::new().into_diagnostic()?;
+    let template_bundle = load_github_templates(github_url, &temp_dir, &job.options).await?;
 
     // Create the destination directory if it doesn't exist
     std::fs::create_dir_all(&job.dest_path).into_diagnostic()?;
 
     let handlebars_params = generate_arguments(job, get_type_for_field, version)?;
 
-    let standalone = binding_options.as_ref().and_then(|opts| opts.standalone).unwrap_or(false);
+    let handlebars_template_iter = template_bundle.handlebars.get_templates().iter();
 
-    let all_files = template_bundle
-            .handlebars
-            .get_templates()
-            .keys()
-            .cloned()
-            .collect();
-
-    let templates_to_process = if standalone {
-        all_files
-    } else {
-        // If not standalone, use the config's protocol_files if available
-        template_bundle
-            .config
-            .as_ref()
-            .and_then(|c| c.protocol_files.clone())
-            .unwrap_or_else(|| {
-                all_files
-            })
-    };
-
-    // Process only the selected templates
-    for template_file in templates_to_process {
-        let template_name = template_file.strip_suffix(".hbs").unwrap_or(&template_file);
-
-        if template_bundle
-            .handlebars
-            .get_template(template_name)
-            .is_some()
-        {
-            let template_content = template_bundle
-                .handlebars
-                .render(template_name, &handlebars_params)
-                .unwrap();
-            let output_path = job.dest_path.join(&template_name);
-            std::fs::write(&output_path, template_content).unwrap();
-            // println!("Generated file: {}", output_path.display());
+    for (name, _) in handlebars_template_iter {
+        let template_content = template_bundle.handlebars.render(name, &handlebars_params).unwrap();
+        if template_content.is_empty() {
+            // Skip empty templates
+            continue;
         }
+        let output_path = job.dest_path.join(name);
+        if let Some(parent) = output_path.parent() {
+            // Create parent directories if they don't exist
+            std::fs::create_dir_all(parent).into_diagnostic()?;
+        }
+        std::fs::write(&output_path, template_content).into_diagnostic()?;
+        // println!("Generated file: {}", output_path.display());
     }
+
+    // Copy static files to the destination directory
+    for (src_path, file_destination) in &template_bundle.static_files {
+        let dest_path = job.dest_path.join(file_destination);
+        if let Some(parent) = dest_path.parent() {
+            std::fs::create_dir_all(parent).into_diagnostic()?;
+        }
+        std::fs::copy(src_path, dest_path).into_diagnostic()?;
+        // println!("Copied static file: {}", dest_path.display());
+    }
+
 
     Ok(())
 }
@@ -353,6 +421,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
             trp_endpoint: profile.url.clone(),
             trp_headers: profile.headers.clone(),
             env_args: HashMap::new(),
+            options: bindgen.options.clone().unwrap_or_default(),
         };
 
         match bindgen.plugin.as_str() {
@@ -362,7 +431,6 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                     "tx3-lang/rust-sdk",
                     |_| "ArgValue".to_string(),
                     &config.protocol.version,
-                    &bindgen.options,
                 )
                 .await?;
                 println!("Rust bindgen successful");
@@ -371,21 +439,8 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                 execute_bindgen(
                     &job,
                     "tx3-lang/web-sdk",
-                    |ty| match ty {
-                        tx3_lang::ir::Type::Int => "number".to_string(),
-                        tx3_lang::ir::Type::Address => "string".to_string(),
-                        tx3_lang::ir::Type::Bool => "boolean".to_string(),
-                        tx3_lang::ir::Type::Bytes => "Uint8Array".to_string(),
-                        tx3_lang::ir::Type::UtxoRef => "string".to_string(),
-                        tx3_lang::ir::Type::List => "any[]".to_string(),
-                        tx3_lang::ir::Type::Undefined => "any".to_string(),
-                        tx3_lang::ir::Type::Unit => "void".to_string(),
-                        tx3_lang::ir::Type::AnyAsset => "any".to_string(),
-                        tx3_lang::ir::Type::Utxo => "any".to_string(),
-                        tx3_lang::ir::Type::Custom(name) => name.clone(),
-                    },
+                    |_| "ArgValue".to_string(),
                     &config.protocol.version,
-                    &bindgen.options,
                 )
                 .await?;
                 println!("Typescript bindgen successful");
@@ -408,7 +463,6 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Utxo => "Any".to_string(),
                     },
                     &config.protocol.version,
-                    &bindgen.options,
                 )
                 .await?;
                 println!("Python bindgen successful");
@@ -431,7 +485,6 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
                     },
                     &config.protocol.version,
-                    &bindgen.options,
                 )
                 .await?;
                 println!("Go bindgen successful");
@@ -442,7 +495,6 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                     plugin,
                     |_| "ArgValue".to_string(), // Default type for unknown plugins
                     &config.protocol.version,
-                    &bindgen.options,
                 )
                 .await?;
                 println!("{} bindgen successful", &plugin);
