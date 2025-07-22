@@ -179,6 +179,7 @@ impl Display for Tx3Type {
             ir::Type::Utxo => write!(f, "utxo"),
             ir::Type::List => write!(f, "list"),
             ir::Type::Custom(name) => write!(f, "custom({})", name),
+            ir::Type::Map => write!(f, "map"),
         }
     }
 }

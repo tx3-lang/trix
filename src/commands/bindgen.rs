@@ -288,14 +288,17 @@ async fn execute_bindgen(
 
     let handlebars_params = generate_arguments(job, get_type_for_field, version)?;
 
-    let standalone = binding_options.as_ref().and_then(|opts| opts.standalone).unwrap_or(false);
+    let standalone = binding_options
+        .as_ref()
+        .and_then(|opts| opts.standalone)
+        .unwrap_or(false);
 
     let all_files = template_bundle
-            .handlebars
-            .get_templates()
-            .keys()
-            .cloned()
-            .collect();
+        .handlebars
+        .get_templates()
+        .keys()
+        .cloned()
+        .collect();
 
     let templates_to_process = if standalone {
         all_files
@@ -305,9 +308,7 @@ async fn execute_bindgen(
             .config
             .as_ref()
             .and_then(|c| c.protocol_files.clone())
-            .unwrap_or_else(|| {
-                all_files
-            })
+            .unwrap_or_else(|| all_files)
     };
 
     // Process only the selected templates
@@ -383,6 +384,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::AnyAsset => "any".to_string(),
                         tx3_lang::ir::Type::Utxo => "any".to_string(),
                         tx3_lang::ir::Type::Custom(name) => name.clone(),
+                        tx3_lang::ir::Type::Map => "{ [key: any]: any; }".to_string(),
                     },
                     &config.protocol.version,
                     &bindgen.options,
@@ -406,6 +408,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::AnyAsset => "str".to_string(),
                         tx3_lang::ir::Type::Undefined => "Any".to_string(),
                         tx3_lang::ir::Type::Utxo => "Any".to_string(),
+                        tx3_lang::ir::Type::Map => "{ [key: Any]: Any; }".to_string(),
                     },
                     &config.protocol.version,
                     &bindgen.options,
@@ -429,6 +432,7 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
                         tx3_lang::ir::Type::AnyAsset => "string".to_string(),
                         tx3_lang::ir::Type::Utxo => "interface{}".to_string(),
                         tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
+                        tx3_lang::ir::Type::Map => "map[Any]Any".to_string(),
                     },
                     &config.protocol.version,
                     &bindgen.options,
