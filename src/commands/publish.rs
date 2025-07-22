@@ -21,7 +21,7 @@ pub struct ImageMetadata {
 }
 
 fn get_oci_client(config: &Config) -> oci_client::Client {
-    let registry_url = config.registry.url.clone();
+    let registry_url = config.registry.clone().unwrap().url;
     let registry_protocol = registry_url.split("://").next().unwrap();
 
     let client_config = oci_client::client::ClientConfig {
@@ -37,7 +37,7 @@ fn get_oci_client(config: &Config) -> oci_client::Client {
 }
 
 fn get_oci_reference(config: &Config) -> Result<oci_client::Reference, oci_client::ParseError> {
-    let registry_url = config.registry.url.clone();
+    let registry_url = config.registry.clone().unwrap().url;
     let registry_host = registry_url.split("://").collect::<Vec<_>>().pop().unwrap();
     oci_client::Reference::try_from(format!("{}/{}/{}:{}",
         registry_host,
@@ -48,7 +48,7 @@ fn get_oci_reference(config: &Config) -> Result<oci_client::Reference, oci_clien
 }
 
 fn get_image_url(config: &Config) -> String {
-    let registry_url = config.registry.url.clone();
+    let registry_url = config.registry.clone().unwrap().url;
     format!("{}/image/{}%2F{}/tag/{}",
         registry_url,
         config.protocol.scope.clone().unwrap(),

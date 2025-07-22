@@ -5,7 +5,7 @@ use std::{collections::HashMap, path::PathBuf};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub protocol: ProtocolConfig,
-    pub registry: RegistryConfig,
+    pub registry: Option<RegistryConfig>,
     pub profiles: Option<ProfilesConfig>,
     pub bindings: Vec<BindingsConfig>,
 }
@@ -151,7 +151,7 @@ impl From<KnownChain> for TrpConfig {
                 )]),
             },
             KnownChain::CardanoDevnet => Self {
-                url: "http://localhost:3000/trp".to_string(),
+                url: "http://localhost:8164".to_string(),
                 headers: HashMap::new(),
             },
         }
@@ -197,9 +197,15 @@ impl From<KnownChain> for U5cConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BindingOptions {
+    pub standalone: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BindingsConfig {
     pub plugin: String,
     pub output_dir: PathBuf,
+    pub options: Option<BindingOptions>,
 }
 
 impl Config {
