@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.0] - 2025-07-22
+
+### ⚙️ Miscellaneous Tasks
+
+- Update tx3 deps to v0.10.0
+
 ## [0.13.0] - 2025-07-18
 
 ### 🚀 Features
@@ -15,6 +21,10 @@ All notable changes to this project will be documented in this file.
 
 - Use correct default TRP endpoint (#72)
 - Adjust to latest tx3 IR types
+
+### 💼 Other
+
+- V0.13.0
 
 ### ⚙️ Miscellaneous Tasks
 
