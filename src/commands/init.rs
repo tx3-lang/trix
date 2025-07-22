@@ -72,7 +72,7 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             },
             bindings: Vec::default(),
             profiles: ProfilesConfig::default().into(),
-            registry: RegistryConfig::default(),
+            registry: Some(RegistryConfig::default()),
         };
 
         return apply(config);
@@ -131,10 +131,11 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             .map(|binding| BindingsConfig {
                 output_dir: PathBuf::from(format!("./gen/{}", binding.to_string().to_lowercase())),
                 plugin: binding.to_string().to_lowercase(),
+                options: None,
             })
             .collect(),
         profiles: ProfilesConfig::default().into(),
-        registry: RegistryConfig::default(),
+        registry: Some(RegistryConfig::default()),
     };
 
     let confirm = Confirm::new("Is this OK?")
