@@ -197,21 +197,75 @@ impl From<KnownChain> for U5cConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BindingOptions {
-    pub standalone: Option<bool>,
+pub struct BindingsTemplateConfig {
+    pub repo: String,
+    pub path: String,
+    pub r#ref: Option<String>, // default: main
+}
+
+impl Default for BindingsTemplateConfig {
+    fn default() -> Self {
+        Self {
+            repo: String::new(),
+            path: "bindgen".to_string(),
+            r#ref: None,
+        }
+    }
+}
+
+impl BindingsTemplateConfig {
+    // Unify the creation of BindingsTemplateConfig from plugin name
+    pub fn from_plugin(plugin: &str) -> Self {
+        match plugin {
+            "typescript" => BindingsTemplateConfig {
+                repo: "tx3-lang/web-sdk".to_string(),
+                path: "bindgen/client-lib".to_string(),
+                r#ref: None,
+            },
+            "rust" => BindingsTemplateConfig {
+                repo: "tx3-lang/rust-sdk".to_string(),
+                path: "bindgen".to_string(),
+                r#ref: None,
+            },
+            "python" => BindingsTemplateConfig {
+                repo: "tx3-lang/python-sdk".to_string(),
+                path: "bindgen".to_string(),
+                r#ref: None,
+            },
+            "go" => BindingsTemplateConfig {
+                repo: "tx3-lang/go-sdk".to_string(),
+                path: "bindgen".to_string(),
+                r#ref: None,
+            },
+            _ => BindingsTemplateConfig::default()
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BindingsConfig {
-    pub plugin: String,
+    // Deprecated field, use template instead
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
+    #[serde(default)]
+    pub template: BindingsTemplateConfig,
     pub output_dir: PathBuf,
-    pub options: Option<BindingOptions>,
+    pub options: Option<HashMap<String, serde_json::Value>>,
 }
 
 impl Config {
     pub fn load(path: &PathBuf) -> miette::Result<Config> {
         let contents = std::fs::read_to_string(path).into_diagnostic()?;
-        let config = toml::from_str(&contents).into_diagnostic()?;
+        let mut config: Config = toml::from_str(&contents).into_diagnostic()?;
+
+        // Post-process bindings to handle backward compatibility
+        // Eventually, this should be removed once deprecated plugin option is removed
+        for binding in &mut config.bindings {
+            if binding.template.repo.is_empty() && binding.plugin.is_some() {
+                binding.template = BindingsTemplateConfig::from_plugin(binding.plugin.as_ref().unwrap());
+            }
+        }
+
         Ok(config)
     }
 

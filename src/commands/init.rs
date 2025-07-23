@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::config::{BindingsConfig, Config, ProfilesConfig, ProtocolConfig, RegistryConfig};
+use crate::config::{BindingsConfig, BindingsTemplateConfig, Config, ProfilesConfig, ProtocolConfig, RegistryConfig};
 use clap::Args as ClapArgs;
 use inquire::{Confirm, MultiSelect, Text};
 use miette::IntoDiagnostic;
@@ -130,7 +130,8 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             .iter()
             .map(|binding| BindingsConfig {
                 output_dir: PathBuf::from(format!("./gen/{}", binding.to_string().to_lowercase())),
-                plugin: binding.to_string().to_lowercase(),
+                plugin: None, // Deprecated
+                template: BindingsTemplateConfig::from_plugin(binding.to_lowercase().as_str()),
                 options: None,
             })
             .collect(),
