@@ -1,10 +1,10 @@
 use std::io::Read;
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::config::{Config, KnownChain, TrpConfig};
+use crate::config::{BindingsTemplateConfig, Config, KnownChain, TrpConfig};
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Serialize, Serializer};
 use tx3_lang::Protocol;
 
 use convert_case::{Case, Casing};
@@ -15,20 +15,6 @@ use zip::ZipArchive;
 
 #[derive(ClapArgs)]
 pub struct Args {}
-
-#[derive(Debug, Deserialize)]
-struct IncludeOptions {
-    name: String,
-    value: serde_json::Value,
-    path: String,
-}
-
-/// Configuration structure for bindgen templates
-#[derive(Debug, Deserialize)]
-struct BindgenConfig {
-    default_path: Option<String>,
-    include: Option<Vec<IncludeOptions>>,
-}
 
 /// Structure returned by load_github_templates containing handlebars and optional config
 struct TemplateBundle {
@@ -50,6 +36,72 @@ where
             .ok_or_else(|| RenderErrorReason::InvalidParamType("Expected a string"))?;
         out.write(&f(input))?;
         Ok(())
+    }
+}
+
+fn parse_type_from_string(type_str: &str) -> Result<tx3_lang::ir::Type, String> {
+    match type_str {
+        "Int" => Ok(tx3_lang::ir::Type::Int),
+        "Bool" => Ok(tx3_lang::ir::Type::Bool),
+        "Bytes" => Ok(tx3_lang::ir::Type::Bytes),
+        "Unit" => Ok(tx3_lang::ir::Type::Unit),
+        "Address" => Ok(tx3_lang::ir::Type::Address),
+        "UtxoRef" => Ok(tx3_lang::ir::Type::UtxoRef),
+        "AnyAsset" => Ok(tx3_lang::ir::Type::AnyAsset),
+        "Utxo" => Ok(tx3_lang::ir::Type::Utxo),
+        "Undefined" => Ok(tx3_lang::ir::Type::Undefined),
+        "List" => Ok(tx3_lang::ir::Type::List),
+        _ => {
+            // You would need to create a CustomId here. This depends on how CustomId is defined
+            // Ok(tx3_lang::ir::Type::Custom(CustomId { value: type_str.to_string() }))
+            Ok(tx3_lang::ir::Type::Custom(type_str.to_string())) // Keep your current implementation if CustomId is not accessible
+        }
+    }
+}
+
+fn get_type_for_language(type_: &tx3_lang::ir::Type, language: &str) -> String {
+    match language {
+        "rust" => "ArgValue".to_string(),
+        "typescript" => match &type_ {
+            tx3_lang::ir::Type::Int => "bigint | number".to_string(),
+            tx3_lang::ir::Type::Bool => "boolean".to_string(),
+            tx3_lang::ir::Type::Bytes => "Uint8Array".to_string(),
+            tx3_lang::ir::Type::Unit => "void".to_string(),
+            tx3_lang::ir::Type::Address => "string".to_string(),
+            tx3_lang::ir::Type::UtxoRef => "string".to_string(),
+            tx3_lang::ir::Type::List => "any[]".to_string(),
+            tx3_lang::ir::Type::Custom(name) => name.clone(),
+            tx3_lang::ir::Type::AnyAsset => "string".to_string(),
+            tx3_lang::ir::Type::Utxo => "any".to_string(),
+            tx3_lang::ir::Type::Undefined => "any".to_string(),
+        },
+        "python" => match &type_ {
+            tx3_lang::ir::Type::Int => "int".to_string(),
+            tx3_lang::ir::Type::Bool => "bool".to_string(),
+            tx3_lang::ir::Type::Bytes => "bytes".to_string(),
+            tx3_lang::ir::Type::Unit => "None".to_string(),
+            tx3_lang::ir::Type::List => "list[Any]".to_string(),
+            tx3_lang::ir::Type::Address => "str".to_string(),
+            tx3_lang::ir::Type::UtxoRef => "str".to_string(),
+            tx3_lang::ir::Type::Custom(name) => name.clone(),
+            tx3_lang::ir::Type::AnyAsset => "str".to_string(),
+            tx3_lang::ir::Type::Undefined => "Any".to_string(),
+            tx3_lang::ir::Type::Utxo => "Any".to_string(),
+        },
+        "go" => match &type_ {
+            tx3_lang::ir::Type::Int => "int64".to_string(),
+            tx3_lang::ir::Type::Bool => "bool".to_string(),
+            tx3_lang::ir::Type::Bytes => "[]byte".to_string(),
+            tx3_lang::ir::Type::Unit => "struct{}".to_string(),
+            tx3_lang::ir::Type::Address => "string".to_string(),
+            tx3_lang::ir::Type::UtxoRef => "string".to_string(),
+            tx3_lang::ir::Type::List => "[]interface{}".to_string(),
+            tx3_lang::ir::Type::Custom(name) => name.clone(),
+            tx3_lang::ir::Type::AnyAsset => "string".to_string(),
+            tx3_lang::ir::Type::Utxo => "interface{}".to_string(),
+            tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
+        },
+        _ => "ArgValue".to_string(), // Default fallback
     }
 }
 
@@ -76,6 +128,33 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
         handlebars.register_helper(name, Box::new(make_helper(name, func)));
     }
     // Add more helpers as needed
+
+    // Register helper to convert ir types to language types.
+    handlebars.register_helper("typeFor", Box::new(
+        |h: &Helper, _: &Handlebars, _: &Context, _: &mut RenderContext, out: &mut dyn Output| {
+            let type_param = h.param(0).ok_or_else(|| RenderErrorReason::ParamNotFoundForIndex("typeFor", 0))?;
+            let lang_param = h.param(1).ok_or_else(|| RenderErrorReason::ParamNotFoundForIndex("typeFor", 1))?;
+
+            let type_str = type_param
+                .value()
+                .as_str()
+                .ok_or_else(|| RenderErrorReason::InvalidParamType("Expected type as string"))?;
+
+            let type_ = parse_type_from_string(type_str)
+                .map_err(|_| RenderErrorReason::InvalidParamType("Failed to parse type"))?;
+
+
+            let language = lang_param
+                .value()
+                .as_str()
+                .ok_or_else(|| RenderErrorReason::InvalidParamType("Expected language as string"))?;
+
+            let output_type = get_type_for_language(&type_, language);
+
+            out.write(&output_type)?;
+            Ok(())
+        }
+    ));
 }
 
 /// Loads Handlebars templates from a GitHub repository ZIP archive.
@@ -89,7 +168,7 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
 /// 6. Registers each found template with Handlebars, using its path relative to `bindgen/` (without the `.hbs` extension)
 ///
 /// Returns a TemplateBundle containing the Handlebars registry and optional configuration.
-async fn load_github_templates(github_url: &str, temp_dir: &TempDir, options: &HashMap<String, serde_json::Value>) -> miette::Result<TemplateBundle> {
+async fn load_github_templates(github_url: &str, temp_dir: &TempDir, path: &str) -> miette::Result<TemplateBundle> {
     // Parse GitHub URL
     let parts: Vec<&str> = github_url.split('/').collect();
     if parts.len() < 2 {
@@ -108,7 +187,7 @@ async fn load_github_templates(github_url: &str, temp_dir: &TempDir, options: &H
         owner, repo, branch
     );
 
-    println!("Reading template from https://github.com/{}", github_url);
+    println!("Reading template from https://github.com/{}/{} (ref: {})", owner, repo, branch);
 
     // Download the zip file
     let client = Client::new();
@@ -131,53 +210,28 @@ async fn load_github_templates(github_url: &str, temp_dir: &TempDir, options: &H
     let file = std::fs::File::open(&zip_path).into_diagnostic()?;
     let mut archive = ZipArchive::new(file).into_diagnostic()?;
 
-    let mut config: Option<BindgenConfig> = None;
     let mut bindgen_path = PathBuf::new();
-
+    
     // Get root_dir
     let root_dir_name = archive.name_for_index(0).unwrap_or("");
-
+    
     bindgen_path.push(root_dir_name);
-    bindgen_path.push("bindgen/");
+    bindgen_path.push(path);
+    // Ensure the bindgen path ends with a separator
+    bindgen_path.push("");
 
-    // Check for trix-bindgen.toml in the root directory
-    let toml_name = bindgen_path.join("trix-bindgen.toml").to_string_lossy().to_string();
+    // let mut config: Option<BindgenConfig> = None;
+    // Check for trix-bindgen.toml in the directory
+    // let toml_name = bindgen_path.join("trix-bindgen.toml").to_string_lossy().to_string();
 
-    if let Ok(mut config_file) = archive.by_name(&toml_name) {
-        let mut config_content = String::new();
-        config_file.read_to_string(&mut config_content).into_diagnostic()?;
+    // if let Ok(mut config_file) = archive.by_name(&toml_name) {
+    //     let mut config_content = String::new();
+    //     config_file.read_to_string(&mut config_content).into_diagnostic()?;
 
-        config = toml::from_str::<BindgenConfig>(&config_content)
-            .into_diagnostic()
-            .ok();
-    }
-
-    // Update bindgen_path based on config include options
-    if let Some(config) = &config {
-        let mut path_found = false;
-        if let Some(includes) = &config.include {
-            for include in includes {
-                // Extract the key after "options." from include.name
-                let option_key = include.name.strip_prefix("options.").unwrap_or(&include.name);
-                // Check if options has the key corresponding to the extracted key
-                if let Some(option_value) = options.get(option_key) {
-                    // Check if the value matches include.value
-                    if option_value == &include.value {
-                        // Concatenate include.path to bindgen_path
-                        bindgen_path.push(include.path.clone());
-                        path_found = true;
-                        break; // Use the first matching include
-                    }
-                }
-            }
-        }
-
-        if !path_found {
-            if let Some(default_path) = &config.default_path {
-                bindgen_path.push(default_path);
-            }
-        }
-    }
+    //     config = toml::from_str::<BindgenConfig>(&config_content)
+    //         .into_diagnostic()
+    //         .ok();
+    // }
 
     // Register handlebars templates
     let mut handlebars = Handlebars::new();
@@ -191,23 +245,12 @@ async fn load_github_templates(github_url: &str, temp_dir: &TempDir, options: &H
         let mut file = archive.by_index(i).into_diagnostic()?;
         let name = file.name().to_owned();
 
-        // If the file is a directory or doesn't belong to bindgen_path we want, skip it
-        if file.is_dir() {
-            continue;
-        }
-
         if !name.starts_with(&bindgen_path_string) {
             break; // Stop processing if we reach a file outside the bindgen path
         }
 
-        // Check for trix-bindgen.toml in bindgen directory
-        if name.ends_with("trix-bindgen.toml") {
-            // let mut config_content = String::new();
-            // file.read_to_string(&mut config_content).into_diagnostic()?;
-
-            // config = toml::from_str::<BindgenConfig>(&config_content)
-            //     .into_diagnostic()
-            //     .ok();
+        // If the file is a directory or its the trix-bindgen.toml, skip it
+        if file.is_dir() || name.ends_with("trix-bindgen.toml") {
             continue;
         }
 
@@ -262,7 +305,7 @@ impl Serialize for BytesHex {
 #[derive(Serialize)]
 struct TxParameter {
     name: String,
-    type_name: String,
+    type_name: tx3_lang::ir::Type,
 }
 
 #[derive(Serialize)]
@@ -300,7 +343,6 @@ struct Job {
 
 fn generate_arguments(
     job: &Job,
-    get_type_for_field: fn(&tx3_lang::ir::Type) -> String,
     version: &str,
 ) -> miette::Result<HandlebarsData> {
     let transactions = job
@@ -315,7 +357,7 @@ fn generate_arguments(
                 .iter()
                 .map(|(key, type_)| TxParameter {
                     name: key.as_str().to_case(Case::Camel),
-                    type_name: get_type_for_field(type_),
+                    type_name: type_.clone(),
                 })
                 .collect();
 
@@ -356,18 +398,19 @@ fn generate_arguments(
 
 async fn execute_bindgen(
     job: &Job,
-    github_url: &str,
-    get_type_for_field: fn(&tx3_lang::ir::Type) -> String,
+    template_config: &BindingsTemplateConfig,
     version: &str,
 ) -> miette::Result<()> {
     // Create a temporary directory to extract files
     let temp_dir = TempDir::new().into_diagnostic()?;
-    let template_bundle = load_github_templates(github_url, &temp_dir, &job.options).await?;
+    let github_url = format!("{}/{}", &template_config.repo, template_config.r#ref.as_deref().unwrap_or("main"));
+
+    let template_bundle = load_github_templates(&github_url, &temp_dir, &template_config.path).await?;
 
     // Create the destination directory if it doesn't exist
     std::fs::create_dir_all(&job.dest_path).into_diagnostic()?;
 
-    let handlebars_params = generate_arguments(job, get_type_for_field, version)?;
+    let handlebars_params = generate_arguments(job, version)?;
 
     let handlebars_template_iter = template_bundle.handlebars.get_templates().iter();
 
@@ -424,82 +467,12 @@ pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
             options: bindgen.options.clone().unwrap_or_default(),
         };
 
-        match bindgen.plugin.as_str() {
-            "rust" => {
-                execute_bindgen(
-                    &job,
-                    "tx3-lang/rust-sdk",
-                    |_| "ArgValue".to_string(),
-                    &config.protocol.version,
-                )
-                .await?;
-                println!("Rust bindgen successful");
-            }
-            "typescript" => {
-                execute_bindgen(
-                    &job,
-                    "tx3-lang/web-sdk",
-                    |_| "ArgValue".to_string(),
-                    &config.protocol.version,
-                )
-                .await?;
-                println!("Typescript bindgen successful");
-            }
-            "python" => {
-                execute_bindgen(
-                    &job,
-                    "tx3-lang/python-sdk",
-                    |ty| match ty {
-                        tx3_lang::ir::Type::Int => "int".to_string(),
-                        tx3_lang::ir::Type::Bool => "bool".to_string(),
-                        tx3_lang::ir::Type::Bytes => "bytes".to_string(),
-                        tx3_lang::ir::Type::Unit => "None".to_string(),
-                        tx3_lang::ir::Type::List => "list[Any]".to_string(),
-                        tx3_lang::ir::Type::Address => "str".to_string(),
-                        tx3_lang::ir::Type::UtxoRef => "str".to_string(),
-                        tx3_lang::ir::Type::Custom(name) => name.clone(),
-                        tx3_lang::ir::Type::AnyAsset => "str".to_string(),
-                        tx3_lang::ir::Type::Undefined => "Any".to_string(),
-                        tx3_lang::ir::Type::Utxo => "Any".to_string(),
-                    },
-                    &config.protocol.version,
-                )
-                .await?;
-                println!("Python bindgen successful");
-            }
-            "go" => {
-                execute_bindgen(
-                    &job,
-                    "tx3-lang/go-sdk",
-                    |ty| match ty {
-                        tx3_lang::ir::Type::Int => "int64".to_string(),
-                        tx3_lang::ir::Type::Bool => "bool".to_string(),
-                        tx3_lang::ir::Type::Bytes => "Bytes".to_string(),
-                        tx3_lang::ir::Type::Unit => "struct{}".to_string(),
-                        tx3_lang::ir::Type::Address => "string".to_string(),
-                        tx3_lang::ir::Type::UtxoRef => "string".to_string(),
-                        tx3_lang::ir::Type::List => "[]interface{}".to_string(),
-                        tx3_lang::ir::Type::Custom(name) => name.clone(),
-                        tx3_lang::ir::Type::AnyAsset => "string".to_string(),
-                        tx3_lang::ir::Type::Utxo => "interface{}".to_string(),
-                        tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
-                    },
-                    &config.protocol.version,
-                )
-                .await?;
-                println!("Go bindgen successful");
-            }
-            plugin => {
-                execute_bindgen(
-                    &job,
-                    plugin,
-                    |_| "ArgValue".to_string(), // Default type for unknown plugins
-                    &config.protocol.version,
-                )
-                .await?;
-                println!("{} bindgen successful", &plugin);
-            }
-        };
+        execute_bindgen(
+            &job,
+            &bindgen.template,
+            &config.protocol.version,
+        ).await?;
+        println!("Bindgen successful");
     }
 
     Ok(())
