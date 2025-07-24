@@ -173,20 +173,30 @@ pub fn transaction(
     serde_json::from_slice(&output.stdout).into_diagnostic()
 }
 
-pub fn transation_interactive(home: &Path, tx3_file: &Path) -> miette::Result<Child> {
+pub fn transation_interactive(
+    home: &Path,
+    tx3_file: &Path,
+    tx3_args: Option<String>,
+) -> miette::Result<Child> {
     let tool_path = crate::home::tool_path("cshell")?;
 
     let config_path = home.join("cshell.toml");
 
+    let mut args: Vec<String> = vec![
+        "-s".into(),
+        config_path.to_str().unwrap_or_default().into(),
+        "tx".into(),
+        "new".into(),
+        "--tx3-file".into(),
+        tx3_file.to_str().unwrap_or_default().into(),
+    ];
+
+    if let Some(tx3_args) = tx3_args {
+        args.extend(vec!["--tx3-args-json".into(), tx3_args]);
+    };
+
     let child = Command::new(&tool_path)
-        .args([
-            "-s",
-            config_path.to_str().unwrap_or_default(),
-            "tx",
-            "new",
-            "--tx3-file",
-            tx3_file.to_str().unwrap_or_default(),
-        ])
+        .args(args)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
