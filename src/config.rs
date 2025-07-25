@@ -222,22 +222,22 @@ impl BindingsTemplateConfig {
                 repo: "tx3-lang/web-sdk".to_string(),
                 // When web-sdk get updated, we need to change this path to bindgen/client-lib when we update the ref
                 path: ".trix/client-lib".to_string(),
-                r#ref: Some("a9054697e5320b0b5071558830b2a4b6d8821dbd".to_string()),
+                r#ref: Some("bindgen-v1alpha2".to_string()),
             },
             "rust" => BindingsTemplateConfig {
                 repo: "tx3-lang/rust-sdk".to_string(),
                 path: "bindgen".to_string(),
-                r#ref: Some("f82709ce2dd99ca5bf63e3e7aafeef8f1ce9fe48".to_string()),
+                r#ref: Some("bindgen-v1alpha2".to_string()),
             },
             "python" => BindingsTemplateConfig {
                 repo: "tx3-lang/python-sdk".to_string(),
                 path: "bindgen".to_string(),
-                r#ref: Some("265632589819e8b81e62523dd8bec6348209b032".to_string()),
+                r#ref: Some("bindgen-v1alpha2".to_string()),
             },
             "go" => BindingsTemplateConfig {
                 repo: "tx3-lang/go-sdk".to_string(),
                 path: "bindgen".to_string(),
-                r#ref: Some("573a9c7d976b1763c40241b3d1ff7565ec19491d".to_string()),
+                r#ref: Some("bindgen-v1alpha2".to_string()),
             },
             _ => BindingsTemplateConfig::default()
         }
