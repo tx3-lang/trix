@@ -216,26 +216,28 @@ impl Default for BindingsTemplateConfig {
 impl BindingsTemplateConfig {
     // Unify the creation of BindingsTemplateConfig from plugin name
     pub fn from_plugin(plugin: &str) -> Self {
+        // Reference should be updated on every release if is required
         match plugin {
             "typescript" => BindingsTemplateConfig {
                 repo: "tx3-lang/web-sdk".to_string(),
-                path: "bindgen/client-lib".to_string(),
-                r#ref: None,
+                // When web-sdk get updated, we need to change this path to bindgen/client-lib when we update the ref
+                path: "bindgen".to_string(),
+                r#ref: Some("073422e0bfefc300c09e9ae62fa2d4d4af979914".to_string()),
             },
             "rust" => BindingsTemplateConfig {
                 repo: "tx3-lang/rust-sdk".to_string(),
                 path: "bindgen".to_string(),
-                r#ref: None,
+                r#ref: Some("9412789250261762fb4be4a16ca13760379d8f9a".to_string()),
             },
             "python" => BindingsTemplateConfig {
                 repo: "tx3-lang/python-sdk".to_string(),
                 path: "bindgen".to_string(),
-                r#ref: None,
+                r#ref: Some("77f432377e387eec217846c8055e8ce2c4dfaf60".to_string()),
             },
             "go" => BindingsTemplateConfig {
                 repo: "tx3-lang/go-sdk".to_string(),
                 path: "bindgen".to_string(),
-                r#ref: None,
+                r#ref: Some("6044859d88ad2ec4695bf63e24df438a6c68639d".to_string()),
             },
             _ => BindingsTemplateConfig::default()
         }
