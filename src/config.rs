@@ -226,17 +226,17 @@ impl BindingsTemplateConfig {
             },
             "rust" => BindingsTemplateConfig {
                 repo: "tx3-lang/rust-sdk".to_string(),
-                path: "bindgen".to_string(),
+                path: ".trix/client-lib".to_string(),
                 r#ref: Some("bindgen-v1alpha2".to_string()),
             },
             "python" => BindingsTemplateConfig {
                 repo: "tx3-lang/python-sdk".to_string(),
-                path: "bindgen".to_string(),
+                path: ".trix/client-lib".to_string(),
                 r#ref: Some("bindgen-v1alpha2".to_string()),
             },
             "go" => BindingsTemplateConfig {
                 repo: "tx3-lang/go-sdk".to_string(),
-                path: "bindgen".to_string(),
+                path: ".trix/client-lib".to_string(),
                 r#ref: Some("bindgen-v1alpha2".to_string()),
             },
             _ => BindingsTemplateConfig::default()
