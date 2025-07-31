@@ -2,7 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.15.0] - 2025-07-31
+
+### 🚀 Features
+
+- *(bindgen)* Support dynamic options, static files and multiple templates (#73)
+- *(invoke)* Support passing args in json format (#77)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(bindgen)* Fix template sources to specific commit hash (#74)
+- *(bindgen)* Use tags to point to specific plugin commits (#78)
+- Update tx3 to v0.11.0
+
 ## [0.14.0] - 2025-07-22
+
+### 💼 Other
+
+- V0.14.0
 
 ### ⚙️ Miscellaneous Tasks
 
