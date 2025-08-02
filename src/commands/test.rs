@@ -159,13 +159,14 @@ fn trigger_transaction(
         }
     };
 
-    let output = crate::spawn::cshell::transaction(
+    let output = crate::spawn::cshell::tx_invoke_json(
         home,
         tx3_file,
-        &serde_json::json!(args),
-        &transaction.template,
-        &signer,
+        &Some(serde_json::json!(args)),
+        Some(&transaction.template),
+        vec![&signer],
         true,
+        false,
     )?;
 
     println!("Invoke output: {:#?}", output);

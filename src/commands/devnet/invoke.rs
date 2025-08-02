@@ -14,22 +14,29 @@ pub struct Args {
     /// Path to a JSON file with arguments for the TX3 transaction.
     #[arg(long)]
     args_json_path: Option<PathBuf>,
+
+    /// Skip submitting the transaction.
+    #[arg(long)]
+    skip_submit: bool,
+}
+
+fn load_args_json(args: &Args) -> miette::Result<Option<serde_json::Value>> {
+    if let Some(args_json) = &args.args_json {
+        let value = serde_json::from_str(args_json).into_diagnostic()?;
+        return Ok(Some(value));
+    }
+
+    if let Some(path) = &args.args_json_path {
+        let args_json = std::fs::read_to_string(path).into_diagnostic()?;
+        let value = serde_json::from_str(&args_json).into_diagnostic()?;
+        return Ok(Some(value));
+    }
+
+    Ok(None)
 }
 
 pub fn run(args: Args, config: &Config) -> miette::Result<()> {
     let devnet_home = crate::commands::devnet::ensure_devnet_home(config)?;
-
-    let args_json = if let Some(args_json) = args.args_json {
-        Some(args_json)
-    } else if let Some(path) = args.args_json_path {
-        Some(
-            std::fs::read_to_string(path)
-                .into_diagnostic()
-                .context("failed to read args json file")?,
-        )
-    } else {
-        None
-    };
 
     let cononical = config.protocol.main.canonicalize().into_diagnostic()?;
 
@@ -40,17 +47,17 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
         );
     }
 
-    let mut child =
-        crate::spawn::cshell::transation_interactive(&devnet_home, &cononical, args_json)?;
+    let args_json = load_args_json(&args)?;
 
-    let status = child
-        .wait()
-        .into_diagnostic()
-        .context("failed to wait for cshell explorer")?;
-
-    if !status.success() {
-        bail!("cshell exited with code: {}", status);
-    }
+    crate::spawn::cshell::tx_invoke_interactive(
+        &devnet_home,
+        &cononical,
+        &args_json,
+        None,
+        vec![],
+        false,
+        args.skip_submit,
+    )?;
 
     Ok(())
 }
