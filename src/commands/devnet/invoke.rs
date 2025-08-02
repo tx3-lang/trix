@@ -17,7 +17,7 @@ pub struct Args {
 }
 
 pub fn run(args: Args, config: &Config) -> miette::Result<()> {
-    let devnet_home = crate::devnet::ensure_devnet_home(config)?;
+    let devnet_home = crate::commands::devnet::ensure_devnet_home(config)?;
 
     let args_json = if let Some(args_json) = args.args_json {
         Some(args_json)

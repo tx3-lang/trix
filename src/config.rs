@@ -8,6 +8,9 @@ pub struct Config {
     pub registry: Option<RegistryConfig>,
     pub profiles: Option<ProfilesConfig>,
     pub bindings: Vec<BindingsConfig>,
+
+    #[serde(default)]
+    pub wallets: Vec<WalletConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -57,21 +60,6 @@ impl From<KnownChain> for ProfileConfig {
         Self {
             chain: chain.clone(),
             env_file: None,
-            wallets: match chain {
-                KnownChain::CardanoDevnet => vec![
-                    WalletConfig {
-                        name: "alice".to_string(),
-                        random_key: true,
-                        initial_balance: 1000000000000000000,
-                    },
-                    WalletConfig {
-                        name: "bob".to_string(),
-                        random_key: true,
-                        initial_balance: 1000000000000000000,
-                    },
-                ],
-                _ => vec![],
-            },
             trp: None,
             u5c: None,
         }
@@ -90,10 +78,6 @@ const PUBLIC_MAINNET_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
 pub struct ProfileConfig {
     pub chain: KnownChain,
     pub env_file: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub wallets: Vec<WalletConfig>,
-
     pub trp: Option<TrpConfig>,
     pub u5c: Option<U5cConfig>,
 }
@@ -102,7 +86,7 @@ pub struct ProfileConfig {
 pub struct WalletConfig {
     pub name: String,
     pub random_key: bool,
-    pub initial_balance: u64,
+    pub key_path: Option<PathBuf>,
 }
 
 #[allow(clippy::enum_variant_names)]
@@ -239,7 +223,7 @@ impl BindingsTemplateConfig {
                 path: ".trix/client-lib".to_string(),
                 r#ref: Some("bindgen-v1alpha2".to_string()),
             },
-            _ => BindingsTemplateConfig::default()
+            _ => BindingsTemplateConfig::default(),
         }
     }
 }
@@ -264,7 +248,8 @@ impl Config {
         // Eventually, this should be removed once deprecated plugin option is removed
         for binding in &mut config.bindings {
             if binding.template.repo.is_empty() && binding.plugin.is_some() {
-                binding.template = BindingsTemplateConfig::from_plugin(binding.plugin.as_ref().unwrap());
+                binding.template =
+                    BindingsTemplateConfig::from_plugin(binding.plugin.as_ref().unwrap());
             }
         }
 
