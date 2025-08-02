@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use crate::config::{BindingsConfig, BindingsTemplateConfig, Config, ProfilesConfig, ProtocolConfig, RegistryConfig};
+use crate::config::{
+    BindingsConfig, BindingsTemplateConfig, Config, ProfilesConfig, ProtocolConfig, RegistryConfig,
+    WalletConfig,
+};
 use clap::Args as ClapArgs;
 use inquire::{Confirm, MultiSelect, Text};
 use miette::IntoDiagnostic;
@@ -37,12 +40,25 @@ fn prompt<'a>(msg: &'a str, default: Option<&'a str>, initial: Option<&'a str>) 
     prompt
 }
 
-fn apply(config: Config) -> miette::Result<()> {
-    let toml_string = toml::to_string_pretty(&config).into_diagnostic()?;
+fn infer_devnet(wallets: &[WalletConfig]) -> crate::devnet::Config {
+    let utxos = wallets
+        .iter()
+        .map(|wallet| crate::devnet::UtxoSpec {
+            address: crate::devnet::AddressSpec::NamedWallet(wallet.name.clone()),
+            value: 100_000_000,
+        })
+        .collect();
 
-    println!("\n{}", toml_string);
+    crate::devnet::Config { utxos }
+}
 
-    std::fs::write("trix.toml", toml_string).into_diagnostic()?;
+fn apply(config: Config, devnet: crate::devnet::Config) -> miette::Result<()> {
+    let devnet_toml = toml::to_string_pretty(&devnet).into_diagnostic()?;
+    std::fs::write("devnet.toml", devnet_toml).into_diagnostic()?;
+
+    let trix_toml = toml::to_string_pretty(&config).into_diagnostic()?;
+    std::fs::write("trix.toml", trix_toml).into_diagnostic()?;
+
     std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
     std::fs::create_dir("tests").into_diagnostic()?;
     std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
@@ -50,65 +66,54 @@ fn apply(config: Config) -> miette::Result<()> {
     Ok(())
 }
 
-#[derive(ClapArgs)]
-pub struct Args {
-    /// Use default configuration
-    #[arg(short, long)]
-    yes: bool,
+fn default_config() -> Config {
+    Config {
+        protocol: ProtocolConfig {
+            name: infer_project_name(),
+            scope: None,
+            version: "0.0.0".into(),
+            description: None,
+            main: "main.tx3".into(),
+            readme: None,
+        },
+        bindings: Vec::default(),
+        profiles: ProfilesConfig::default().into(),
+        registry: Some(RegistryConfig::default()),
+        wallets: vec![
+            WalletConfig {
+                name: "alice".to_string(),
+                random_key: true,
+                key_path: None,
+            },
+            WalletConfig {
+                name: "bob".to_string(),
+                random_key: true,
+                key_path: None,
+            },
+        ],
+    }
 }
 
-pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
-    let default_name = infer_project_name();
+fn inquire_config(initial: &Config) -> miette::Result<Config> {
+    let protocol_name = prompt("Protocol name:", None, Some(&initial.protocol.name))
+        .prompt()
+        .into_diagnostic()?;
 
-    if args.yes {
-        let config = Config {
-            protocol: ProtocolConfig {
-                name: default_name.clone(),
-                scope: None,
-                version: "0.0.0".into(),
-                description: None,
-                main: "main.tx3".into(),
-                readme: None,
-            },
-            bindings: Vec::default(),
-            profiles: ProfilesConfig::default().into(),
-            registry: Some(RegistryConfig::default()),
-        };
-
-        return apply(config);
-    }
-
-    let protocol_name = prompt(
-        "Protocol name:",
-        Some(&default_name),
-        config.map(|c| c.protocol.name.as_ref()),
-    )
-    .prompt()
-    .into_diagnostic()?;
-
-    let owner_scope = prompt(
-        "Owner scope:",
-        None,
-        config.and_then(|c| c.protocol.scope.as_deref()),
-    )
-    .prompt_skippable()
-    .into_diagnostic()?;
+    let owner_scope = prompt("Owner scope:", None, initial.protocol.scope.as_deref())
+        .prompt_skippable()
+        .into_diagnostic()?;
 
     let description = prompt(
         "Description:",
         None,
-        config.and_then(|c| c.protocol.description.as_deref()),
+        initial.protocol.description.as_deref(),
     )
     .prompt_skippable()
     .into_diagnostic()?;
 
-    let version = prompt(
-        "Version:",
-        Some("0.0.0"),
-        config.map(|c| c.protocol.version.as_ref()),
-    )
-    .prompt()
-    .into_diagnostic()?;
+    let version = prompt("Version:", Some("0.0.0"), Some(&initial.protocol.version))
+        .prompt()
+        .into_diagnostic()?;
 
     let generate_bindings = MultiSelect::new(
         "Generate bindings for:",
@@ -137,16 +142,50 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
             .collect(),
         profiles: ProfilesConfig::default().into(),
         registry: Some(RegistryConfig::default()),
+        wallets: vec![
+            WalletConfig {
+                name: "alice".to_string(),
+                random_key: true,
+                key_path: None,
+            },
+            WalletConfig {
+                name: "bob".to_string(),
+                random_key: true,
+                key_path: None,
+            },
+        ],
+        ..initial.clone()
     };
 
     let confirm = Confirm::new("Is this OK?")
         .with_default(true)
         .prompt()
-        .unwrap_or_default();
+        .into_diagnostic()?;
 
-    if confirm {
-        apply(config)?
+    if !confirm {
+        return Err(miette::miette!("Nothing done"));
     }
+
+    Ok(config)
+}
+
+#[derive(ClapArgs)]
+pub struct Args {
+    /// Use default configuration
+    #[arg(short, long)]
+    yes: bool,
+}
+
+pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
+    let mut config = config.cloned().unwrap_or(default_config());
+
+    if !args.yes {
+        config = inquire_config(&config)?;
+    };
+
+    let devnet = infer_devnet(&config.wallets);
+
+    apply(config, devnet)?;
 
     Ok(())
 }
