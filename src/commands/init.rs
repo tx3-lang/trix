@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{io::Write, path::PathBuf};
 
 use crate::config::{
     BindingsConfig, BindingsTemplateConfig, Config, ProfilesConfig, ProtocolConfig, RegistryConfig,
@@ -6,7 +6,7 @@ use crate::config::{
 };
 use clap::Args as ClapArgs;
 use inquire::{Confirm, MultiSelect, Text};
-use miette::IntoDiagnostic;
+use miette::{Context, IntoDiagnostic};
 
 // Include template files at compile time
 const TEMPLATE_MAIN_TX3: &str = include_str!("../templates/tx3/main.tx3.tpl");
@@ -40,12 +40,14 @@ fn prompt<'a>(msg: &'a str, default: Option<&'a str>, initial: Option<&'a str>) 
     prompt
 }
 
+const DEFAULT_DEVNET_WALLET_AMOUNT: u64 = 100_000_000_000;
+
 fn infer_devnet(wallets: &[WalletConfig]) -> crate::devnet::Config {
     let utxos = wallets
         .iter()
         .map(|wallet| crate::devnet::UtxoSpec {
             address: crate::devnet::AddressSpec::NamedWallet(wallet.name.clone()),
-            value: 100_000_000,
+            value: DEFAULT_DEVNET_WALLET_AMOUNT,
         })
         .collect();
 
@@ -54,14 +56,26 @@ fn infer_devnet(wallets: &[WalletConfig]) -> crate::devnet::Config {
 
 fn apply(config: Config, devnet: crate::devnet::Config) -> miette::Result<()> {
     let devnet_toml = toml::to_string_pretty(&devnet).into_diagnostic()?;
-    std::fs::write("devnet.toml", devnet_toml).into_diagnostic()?;
+
+    std::fs::write("devnet.toml", devnet_toml)
+        .into_diagnostic()
+        .context("writing devnet.toml")?;
 
     let trix_toml = toml::to_string_pretty(&config).into_diagnostic()?;
-    std::fs::write("trix.toml", trix_toml).into_diagnostic()?;
 
-    std::fs::write("main.tx3", TEMPLATE_MAIN_TX3).into_diagnostic()?;
-    std::fs::create_dir("tests").into_diagnostic()?;
-    std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML).into_diagnostic()?;
+    std::fs::write("trix.toml", trix_toml)
+        .into_diagnostic()
+        .context("writing trix.toml")?;
+
+    std::fs::write("main.tx3", TEMPLATE_MAIN_TX3)
+        .into_diagnostic()
+        .context("writing main.tx3")?;
+
+    std::fs::create_dir_all("tests").into_diagnostic()?;
+
+    std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML)
+        .into_diagnostic()
+        .context("writing tests/basic.toml")?;
 
     Ok(())
 }
