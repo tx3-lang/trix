@@ -2,12 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.16.0] - 2025-08-04
+
+### 🚜 Refactor
+
+- Split devnet config file (#79)
+- Adapt to new cshell invoke command (#80)
+
+### ⚙️ Miscellaneous Tasks
+
+- Apply small QoL adjustments (#81)
+
 ## [0.15.0] - 2025-07-31
 
 ### 🚀 Features
 
 - *(bindgen)* Support dynamic options, static files and multiple templates (#73)
 - *(invoke)* Support passing args in json format (#77)
+
+### 💼 Other
+
+- V0.15.0
 
 ### ⚙️ Miscellaneous Tasks
 
