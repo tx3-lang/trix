@@ -133,7 +133,6 @@ pub fn tx_invoke_cmd(
     signers: Vec<&str>,
     r#unsafe: bool,
     skip_submit: bool,
-    interactive: bool,
 ) -> miette::Result<Command> {
     let tool_path = crate::home::tool_path("cshell")?;
 
@@ -195,7 +194,6 @@ pub fn tx_invoke_interactive(
         signers,
         r#unsafe,
         skip_submit,
-        true,
     )?;
 
     cmd.stdout(Stdio::inherit())
@@ -225,7 +223,6 @@ pub fn tx_invoke_json(
         signers,
         r#unsafe,
         skip_submit,
-        true,
     )?;
 
     let output = cmd
