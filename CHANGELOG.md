@@ -2,7 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.17.0] - 2025-08-06
+
+### 🚀 Features
+
+- Report tx3up updates when available
+
 ## [0.16.0] - 2025-08-04
+
+### 💼 Other
+
+- V0.16.0
 
 ### 🚜 Refactor
 
