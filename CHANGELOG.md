@@ -2,11 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.18.0] - 2025-08-06
+
+### 🐛 Bug Fixes
+
+- Use cshell for wallet data
+- Clean-up noise on invoke stdout
+
 ## [0.17.0] - 2025-08-06
 
 ### 🚀 Features
 
 - Report tx3up updates when available
+
+### 💼 Other
+
+- V0.17.0
 
 ## [0.16.0] - 2025-08-04
 
