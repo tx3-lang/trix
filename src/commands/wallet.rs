@@ -3,58 +3,60 @@ use cryptoxide::{digest::Digest, sha2::Sha256};
 use miette::IntoDiagnostic;
 use pallas::{crypto::key::ed25519::SecretKey, ledger::addresses::ShelleyAddress};
 
-use crate::config::Config;
+use crate::{config::Config, spawn};
 
 #[derive(ClapArgs)]
 pub struct Args {
     /// Wallet name
     name: String,
 
-    /// Command
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
-#[derive(Subcommand)]
+#[derive(Clone, Subcommand)]
 pub enum Command {
-    PrivateKey,
     AddressTestnet,
+    AddressMainnet,
+    PublicKey,
+    PublicKeyHash,
 }
 
-fn generate_deterministic_key(wallet_name: &str) -> SecretKey {
-    let mut hasher = Sha256::new();
-    hasher.input(wallet_name.as_bytes());
-    let hash = hasher.result_str();
+pub fn run(args: Args, config: &Config) -> miette::Result<()> {
+    let devnet_home = crate::commands::devnet::ensure_devnet_home(config)?;
 
-    let entropy: [u8; 32] = hash[..32].as_bytes().try_into().unwrap();
+    let info = spawn::cshell::wallet_info(&devnet_home, &args.name)?;
 
-    SecretKey::from(entropy)
-}
+    let Some(command) = args.command else {
+        let pretty = serde_json::to_string_pretty(&info).into_diagnostic()?;
+        println!("{}", pretty);
+        return Ok(());
+    };
 
-pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
-    match args.command {
-        Command::PrivateKey => {
-            let private_key = generate_deterministic_key(&args.name);
-            unsafe {
-                let bytes = SecretKey::leak_into_bytes(private_key);
-                println!("{}", hex::encode(bytes));
-            }
-        }
+    match command {
         Command::AddressTestnet => {
-            let private_key = generate_deterministic_key(&args.name);
-            let public_key = private_key.public_key();
-            let mut hasher = pallas::crypto::hash::Hasher::<224>::new();
-            hasher.input(public_key.as_ref());
-            let hash = hasher.finalize();
+            let x = info
+                .addresses
+                .get("testnet")
+                .map(|x| x.as_str())
+                .unwrap_or_default();
 
-            let address = ShelleyAddress::new(
-                pallas::ledger::addresses::Network::Testnet,
-                pallas::ledger::addresses::ShelleyPaymentPart::Key(hash),
-                pallas::ledger::addresses::ShelleyDelegationPart::Null,
-            );
-
-            println!("{}", address.to_bech32().into_diagnostic()?);
+            println!("{x}");
         }
+        Command::AddressMainnet => {
+            let x = info
+                .addresses
+                .get("mainnet")
+                .map(|x| x.as_str())
+                .unwrap_or_default();
+
+            println!("{x}");
+        }
+        Command::PublicKey => {
+            let x = info.public_key;
+            println!("{x}");
+        }
+        Command::PublicKeyHash => todo!(),
     }
 
     Ok(())

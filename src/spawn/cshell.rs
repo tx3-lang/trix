@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -7,7 +8,7 @@ use bip39::Mnemonic;
 use cryptoxide::{digest::Digest, sha2::Sha256};
 
 use miette::{Context as _, IntoDiagnostic as _, bail};
-use serde::{Deserialize, Deserializer, de};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 pub const CONFIG_TEMPLATE: &str = include_str!("../templates/configs/cshell/cshell.toml");
 
@@ -48,6 +49,18 @@ pub fn initialize_config(root: &Path) -> miette::Result<PathBuf> {
     Ok(config_path)
 }
 
+fn new_generic_command(home: &Path) -> miette::Result<Command> {
+    let tool_path = crate::home::tool_path("cshell")?;
+
+    let config_path = home.join("cshell.toml");
+
+    let mut cmd = Command::new(&tool_path);
+
+    cmd.args(["-s", config_path.to_str().unwrap_or_default()]);
+
+    Ok(cmd)
+}
+
 fn generate_deterministic_mnemonic(input: &str) -> miette::Result<Mnemonic> {
     let mut hasher = Sha256::new();
     hasher.input(input.as_bytes());
@@ -58,18 +71,51 @@ fn generate_deterministic_mnemonic(input: &str) -> miette::Result<Mnemonic> {
     Mnemonic::from_entropy(&entropy).into_diagnostic()
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct WalletInfoOutput {
+    pub name: String,
+    pub public_key: String,
+    pub addresses: HashMap<String, String>,
+}
+
+pub fn wallet_info(home: &Path, wallet_name: &str) -> miette::Result<WalletInfoOutput> {
+    let mut cmd = new_generic_command(home)?;
+
+    cmd.args([
+        "wallet",
+        "info",
+        "--name",
+        wallet_name,
+        "--output-format",
+        "json",
+    ])
+    .stdout(Stdio::piped());
+
+    let child = cmd
+        .spawn()
+        .into_diagnostic()
+        .context("spawning CShell wallet info")?;
+
+    let output = child
+        .wait_with_output()
+        .into_diagnostic()
+        .context("running CShell wallet info")?;
+
+    if !output.status.success() {
+        bail!("CShell failed to get wallet info");
+    }
+
+    let output = serde_json::from_slice(&output.stdout).into_diagnostic()?;
+
+    Ok(output)
+}
+
 pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_json::Value> {
-    let tool_path = crate::home::tool_path("cshell")?;
-
-    let config_path = home.join("cshell.toml");
-
-    let mut cmd = Command::new(&tool_path);
+    let mut cmd = new_generic_command(home)?;
 
     let mnemonic = generate_deterministic_mnemonic(wallet_name)?.to_string();
 
     cmd.args([
-        "-s",
-        config_path.to_str().unwrap_or_default(),
         "wallet",
         "restore",
         "--name",
@@ -100,19 +146,10 @@ pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_jso
 }
 
 pub fn wallet_list(home: &Path) -> miette::Result<Vec<OutputWallet>> {
-    let tool_path = crate::home::tool_path("cshell")?;
+    let mut cmd = new_generic_command(home)?;
 
-    let config_path = home.join("cshell.toml");
-
-    let output = Command::new(&tool_path)
-        .args([
-            "-s",
-            config_path.to_str().unwrap_or_default(),
-            "wallet",
-            "list",
-            "--output-format",
-            "json",
-        ])
+    let output = cmd
+        .args(["wallet", "list", "--output-format", "json"])
         .stdout(Stdio::piped())
         .output()
         .into_diagnostic()
@@ -134,15 +171,9 @@ pub fn tx_invoke_cmd(
     r#unsafe: bool,
     skip_submit: bool,
 ) -> miette::Result<Command> {
-    let tool_path = crate::home::tool_path("cshell")?;
-
-    let config_path = home.join("cshell.toml");
-
-    let mut cmd = Command::new(&tool_path);
+    let mut cmd = new_generic_command(home)?;
 
     cmd.args([
-        "-s",
-        config_path.to_str().unwrap_or_default(),
         "tx",
         "invoke",
         "--tx3-file",
@@ -240,20 +271,10 @@ pub fn tx_invoke_json(
 }
 
 pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBalance> {
-    let tool_path = crate::home::tool_path("cshell")?;
+    let mut cmd = new_generic_command(home)?;
 
-    let config_path = home.join("cshell.toml");
-
-    let output = Command::new(&tool_path)
-        .args([
-            "-s",
-            config_path.to_str().unwrap_or_default(),
-            "wallet",
-            "balance",
-            wallet_name,
-            "--output-format",
-            "json",
-        ])
+    let output = cmd
+        .args(["wallet", "balance", wallet_name, "--output-format", "json"])
         .stdout(Stdio::piped())
         .output()
         .into_diagnostic()
@@ -267,13 +288,9 @@ pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBa
 }
 
 pub fn explorer(home: &Path) -> miette::Result<Child> {
-    let tool_path = crate::home::tool_path("cshell")?;
+    let mut cmd = new_generic_command(home)?;
 
-    let config_path = home.join("cshell.toml");
-
-    let mut cmd = Command::new(&tool_path);
-
-    cmd.args(["-s", config_path.to_str().unwrap_or_default(), "explorer"]);
+    cmd.args(["explorer"]);
 
     let child = cmd
         .stdout(Stdio::inherit())
