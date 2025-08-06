@@ -7,6 +7,7 @@ mod dirs;
 mod global;
 mod home;
 mod spawn;
+mod updates;
 
 use commands as cmds;
 use config::Config;
@@ -78,6 +79,10 @@ pub fn load_config() -> Result<Option<Config>> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // Check for updates silently
+    let _ = updates::check_for_updates();
+
     let config = load_config()?;
 
     global::ensure_global_config()?;
