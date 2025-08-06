@@ -55,7 +55,7 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
         &args_json,
         None,
         vec![],
-        false,
+        true,
         args.skip_submit,
     )?;
 

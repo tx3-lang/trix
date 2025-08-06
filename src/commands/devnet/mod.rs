@@ -20,10 +20,10 @@ pub fn ensure_devnet_home(config: &Config) -> miette::Result<PathBuf> {
     let profile_hashable = serde_json::to_vec(&profile).into_diagnostic()?;
 
     let devnet_home = crate::home::consistent_tmp_dir("devnet", &profile_hashable)?;
-    println!("devnet home initialized at: {}", devnet_home.display());
+    // println!("devnet home initialized at: {}", devnet_home.display());
 
-    let cshell_config = crate::spawn::cshell::initialize_config(&devnet_home)?;
-    println!("cshell config initialized at: {}", cshell_config.display());
+    let _cshell_config = crate::spawn::cshell::initialize_config(&devnet_home)?;
+    // println!("cshell config initialized at: {}", cshell_config.display());
 
     let mut wallets = HashMap::new();
 
@@ -54,8 +54,8 @@ pub fn ensure_devnet_home(config: &Config) -> miette::Result<PathBuf> {
 
     let initial_funds = HashMap::from_iter(initial_funds);
 
-    let dolos_config = crate::spawn::dolos::initialize_config(&devnet_home, &initial_funds)?;
-    println!("dolos config initialized at: {}", dolos_config.display());
+    let _dolos_config = crate::spawn::dolos::initialize_config(&devnet_home, &initial_funds)?;
+    // println!("dolos config initialized at: {}", dolos_config.display());
 
     Ok(devnet_home)
 }
