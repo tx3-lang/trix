@@ -192,7 +192,7 @@ pub fn tx_invoke_cmd(
     }
 
     for signer in signers {
-        cmd.args(["--signer", signer]);
+        cmd.args(["--signers", signer]);
     }
 
     if r#unsafe {

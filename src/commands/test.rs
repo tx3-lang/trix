@@ -231,5 +231,9 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
         .into_diagnostic()
         .context("failed to stop dolos devnet in background")?;
 
+    if failed {
+        bail!("Test failed, see the output above for details.");
+    }
+
     Ok(())
 }
