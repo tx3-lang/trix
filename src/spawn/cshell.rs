@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };
@@ -7,7 +8,7 @@ use bip39::Mnemonic;
 use cryptoxide::{digest::Digest, sha2::Sha256};
 
 use miette::{Context as _, IntoDiagnostic as _, bail};
-use serde::{Deserialize, Deserializer, de};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 pub const CONFIG_TEMPLATE: &str = include_str!("../templates/configs/cshell/cshell.toml");
 
@@ -48,6 +49,18 @@ pub fn initialize_config(root: &Path) -> miette::Result<PathBuf> {
     Ok(config_path)
 }
 
+fn new_generic_command(home: &Path) -> miette::Result<Command> {
+    let tool_path = crate::home::tool_path("cshell")?;
+
+    let config_path = home.join("cshell.toml");
+
+    let mut cmd = Command::new(&tool_path);
+
+    cmd.args(["-s", config_path.to_str().unwrap_or_default()]);
+
+    Ok(cmd)
+}
+
 fn generate_deterministic_mnemonic(input: &str) -> miette::Result<Mnemonic> {
     let mut hasher = Sha256::new();
     hasher.input(input.as_bytes());
@@ -58,18 +71,51 @@ fn generate_deterministic_mnemonic(input: &str) -> miette::Result<Mnemonic> {
     Mnemonic::from_entropy(&entropy).into_diagnostic()
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct WalletInfoOutput {
+    pub name: String,
+    pub public_key: String,
+    pub addresses: HashMap<String, String>,
+}
+
+pub fn wallet_info(home: &Path, wallet_name: &str) -> miette::Result<WalletInfoOutput> {
+    let mut cmd = new_generic_command(home)?;
+
+    cmd.args([
+        "wallet",
+        "info",
+        "--name",
+        wallet_name,
+        "--output-format",
+        "json",
+    ])
+    .stdout(Stdio::piped());
+
+    let child = cmd
+        .spawn()
+        .into_diagnostic()
+        .context("spawning CShell wallet info")?;
+
+    let output = child
+        .wait_with_output()
+        .into_diagnostic()
+        .context("running CShell wallet info")?;
+
+    if !output.status.success() {
+        bail!("CShell failed to get wallet info");
+    }
+
+    let output = serde_json::from_slice(&output.stdout).into_diagnostic()?;
+
+    Ok(output)
+}
+
 pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_json::Value> {
-    let tool_path = crate::home::tool_path("cshell")?;
-
-    let config_path = home.join("cshell.toml");
-
-    let mut cmd = Command::new(&tool_path);
+    let mut cmd = new_generic_command(home)?;
 
     let mnemonic = generate_deterministic_mnemonic(wallet_name)?.to_string();
 
     cmd.args([
-        "-s",
-        config_path.to_str().unwrap_or_default(),
         "wallet",
         "restore",
         "--name",
@@ -100,19 +146,10 @@ pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_jso
 }
 
 pub fn wallet_list(home: &Path) -> miette::Result<Vec<OutputWallet>> {
-    let tool_path = crate::home::tool_path("cshell")?;
+    let mut cmd = new_generic_command(home)?;
 
-    let config_path = home.join("cshell.toml");
-
-    let output = Command::new(&tool_path)
-        .args([
-            "-s",
-            config_path.to_str().unwrap_or_default(),
-            "wallet",
-            "list",
-            "--output-format",
-            "json",
-        ])
+    let output = cmd
+        .args(["wallet", "list", "--output-format", "json"])
         .stdout(Stdio::piped())
         .output()
         .into_diagnostic()
@@ -125,39 +162,99 @@ pub fn wallet_list(home: &Path) -> miette::Result<Vec<OutputWallet>> {
     serde_json::from_slice(&output.stdout).into_diagnostic()
 }
 
-pub fn transaction(
+pub fn tx_invoke_cmd(
     home: &Path,
     tx3_file: &Path,
-    tx3_args_json: &serde_json::Value,
-    tx3_template: &str,
-    signer: &str,
+    tx3_args: &Option<serde_json::Value>,
+    tx3_template: Option<&str>,
+    signers: Vec<&str>,
     r#unsafe: bool,
-) -> miette::Result<serde_json::Value> {
-    let tool_path = crate::home::tool_path("cshell")?;
-
-    let config_path = home.join("cshell.toml");
-
-    let mut cmd = Command::new(&tool_path);
-
-    let unsafe_arg = if r#unsafe { "--unsafe" } else { "" };
+    skip_submit: bool,
+) -> miette::Result<Command> {
+    let mut cmd = new_generic_command(home)?;
 
     cmd.args([
-        "-s",
-        config_path.to_str().unwrap_or_default(),
         "tx",
-        "new",
+        "invoke",
         "--tx3-file",
         tx3_file.to_str().unwrap(),
-        "--tx3-args-json",
-        serde_json::to_string(tx3_args_json).unwrap().as_str(),
-        "--tx3-template",
-        tx3_template,
-        "--signer",
-        signer,
-        unsafe_arg,
         "--output-format",
         "json",
     ]);
+
+    if let Some(tx3_template) = tx3_template {
+        cmd.args(["--tx3-template", tx3_template]);
+    }
+
+    if let Some(tx3_args) = tx3_args {
+        let tx3_args_json = serde_json::to_string(tx3_args).into_diagnostic()?;
+        cmd.args(["--tx3-args-json", &tx3_args_json]);
+    }
+
+    for signer in signers {
+        cmd.args(["--signers", signer]);
+    }
+
+    if r#unsafe {
+        cmd.args(["--unsafe"]);
+    }
+
+    if skip_submit {
+        cmd.args(["--skip-submit"]);
+    }
+
+    // println!("{:#?}", cmd);
+
+    Ok(cmd)
+}
+
+pub fn tx_invoke_interactive(
+    home: &Path,
+    tx3_file: &Path,
+    tx3_args: &Option<serde_json::Value>,
+    tx3_template: Option<&str>,
+    signers: Vec<&str>,
+    r#unsafe: bool,
+    skip_submit: bool,
+) -> miette::Result<()> {
+    let mut cmd = tx_invoke_cmd(
+        home,
+        tx3_file,
+        tx3_args,
+        tx3_template,
+        signers,
+        r#unsafe,
+        skip_submit,
+    )?;
+
+    cmd.stdout(Stdio::inherit())
+        .stdin(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .output()
+        .into_diagnostic()
+        .context("running CShell transaction")?;
+
+    Ok(())
+}
+
+pub fn tx_invoke_json(
+    home: &Path,
+    tx3_file: &Path,
+    tx3_args: &Option<serde_json::Value>,
+    tx3_template: Option<&str>,
+    signers: Vec<&str>,
+    r#unsafe: bool,
+    skip_submit: bool,
+) -> miette::Result<serde_json::Value> {
+    let mut cmd = tx_invoke_cmd(
+        home,
+        tx3_file,
+        tx3_args,
+        tx3_template,
+        signers,
+        r#unsafe,
+        skip_submit,
+    )?;
 
     let output = cmd
         .stdout(Stdio::piped())
@@ -173,44 +270,11 @@ pub fn transaction(
     serde_json::from_slice(&output.stdout).into_diagnostic()
 }
 
-pub fn transation_interactive(home: &Path, tx3_file: &Path) -> miette::Result<Child> {
-    let tool_path = crate::home::tool_path("cshell")?;
-
-    let config_path = home.join("cshell.toml");
-
-    let child = Command::new(&tool_path)
-        .args([
-            "-s",
-            config_path.to_str().unwrap_or_default(),
-            "tx",
-            "new",
-            "--tx3-file",
-            tx3_file.to_str().unwrap_or_default(),
-        ])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .into_diagnostic()
-        .context("spawning CShell transaction interactive")?;
-
-    Ok(child)
-}
-
 pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBalance> {
-    let tool_path = crate::home::tool_path("cshell")?;
+    let mut cmd = new_generic_command(home)?;
 
-    let config_path = home.join("cshell.toml");
-
-    let output = Command::new(&tool_path)
-        .args([
-            "-s",
-            config_path.to_str().unwrap_or_default(),
-            "wallet",
-            "balance",
-            wallet_name,
-            "--output-format",
-            "json",
-        ])
+    let output = cmd
+        .args(["wallet", "balance", wallet_name, "--output-format", "json"])
         .stdout(Stdio::piped())
         .output()
         .into_diagnostic()
@@ -224,13 +288,9 @@ pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBa
 }
 
 pub fn explorer(home: &Path) -> miette::Result<Child> {
-    let tool_path = crate::home::tool_path("cshell")?;
+    let mut cmd = new_generic_command(home)?;
 
-    let config_path = home.join("cshell.toml");
-
-    let mut cmd = Command::new(&tool_path);
-
-    cmd.args(["-s", config_path.to_str().unwrap_or_default(), "explorer"]);
+    cmd.args(["explorer"]);
 
     let child = cmd
         .stdout(Stdio::inherit())

@@ -2,6 +2,65 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.18.0] - 2025-08-06
+
+### 🐛 Bug Fixes
+
+- Use cshell for wallet data
+- Clean-up noise on invoke stdout
+
+## [0.17.0] - 2025-08-06
+
+### 🚀 Features
+
+- Report tx3up updates when available
+
+### 💼 Other
+
+- V0.17.0
+
+## [0.16.0] - 2025-08-04
+
+### 💼 Other
+
+- V0.16.0
+
+### 🚜 Refactor
+
+- Split devnet config file (#79)
+- Adapt to new cshell invoke command (#80)
+
+### ⚙️ Miscellaneous Tasks
+
+- Apply small QoL adjustments (#81)
+
+## [0.15.0] - 2025-07-31
+
+### 🚀 Features
+
+- *(bindgen)* Support dynamic options, static files and multiple templates (#73)
+- *(invoke)* Support passing args in json format (#77)
+
+### 💼 Other
+
+- V0.15.0
+
+### ⚙️ Miscellaneous Tasks
+
+- *(bindgen)* Fix template sources to specific commit hash (#74)
+- *(bindgen)* Use tags to point to specific plugin commits (#78)
+- Update tx3 to v0.11.0
+
+## [0.14.0] - 2025-07-22
+
+### 💼 Other
+
+- V0.14.0
+
+### ⚙️ Miscellaneous Tasks
+
+- Update tx3 deps to v0.10.0
+
 ## [0.13.0] - 2025-07-18
 
 ### 🚀 Features
@@ -15,6 +74,10 @@ All notable changes to this project will be documented in this file.
 
 - Use correct default TRP endpoint (#72)
 - Adjust to latest tx3 IR types
+
+### 💼 Other
+
+- V0.13.0
 
 ### ⚙️ Miscellaneous Tasks
 

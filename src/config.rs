@@ -8,6 +8,9 @@ pub struct Config {
     pub registry: Option<RegistryConfig>,
     pub profiles: Option<ProfilesConfig>,
     pub bindings: Vec<BindingsConfig>,
+
+    #[serde(default)]
+    pub wallets: Vec<WalletConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -57,21 +60,6 @@ impl From<KnownChain> for ProfileConfig {
         Self {
             chain: chain.clone(),
             env_file: None,
-            wallets: match chain {
-                KnownChain::CardanoDevnet => vec![
-                    WalletConfig {
-                        name: "alice".to_string(),
-                        random_key: true,
-                        initial_balance: 1000000000000000000,
-                    },
-                    WalletConfig {
-                        name: "bob".to_string(),
-                        random_key: true,
-                        initial_balance: 1000000000000000000,
-                    },
-                ],
-                _ => vec![],
-            },
             trp: None,
             u5c: None,
         }
@@ -90,10 +78,6 @@ const PUBLIC_MAINNET_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
 pub struct ProfileConfig {
     pub chain: KnownChain,
     pub env_file: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub wallets: Vec<WalletConfig>,
-
     pub trp: Option<TrpConfig>,
     pub u5c: Option<U5cConfig>,
 }
@@ -102,7 +86,7 @@ pub struct ProfileConfig {
 pub struct WalletConfig {
     pub name: String,
     pub random_key: bool,
-    pub initial_balance: u64,
+    pub key_path: Option<PathBuf>,
 }
 
 #[allow(clippy::enum_variant_names)]
@@ -197,21 +181,78 @@ impl From<KnownChain> for U5cConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct BindingOptions {
-    pub standalone: Option<bool>,
+pub struct BindingsTemplateConfig {
+    pub repo: String,
+    pub path: String,
+    pub r#ref: Option<String>, // default: main
+}
+
+impl Default for BindingsTemplateConfig {
+    fn default() -> Self {
+        Self {
+            repo: String::new(),
+            path: "bindgen".to_string(),
+            r#ref: None,
+        }
+    }
+}
+
+impl BindingsTemplateConfig {
+    // Unify the creation of BindingsTemplateConfig from plugin name
+    pub fn from_plugin(plugin: &str) -> Self {
+        // Reference should be updated on every release if is required
+        match plugin {
+            "typescript" => BindingsTemplateConfig {
+                repo: "tx3-lang/web-sdk".to_string(),
+                // When web-sdk get updated, we need to change this path to bindgen/client-lib when we update the ref
+                path: ".trix/client-lib".to_string(),
+                r#ref: Some("bindgen-v1alpha2".to_string()),
+            },
+            "rust" => BindingsTemplateConfig {
+                repo: "tx3-lang/rust-sdk".to_string(),
+                path: ".trix/client-lib".to_string(),
+                r#ref: Some("bindgen-v1alpha2".to_string()),
+            },
+            "python" => BindingsTemplateConfig {
+                repo: "tx3-lang/python-sdk".to_string(),
+                path: ".trix/client-lib".to_string(),
+                r#ref: Some("bindgen-v1alpha2".to_string()),
+            },
+            "go" => BindingsTemplateConfig {
+                repo: "tx3-lang/go-sdk".to_string(),
+                path: ".trix/client-lib".to_string(),
+                r#ref: Some("bindgen-v1alpha2".to_string()),
+            },
+            _ => BindingsTemplateConfig::default(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BindingsConfig {
-    pub plugin: String,
+    // Deprecated field, use template instead
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<String>,
+    #[serde(default)]
+    pub template: BindingsTemplateConfig,
     pub output_dir: PathBuf,
-    pub options: Option<BindingOptions>,
+    pub options: Option<HashMap<String, serde_json::Value>>,
 }
 
 impl Config {
     pub fn load(path: &PathBuf) -> miette::Result<Config> {
         let contents = std::fs::read_to_string(path).into_diagnostic()?;
-        let config = toml::from_str(&contents).into_diagnostic()?;
+        let mut config: Config = toml::from_str(&contents).into_diagnostic()?;
+
+        // Post-process bindings to handle backward compatibility
+        // Eventually, this should be removed once deprecated plugin option is removed
+        for binding in &mut config.bindings {
+            if binding.template.repo.is_empty() && binding.plugin.is_some() {
+                binding.template =
+                    BindingsTemplateConfig::from_plugin(binding.plugin.as_ref().unwrap());
+            }
+        }
+
         Ok(config)
     }
 

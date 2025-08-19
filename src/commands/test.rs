@@ -159,13 +159,14 @@ fn trigger_transaction(
         }
     };
 
-    let output = crate::spawn::cshell::transaction(
+    let output = crate::spawn::cshell::tx_invoke_json(
         home,
         tx3_file,
-        &serde_json::json!(args),
-        &transaction.template,
-        &signer,
+        &Some(serde_json::json!(args)),
+        Some(&transaction.template),
+        vec![&signer],
         true,
+        false,
     )?;
 
     println!("Invoke output: {:#?}", output);
@@ -229,6 +230,10 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
         .kill()
         .into_diagnostic()
         .context("failed to stop dolos devnet in background")?;
+
+    if failed {
+        bail!("Test failed, see the output above for details.");
+    }
 
     Ok(())
 }

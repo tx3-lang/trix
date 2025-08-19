@@ -3408,8 +3408,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "trait-variant"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70977707304198400eb4835a78f6a9f928bf41bba420deb8fdb175cd965d77a7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "trix"
-version = "0.13.0"
+version = "0.18.0"
 dependencies = [
  "anyhow",
  "bip39",
@@ -3430,6 +3441,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "serde_with",
  "tempfile",
  "thiserror 2.0.12",
  "tokio",
@@ -3446,9 +3458,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tx3-lang"
-version = "0.9.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d94ea42335cde3eafb4ad15eb5d1d6e34c0174cb020ddfceb4aba3ea0b0489ba"
+checksum = "6b9d050963aff1d574bfc4635d01b01e09df2401633ccbf83c24797de5f426b9"
 dependencies = [
  "bincode",
  "hex",
@@ -3457,6 +3469,7 @@ dependencies = [
  "pest_derive",
  "serde",
  "thiserror 2.0.12",
+ "trait-variant",
 ]
 
 [[package]]
