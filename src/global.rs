@@ -9,10 +9,17 @@ pub struct Config {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TelemetryConfig {
     pub enabled: bool,
+    pub user_fingerprint: Option<String>,
+    pub otlp_endpoint: Option<String>,
 }
+
 impl Default for TelemetryConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self { 
+            enabled: true,
+            user_fingerprint: None,
+            otlp_endpoint: None,
+        }
     }
 }
 
@@ -22,8 +29,19 @@ pub fn ensure_global_config() -> miette::Result<()> {
 
     if !trix_path.exists() {
         std::fs::create_dir_all(trix_path.parent().unwrap()).into_diagnostic()?;
-        save_config(&Config::default())?;
+        let mut config = Config::default();
+        // Generate user fingerprint when creating config for the first time
+        config.telemetry.user_fingerprint = Some(crate::telemetry::generate_user_fingerprint()?);
+        config.telemetry.otlp_endpoint = Some(crate::telemetry::DEFAULT_TELEMETRY_ENDPOINT.to_string());
+        save_config(&config)?;
         print_telemetry_info();
+    } else {
+        // Ensure existing config has a user fingerprint and otlp_endpoint
+        let mut config = read_config()?;
+        if config.telemetry.user_fingerprint.is_none() {
+            config.telemetry.user_fingerprint = Some(crate::telemetry::generate_user_fingerprint()?);
+            save_config(&config)?;
+        }
     }
 
     Ok(())

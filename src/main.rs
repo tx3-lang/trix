@@ -7,6 +7,7 @@ mod dirs;
 mod global;
 mod home;
 mod spawn;
+mod telemetry;
 mod updates;
 
 use commands as cmds;
@@ -62,6 +63,25 @@ enum Commands {
     Telemetry(cmds::telemetry::Args),
 }
 
+impl Commands {
+    fn name(&self) -> &'static str {
+        match self {
+            Commands::Init(_) => "init",
+            Commands::Invoke(_) => "invoke",
+            Commands::Devnet(_) => "devnet",
+            Commands::Explore(_) => "explore",
+            Commands::Bindgen(_) => "bindgen",
+            Commands::Check(_) => "check",
+            Commands::Inspect(_) => "inspect",
+            Commands::Test(_) => "test",
+            Commands::Build(_) => "build",
+            Commands::Wallet(_) => "wallet",
+            Commands::Publish(_) => "publish",
+            Commands::Telemetry(_) => "telemetry",
+        }
+    }
+}
+
 pub fn load_config() -> Result<Option<Config>> {
     let current_dir = std::env::current_dir().into_diagnostic()?;
 
@@ -87,7 +107,9 @@ async fn main() -> Result<()> {
 
     global::ensure_global_config()?;
 
-    match config {
+    let command_name = cli.command.name();
+
+    let result = match config {
         Some(config) => match cli.command {
             Commands::Init(args) => cmds::init::run(args, Some(&config)),
             Commands::Invoke(args) => cmds::devnet::invoke::run(args, &config),
@@ -107,5 +129,10 @@ async fn main() -> Result<()> {
             Commands::Telemetry(args) => cmds::telemetry::run(args),
             _ => Err(miette::miette!("No trix.toml found in current directory")),
         },
-    }
+    };
+
+    // Report command result (success or error)
+    telemetry::report_command_result(command_name, &result.is_ok());
+
+    result
 }
