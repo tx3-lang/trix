@@ -23,13 +23,14 @@ impl Default for TelemetryConfig {
     }
 }
 
-pub fn ensure_global_config() -> miette::Result<()> {
+pub fn ensure_global_config() -> miette::Result<Config> {
     let mut trix_path = crate::home::tx3_dir()?;
     trix_path.push("trix/config.toml");
 
+    let mut config = Config::default();
+
     if !trix_path.exists() {
         std::fs::create_dir_all(trix_path.parent().unwrap()).into_diagnostic()?;
-        let mut config = Config::default();
         // Generate user fingerprint when creating config for the first time
         config.telemetry.user_fingerprint = Some(crate::telemetry::generate_user_fingerprint()?);
         config.telemetry.otlp_endpoint = Some(crate::telemetry::DEFAULT_TELEMETRY_ENDPOINT.to_string());
@@ -37,14 +38,14 @@ pub fn ensure_global_config() -> miette::Result<()> {
         print_telemetry_info();
     } else {
         // Ensure existing config has a user fingerprint and otlp_endpoint
-        let mut config = read_config()?;
+        config = read_config()?;
         if config.telemetry.user_fingerprint.is_none() {
             config.telemetry.user_fingerprint = Some(crate::telemetry::generate_user_fingerprint()?);
             save_config(&config)?;
         }
     }
 
-    Ok(())
+    Ok(config)
 }
 
 pub fn print_telemetry_info() {

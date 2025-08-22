@@ -8,12 +8,13 @@ use opentelemetry_sdk::Resource;
 
 pub const DEFAULT_TELEMETRY_ENDPOINT: &str = "http://localhost:4318/v1/metrics";
 
-fn init_telemetry(endpoint: &str) -> miette::Result<opentelemetry_sdk::metrics::SdkMeterProvider> {
+pub fn init_telemetry(endpoint: Option<String>) -> miette::Result<opentelemetry_sdk::metrics::SdkMeterProvider> {
+    let otlp_endpoint = endpoint.unwrap_or_else(|| DEFAULT_TELEMETRY_ENDPOINT.to_string());
      // Initialize OTLP exporter using HTTP binary protocol
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_http()
         .with_protocol(opentelemetry_otlp::Protocol::HttpBinary)
-        .with_endpoint(endpoint)
+        .with_endpoint(otlp_endpoint)
         .build().into_diagnostic()?;
 
     let resource = Resource::builder()
@@ -33,24 +34,16 @@ fn init_telemetry(endpoint: &str) -> miette::Result<opentelemetry_sdk::metrics::
 
 /// Report command execution metrics to OpenTelemetry
 async fn report_command_execution(command: &str, status: &str) -> miette::Result<()> {
-    let config = crate::global::read_config()?;
-    
-    if !config.telemetry.enabled {
-        return Ok(());
-    }
-
     let user_fingerprint = get_user_fingerprint()?;
 
-    let otlp_endpoint = config.telemetry.otlp_endpoint.unwrap_or_else(|| DEFAULT_TELEMETRY_ENDPOINT.to_string());
     // Send command execution metric
-    send_command_metric(&otlp_endpoint, command, &user_fingerprint, status).await?;
+    send_command_metric(command, &user_fingerprint, status).await?;
 
     Ok(())
 }
 
 /// Send command metrics to OpenTelemetry Collector in OTLP format
-async fn send_command_metric(endpoint: &str, command: &str, user_fingerprint: &str, status: &str) -> miette::Result<()> {
-    let meter_provider = init_telemetry(endpoint)?;
+async fn send_command_metric(command: &str, user_fingerprint: &str, status: &str) -> miette::Result<()> {
     let meter = global::meter("trix");
 
     let exec_cmd_counter = meter
@@ -64,8 +57,6 @@ async fn send_command_metric(endpoint: &str, command: &str, user_fingerprint: &s
         KeyValue::new("status", status.to_string()),
         KeyValue::new("version", env!("CARGO_PKG_VERSION").to_string()),
     ]);
-
-    let _ = meter_provider.shutdown();
 
     Ok(())
 }

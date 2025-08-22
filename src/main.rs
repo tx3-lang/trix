@@ -105,7 +105,10 @@ async fn main() -> Result<()> {
 
     let config = load_config()?;
 
-    global::ensure_global_config()?;
+    let global_config = global::ensure_global_config()?;
+
+    // init
+    let meter_provider = telemetry::init_telemetry(global_config.telemetry.otlp_endpoint);
 
     let command_name = cli.command.name();
 
@@ -133,6 +136,8 @@ async fn main() -> Result<()> {
 
     // Report command result (success or error)
     telemetry::report_command_result(command_name, &result.is_ok());
+
+    let _ = meter_provider.map(|mp| mp.shutdown());
 
     result
 }
