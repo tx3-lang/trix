@@ -108,9 +108,17 @@ async fn main() -> Result<()> {
     let global_config = global::ensure_global_config()?;
 
     // init
-    let meter_provider = telemetry::init_telemetry(global_config.telemetry.otlp_endpoint);
+    let mut meter_provider: Option<opentelemetry_sdk::metrics::SdkMeterProvider> = None;
 
-    let command_name = cli.command.name();
+    if global_config.telemetry.enabled {
+        let result = telemetry::init_telemetry(global_config.telemetry.otlp_endpoint);
+        meter_provider = match result {
+            Ok(provider) => Some(provider),
+            Err(_) => None
+        };
+    }
+
+    let command_name: &'static str = cli.command.name();
 
     let result = match config {
         Some(config) => match cli.command {
@@ -134,10 +142,13 @@ async fn main() -> Result<()> {
         },
     };
 
-    // Report command result (success or error)
-    telemetry::report_command_result(command_name, &result.is_ok());
-
-    let _ = meter_provider.map(|mp| mp.shutdown());
+    // If it's none is because failure or telemetry is off
+    if let Some(meter_provider) = meter_provider {
+        // Report command result (success or error)
+        telemetry::report_command_result(command_name, &result.is_ok());
+    
+        let _ = meter_provider.shutdown();
+    }
 
     result
 }
