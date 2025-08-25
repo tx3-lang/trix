@@ -44,6 +44,13 @@ fn print_status(config: &crate::global::Config) {
     if config.telemetry.enabled {
         print_telemetry_info();
         println!("Telemetry: ON");
+        
+        // Shows user fingerprint if available
+        if let Some(ref user_fingerprint) = config.telemetry.user_fingerprint {
+            println!("User Fingerprint: {}", user_fingerprint);
+        } else if let Ok(user_fingerprint) = crate::telemetry::get_user_fingerprint() {
+            println!("User Fingerprint: {}", user_fingerprint);
+        }
         return;
     }
 
