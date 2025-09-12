@@ -8,9 +8,9 @@ use std::{
 
 use crate::config::{Config, ProfileConfig};
 use clap::Args as ClapArgs;
-use miette::{Context, IntoDiagnostic, bail};
+use miette::{bail, Context, IntoDiagnostic};
 use serde_json::json;
-use tx3_lang::{Protocol, ir};
+use tx3_lang::{ir, Protocol};
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -88,15 +88,24 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
             let hex = hex::encode(prototx.ir_bytes());
 
             let mut args = serde_json::Map::new();
+            let mut schemas = serde_json::Map::new();
             for (key, kind) in prototx.find_params().iter() {
                 let tx3_type = Tx3Type(kind.clone());
+                let custom_type = match kind {
+                    ir::Type::Custom(name) => {
+                        protocol.ast().types.iter().find(|x| &x.name.value == name)
+                    }
+                    _ => None,
+                };
 
-                if let Some(envs) = envs.as_ref() {
-                    if let Some((_, value)) = envs.iter().find(|(k, _)| k.eq_ignore_ascii_case(key))
-                    {
+                if let Some(envs) = envs.as_ref() && let Some((_, value)) = envs.iter().find(|(k, _)| k.eq_ignore_ascii_case(key))
+                {
                         args.insert(key.clone(), tx3_type.env_to_value(value));
                         continue;
-                    }
+                }
+
+                if let Some(ast_type) = custom_type {
+                    schemas.insert(ast_type.name.value.clone(), ast_type.json_schema());
                 }
 
                 args.insert(key.clone(), serde_json::Value::String(tx3_type.to_string()));
@@ -104,12 +113,13 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
             let args_value = serde_json::Value::Object(args);
 
             json!({
-                "tir": {
-                    "bytecode": hex,
-                    "encoding": "hex",
-                    "version": tx3_lang::ir::IR_VERSION
-                },
-                "args": args_value
+                    "tir": {
+                        "bytecode": hex,
+                        "encoding": "hex",
+                        "version": tx3_lang::ir::IR_VERSION
+                    },
+                    "args": args_value,
+                    "schemas": schemas,
             })
         })
         .collect::<Vec<_>>();
@@ -178,7 +188,7 @@ impl Display for Tx3Type {
             ir::Type::AnyAsset => write!(f, "any_asset"),
             ir::Type::Utxo => write!(f, "utxo"),
             ir::Type::List => write!(f, "list"),
-            ir::Type::Custom(name) => write!(f, "custom({})", name),
+            ir::Type::Custom(name) => write!(f, "#/schemas/{}", name),
         }
     }
 }
