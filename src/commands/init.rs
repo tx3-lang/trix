@@ -1,4 +1,4 @@
-use std::{io::Write, path::PathBuf};
+use std::path::PathBuf;
 
 use crate::config::{
     BindingsConfig, BindingsTemplateConfig, Config, ProfilesConfig, ProtocolConfig, RegistryConfig,
@@ -45,10 +45,10 @@ const DEFAULT_DEVNET_WALLET_AMOUNT: u64 = 100_000_000_000;
 fn infer_devnet(wallets: &[WalletConfig]) -> crate::devnet::Config {
     let utxos = wallets
         .iter()
-        .map(|wallet| crate::devnet::UtxoSpec {
+        .map(|wallet| crate::devnet::UtxoSpec::Value(crate::devnet::UtxoSpecValue {
             address: crate::devnet::AddressSpec::NamedWallet(wallet.name.clone()),
             value: DEFAULT_DEVNET_WALLET_AMOUNT,
-        })
+        }))
         .collect();
 
     crate::devnet::Config { utxos }

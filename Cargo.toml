@@ -11,6 +11,17 @@ tx3-lang = "0.11.0"
 # tx3-lang = { path = "../tx3/crates/tx3-lang" }
 # tx3-lang = { git = "https://github.com/tx3-lang/tx3.git" }
 
+utxorpc = { git = "https://github.com/utxorpc/rust-sdk.git" }
+# utxorpc = { path = "../utxorpc" }
+
+dolos-core = { git = "https://github.com/txpipe/dolos.git", tag = "v0.32.0" }
+dolos-cardano = { git = "https://github.com/txpipe/dolos.git", tag = "v0.32.0" }
+dolos-redb = { git = "https://github.com/txpipe/dolos.git", tag = "v0.32.0" }
+
+# dolos-core = { path = "../dolos/crates/core" }
+# dolos-cardano = { path = "../dolos/crates/cardano" }
+# dolos-redb = { path = "../dolos/crates/redb" }
+
 clap = { version = "4.5.36", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"

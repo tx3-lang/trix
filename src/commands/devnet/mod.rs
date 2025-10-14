@@ -1,14 +1,15 @@
 use std::{collections::HashMap, path::PathBuf};
 
-use clap::Args as ClapArgs;
+use clap::{Args as ClapArgs, Subcommand};
 use miette::{Context, IntoDiagnostic, bail};
 use pallas::ledger::addresses::Address;
 
-use crate::config::{Config, ProfileConfig};
+use crate::config::Config;
 use crate::devnet::Config as DevnetConfig;
 
 pub mod explore;
 pub mod invoke;
+pub mod copy;
 
 pub fn ensure_devnet_home(config: &Config) -> miette::Result<PathBuf> {
     let profile = config
@@ -49,25 +50,43 @@ pub fn ensure_devnet_home(config: &Config) -> miette::Result<PathBuf> {
     let devnet_config = DevnetConfig::load(&path)?;
 
     let initial_funds: Vec<(String, u64)> = devnet_config
-        .iter_utxos(&wallets)
+        .iter_utxos_values(&wallets)
         .collect::<miette::Result<_>>()?;
 
     let initial_funds = HashMap::from_iter(initial_funds);
 
-    let _dolos_config = crate::spawn::dolos::initialize_config(&devnet_home, &initial_funds)?;
+    let initial_utxos = devnet_config.iter_utxos_bytes()?;
+
+    let _dolos_config = crate::spawn::dolos::initialize_config(&devnet_home, &initial_funds, &initial_utxos)?;
     // println!("dolos config initialized at: {}", dolos_config.display());
 
     Ok(devnet_home)
 }
 
+#[derive(Subcommand)]
+pub enum Command {
+    /// Retrieve the UTxO dependencies for one transaction
+    Copy(copy::Args),
+}
+
 #[derive(ClapArgs)]
 pub struct Args {
+    #[clap(subcommand)]
+    command: Option<Command>,
+
     /// run devnet as a background process
     #[arg(short, long, default_value_t = false)]
     background: bool,
 }
 
 pub fn run(args: Args, config: &Config) -> miette::Result<()> {
+    match args.command {
+        Some(Command::Copy(args)) => copy::run(args, config),
+        None => run_devnet(args, config),
+    }
+}
+
+pub fn run_devnet(args: Args, config: &Config) -> miette::Result<()> {
     let devnet_home = ensure_devnet_home(config)?;
 
     let mut daemon = crate::spawn::dolos::daemon(&devnet_home, args.background)?;

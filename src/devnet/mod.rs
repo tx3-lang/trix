@@ -46,12 +46,26 @@ impl FromStr for AddressSpec {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum UtxoSpec {
+    Value(UtxoSpecValue),
+    Bytes(UtxoSpecBytes),
+}
+
 #[serde_as]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct UtxoSpec {
+pub struct UtxoSpecValue {
     #[serde_as(as = "DisplayFromStr")]
     pub address: AddressSpec,
     pub value: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UtxoSpecBytes {
+    #[serde(rename = "ref")]
+    pub r#ref: String,
+    pub raw_bytes: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -60,14 +74,28 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn iter_utxos(
+    pub fn iter_utxos_values(
         &self,
         wallets: &HashMap<String, String>,
     ) -> impl Iterator<Item = miette::Result<(String, u64)>> {
-        self.utxos.iter().map(|utxo| {
-            let address = utxo.address.resolve_address(wallets)?;
-            Ok((address, utxo.value))
+        self.utxos.iter().filter_map(|utxo| {
+            match utxo {
+                UtxoSpec::Value(v) => {
+                    let address = v.address.resolve_address(wallets).ok()?;
+                    Some(Ok((address, v.value)))
+                },
+                UtxoSpec::Bytes(_) => None,
+            }
         })
+    }
+
+    pub fn iter_utxos_bytes(&self) -> miette::Result<Vec<(String, Vec<u8>)>> {
+        self.utxos.iter().filter_map(|utxo| {
+            match utxo {
+                UtxoSpec::Value(_) => None,
+                UtxoSpec::Bytes(b) => Some(Ok((b.r#ref.clone(), hex::decode(&b.raw_bytes).into_diagnostic().ok()?))),
+            }
+        }).collect()
     }
 }
 
@@ -110,7 +138,7 @@ mod tests {
         ]);
 
         let all = config
-            .iter_utxos(&wallets)
+            .iter_utxos_values(&wallets)
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
