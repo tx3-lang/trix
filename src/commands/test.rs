@@ -121,7 +121,7 @@ fn ensure_test_home(test: &Test, hashable: &[u8]) -> miette::Result<PathBuf> {
         initial_funds.insert(address, wallet.balance);
     }
 
-    crate::spawn::dolos::initialize_config(&test_home, &initial_funds)?;
+    crate::spawn::dolos::initialize_config(&test_home, &initial_funds, &vec![])?;
 
     Ok(test_home)
 }

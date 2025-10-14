@@ -3,7 +3,7 @@ block_production_interval = 5
 
 [storage]
 version = "v1"
-max_wal_history = 129600
+path = "data"
 
 [genesis]
 force_protocol = 9

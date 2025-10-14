@@ -1,0 +1,40 @@
+[protocol]
+name = "devnet"
+scope = "txpipe"
+version = "0.0.0"
+description = ""
+main = "main.tx3"
+
+[registry]
+url = "https://tx3.land"
+
+[profiles.devnet]
+chain = "CardanoDevnet"
+
+[profiles.preview]
+chain = "CardanoPreview"
+
+[profiles.preview.u5c]
+url = "http://localhost:50051"
+
+[profiles.preprod]
+chain = "CardanoPreprod"
+
+[profiles.mainnet]
+chain = "CardanoMainnet"
+
+[[bindings]]
+output_dir = "./gen/typescript"
+
+[bindings.template]
+repo = "tx3-lang/web-sdk"
+path = ".trix/client-lib"
+ref = "bindgen-v1alpha2"
+
+[[wallets]]
+name = "alice"
+random_key = true
+
+[[wallets]]
+name = "bob"
+random_key = true
