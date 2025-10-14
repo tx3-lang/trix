@@ -11,8 +11,8 @@ tx3-lang = "0.11.0"
 # tx3-lang = { path = "../tx3/crates/tx3-lang" }
 # tx3-lang = { git = "https://github.com/tx3-lang/tx3.git" }
 
-# utxorpc = "0.11.0"
-utxorpc = { path = "../utxorpc" }
+utxorpc = { git = "https://github.com/utxorpc/rust-sdk.git" }
+# utxorpc = { path = "../utxorpc" }
 
 dolos-core = { git = "https://github.com/txpipe/dolos.git", tag = "v0.32.0" }
 dolos-cardano = { git = "https://github.com/txpipe/dolos.git", tag = "v0.32.0" }
