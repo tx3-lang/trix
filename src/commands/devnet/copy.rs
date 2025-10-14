@@ -87,7 +87,7 @@ async fn fetch_utxo_deps(u5c: U5cConfig, tx_hash: &str) -> miette::Result<Vec<Ch
     if let Some(tx) = tx {
         if let Some(tx) = tx.parsed {
             let utxos = client.read_utxos(
-                tx.reference_inputs.iter().map(|r| TxoRef {
+                tx.inputs.iter().map(|r| TxoRef {
                     hash: r.tx_hash.clone(),
                     index: r.output_index,
                 }).collect()
