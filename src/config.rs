@@ -70,6 +70,10 @@ const PUBLIC_PREVIEW_TRP_KEY: &str = "trp1ffyf88ugcyg6j6n3yuh";
 const PUBLIC_PREPROD_TRP_KEY: &str = "trp1mtg35n2n9lv7yauanfa";
 const PUBLIC_MAINNET_TRP_KEY: &str = "trp1lrnhzcax5064cgxsaup";
 
+const PUBLIC_PREVIEW_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
+const PUBLIC_PREPROD_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
+const PUBLIC_MAINNET_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
+
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct ProfileConfig {
     pub chain: KnownChain,
@@ -141,6 +145,7 @@ impl From<KnownChain> for TrpConfig {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct U5cConfig {
     pub url: String,
+    pub headers: HashMap<String, String>,
 }
 
 impl From<KnownChain> for U5cConfig {
@@ -148,15 +153,28 @@ impl From<KnownChain> for U5cConfig {
         match chain {
             KnownChain::CardanoMainnet => Self {
                 url: "https://mainnet.utxorpc-v0.demeter.run".to_string(),
+                headers: HashMap::from([(
+                    "dmtr-api-key".to_string(),
+                    PUBLIC_MAINNET_U5C_KEY.to_string(),
+                )]),
             },
             KnownChain::CardanoPreview => Self {
                 url: "https://preview.utxorpc-v0.demeter.run".to_string(),
+                headers: HashMap::from([(
+                    "dmtr-api-key".to_string(),
+                    PUBLIC_PREVIEW_U5C_KEY.to_string(),
+                )]),
             },
             KnownChain::CardanoPreprod => Self {
                 url: "https://preprod.utxorpc-v0.demeter.run".to_string(),
+                headers: HashMap::from([(
+                    "dmtr-api-key".to_string(),
+                    PUBLIC_PREPROD_U5C_KEY.to_string(),
+                )]),
             },
             KnownChain::CardanoDevnet => Self {
                 url: "http://localhost:3000/u5c".to_string(),
+                headers: HashMap::new(),
             },
         }
     }

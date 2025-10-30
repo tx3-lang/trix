@@ -75,10 +75,13 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
 }
 
 async fn fetch_utxo_deps(u5c: U5cConfig, tx_hash: &str) -> miette::Result<Vec<ChainUtxo<TxOutput>>> {
-    let mut client = ClientBuilder::new()
-        .uri(u5c.url).into_diagnostic()?
-        .build::<QueryClient<Cardano>>()
-        .await;
+    let mut client_builder = ClientBuilder::new().uri(u5c.url).into_diagnostic()?;
+
+    for (key, value) in u5c.headers {
+        client_builder = client_builder.metadata(&key, &value).into_diagnostic()?;
+    }
+
+    let mut client = client_builder.build::<QueryClient<Cardano>>().await;
 
     let tx_hash_bytes = hex::decode(tx_hash).into_diagnostic()?;
 
