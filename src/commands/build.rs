@@ -178,6 +178,7 @@ impl Display for Tx3Type {
             ir::Type::AnyAsset => write!(f, "any_asset"),
             ir::Type::Utxo => write!(f, "utxo"),
             ir::Type::List => write!(f, "list"),
+            ir::Type::Map => write!(f, "map"),
             ir::Type::Custom(name) => write!(f, "custom({})", name),
         }
     }
