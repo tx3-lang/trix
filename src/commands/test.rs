@@ -171,6 +171,76 @@ fn trigger_transaction(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn parse_expect_utxo_toml() {
+        let toml = r#"
+            file = "./main.tx3"
+
+            [[wallets]]
+            name = "oracle"
+            balance = 10000000
+
+            [[wallets]]
+            name = "operator"
+            balance = 5000000
+
+            [[transactions]]
+            description = "Simple Oracle"
+            template = "create"
+            signers = ["operator"]
+            args = { rate = 42, operator = "@operator", oracle = "@oracle" }
+
+            [[expect]]
+            from = "@oracle"
+            datum_equals = 42
+
+            [[expect.min_amount]]
+            amount = 123
+
+            [[expect.min_amount]]
+            policy = "xyz"
+            name = "abc"
+            amount = 456
+        "#;
+
+        let parsed: Test = toml::from_str(toml).expect("parse toml");
+
+        assert_eq!(parsed.file, PathBuf::from("./main.tx3"));
+        assert_eq!(parsed.wallets.len(), 2);
+
+        assert_eq!(parsed.transactions.len(), 1);
+
+        assert_eq!(parsed.expect.len(), 1);
+        let e = &parsed.expect[0];
+        assert_eq!(e.from, "@oracle");
+
+        assert!(e.datum_equals.is_some());
+        let datum = e.datum_equals.as_ref().unwrap();
+        match datum {
+            serde_json::Value::Number(n) => {
+                assert_eq!(n.as_i64(), Some(42));
+            }
+            other => panic!("unexpected datum kind: {other:?}"),
+        }
+
+        assert!(e.min_amount.is_some());
+        let mins = e.min_amount.as_ref().unwrap();
+        assert_eq!(mins.len(), 2);
+
+        assert_eq!(mins[0].amount, 123);
+        assert!(mins[0].policy.is_none() && mins[0].name.is_none());
+
+        assert_eq!(mins[1].policy.as_ref().unwrap(), "xyz");
+        assert_eq!(mins[1].name.as_ref().unwrap(), "abc");
+        assert_eq!(mins[1].amount, 456);
+    }
+}
+
 pub fn run(args: Args, _config: &Config, profile: &ProfileConfig) -> Result<()> {
     println!("== Starting tests ==\n");
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
