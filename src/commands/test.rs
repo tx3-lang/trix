@@ -7,11 +7,14 @@ use std::{
 };
 
 use clap::Args as ClapArgs;
-use miette::{Context, IntoDiagnostic, bail};
+use miette::{Context, IntoDiagnostic, Result, bail};
 use pallas::ledger::addresses::Address;
 use serde::{Deserialize, Serialize};
 
-use crate::config::Config;
+use crate::{
+    config::{Config, ProfileConfig, load_profile_env_vars},
+    spawn::cshell::OutputWallet,
+};
 
 const BLOCK_PRODUCTION_INTERVAL_SECONDS: u64 = 5;
 const BOROS_SPAW_DELAY_SECONDS: u64 = 2;
@@ -94,7 +97,7 @@ impl Display for ExpectAmount {
     }
 }
 
-fn ensure_test_home(test: &Test, hashable: &[u8]) -> miette::Result<PathBuf> {
+fn ensure_test_home(test: &Test, hashable: &[u8]) -> Result<PathBuf> {
     let test_home = crate::home::consistent_tmp_dir("test", hashable)?;
 
     // if the test with the exact hash already exists, we assume it's already initialized
@@ -126,31 +129,61 @@ fn ensure_test_home(test: &Test, hashable: &[u8]) -> miette::Result<PathBuf> {
     Ok(test_home)
 }
 
+fn replace_placeholder_args(args: &mut ArgMap, wallets: &Vec<OutputWallet>) {
+    for (_, value) in args.iter_mut() {
+        if let serde_json::Value::String(s) = value {
+            if s.starts_with('@') {
+                if let Some(wallet) = wallets
+                    .iter()
+                    .find(|w| w.name.eq(s.trim_start_matches('@')))
+                {
+                    *value = serde_json::Value::String(wallet.addresses.testnet.clone());
+                }
+            }
+        }
+    }
+}
+
+pub type ArgMap = serde_json::Map<String, serde_json::Value>;
+
+fn merge_json_maps_mut(a: &mut ArgMap, b: &ArgMap) {
+    for (key, value) in b {
+        a.insert(key.clone(), value.clone());
+    }
+}
+
+fn define_args(
+    transaction: &Transaction,
+    wallets: &Vec<OutputWallet>,
+    profile: &ProfileConfig,
+) -> Result<serde_json::Value> {
+    let mut all = ArgMap::new();
+
+    let explicit = serde_json::to_value(&transaction.args).into_diagnostic()?;
+    let explicit = explicit.as_object().unwrap();
+
+    merge_json_maps_mut(&mut all, explicit);
+
+    let env = serde_json::to_value(&load_profile_env_vars(profile)?).into_diagnostic()?;
+    let env = env.as_object().unwrap();
+    merge_json_maps_mut(&mut all, &env);
+
+    replace_placeholder_args(&mut all, wallets);
+
+    Ok(serde_json::json!(all))
+}
+
 fn trigger_transaction(
     home: &Path,
     tx3_file: &Path,
     transaction: &Transaction,
-) -> miette::Result<()> {
+    profile: &ProfileConfig,
+) -> Result<()> {
     let wallets = crate::spawn::cshell::wallet_list(home)?;
 
-    let args: HashMap<String, serde_json::Value> = transaction
-        .args
-        .clone()
-        .into_iter()
-        .map(|mut arg| {
-            if let serde_json::Value::String(s) = &arg.1 {
-                if s.starts_with('@') {
-                    if let Some(wallet) = wallets
-                        .iter()
-                        .find(|w| w.name.eq(s.trim_start_matches('@')))
-                    {
-                        arg.1 = serde_json::Value::String(wallet.addresses.testnet.clone());
-                    }
-                }
-            };
-            arg
-        })
-        .collect();
+    let args = define_args(transaction, &wallets, profile)?;
+
+    dbg!(&args);
 
     let signer = match transaction.signers.len() {
         1 => transaction.signers[0].clone(),
@@ -162,7 +195,7 @@ fn trigger_transaction(
     let output = crate::spawn::cshell::tx_invoke_json(
         home,
         tx3_file,
-        &Some(serde_json::json!(args)),
+        &serde_json::json!(args),
         Some(&transaction.template),
         vec![&signer],
         true,
@@ -174,7 +207,7 @@ fn trigger_transaction(
     Ok(())
 }
 
-pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
+pub fn run(args: Args, _config: &Config, profile: &ProfileConfig) -> Result<()> {
     println!("== Starting tests ==\n");
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
     let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
@@ -189,7 +222,7 @@ pub fn run(args: Args, _config: &Config) -> miette::Result<()> {
     let mut failed = false;
     for transaction in &test.transactions {
         println!("--- Running transaction: {} ---", transaction.description);
-        if let Err(err) = trigger_transaction(&test_home, &test.file, transaction) {
+        if let Err(err) = trigger_transaction(&test_home, &test.file, transaction, &profile) {
             eprintln!("Transaction `{}` failed.\n", transaction.description);
             eprintln!("Error: {err}\n");
             failed = true;

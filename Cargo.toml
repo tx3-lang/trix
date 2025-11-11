@@ -47,6 +47,7 @@ ed25519-bip32 = "0.4.1"
 bip39 = "2.1.0"
 octocrab = "0.44"
 serde_with = "3.14.0"
+dotenvy = "0.15.7"
 
 [features]
 unstable = []

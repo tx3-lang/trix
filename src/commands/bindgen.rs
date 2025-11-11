@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::config::{BindingsTemplateConfig, Config, KnownChain, TrpConfig};
+use crate::config::{BindingsTemplateConfig, Config, KnownChain, ProfileConfig, TrpConfig};
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
 use serde::{Serialize, Serializer};
@@ -466,26 +466,23 @@ async fn execute_bindgen(
     Ok(())
 }
 
-pub async fn run(_args: Args, config: &Config) -> miette::Result<()> {
+pub async fn run(_args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
     for bindgen in config.bindings.iter() {
         let protocol = Protocol::from_file(config.protocol.main.clone()).load()?;
 
         std::fs::create_dir_all(&bindgen.output_dir).into_diagnostic()?;
 
-        let profile = config
-            .profiles
-            .clone()
-            .unwrap_or_default()
-            .devnet
+        let trp_config = profile
             .trp
-            .unwrap_or_else(|| TrpConfig::from(KnownChain::CardanoDevnet));
+            .as_ref()
+            .ok_or_else(|| miette::miette!("TRP config not found"))?;
 
         let job = Job {
             name: config.protocol.name.clone(),
             protocol,
             dest_path: bindgen.output_dir.clone(),
-            trp_endpoint: profile.url.clone(),
-            trp_headers: profile.headers.clone(),
+            trp_endpoint: trp_config.url.clone(),
+            trp_headers: trp_config.headers.clone(),
             env_args: HashMap::new(),
             options: bindgen.options.clone().unwrap_or_default(),
         };

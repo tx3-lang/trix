@@ -1,13 +1,15 @@
 use miette::IntoDiagnostic as _;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     pub protocol: ProtocolConfig,
     pub registry: Option<RegistryConfig>,
-    pub profiles: Option<ProfilesConfig>,
     pub bindings: Vec<BindingsConfig>,
+
+    #[serde(default)]
+    pub profiles: ProfilesConfig,
 
     #[serde(default)]
     pub wallets: Vec<WalletConfig>,
@@ -36,28 +38,68 @@ impl Default for RegistryConfig {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ProfilesConfig {
-    pub devnet: ProfileConfig,
-    pub preview: Option<ProfileConfig>,
-    pub preprod: Option<ProfileConfig>,
-    pub mainnet: Option<ProfileConfig>,
+#[derive(Debug, Serialize, Clone)]
+pub struct ProfilesConfig(
+    #[serde(serialize_with = "serialize_profiles")] HashMap<String, ProfileConfig>,
+);
+
+fn serialize_profiles<S>(
+    profiles: &HashMap<String, ProfileConfig>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::Serialize;
+    profiles.serialize(serializer)
+}
+
+fn deserialize_profiles<'de, D>(deserializer: D) -> Result<HashMap<String, ProfileConfig>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut map = HashMap::<String, ProfileConfig>::deserialize(deserializer)?;
+
+    for (key, value) in map.iter_mut() {
+        value.name = key.clone();
+    }
+
+    Ok(map)
+}
+
+impl<'de> Deserialize<'de> for ProfilesConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let map = deserialize_profiles(deserializer)?;
+
+        Ok(ProfilesConfig(map))
+    }
+}
+
+impl ProfilesConfig {
+    pub fn get_by_name(&self, profile: &str) -> Option<&ProfileConfig> {
+        self.0.get(profile)
+    }
 }
 
 impl Default for ProfilesConfig {
     fn default() -> Self {
-        Self {
-            devnet: KnownChain::CardanoDevnet.into(),
-            preview: Some(KnownChain::CardanoPreview.into()),
-            preprod: Some(KnownChain::CardanoPreprod.into()),
-            mainnet: Some(KnownChain::CardanoMainnet.into()),
-        }
+        let map = KNOWN_CHAINS
+            .iter()
+            .map(|c| ProfileConfig::from(c.clone()))
+            .map(|p| (p.name.clone(), p))
+            .collect();
+
+        Self(map)
     }
 }
 
 impl From<KnownChain> for ProfileConfig {
     fn from(chain: KnownChain) -> Self {
         Self {
+            name: chain.as_profile_name().to_string(),
             chain: chain.clone(),
             env_file: None,
             trp: None,
@@ -76,10 +118,35 @@ const PUBLIC_MAINNET_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct ProfileConfig {
+    #[serde(skip)]
+    pub name: String,
+
     pub chain: KnownChain,
-    pub env_file: Option<String>,
+    pub env_file: Option<PathBuf>,
     pub trp: Option<TrpConfig>,
     pub u5c: Option<U5cConfig>,
+}
+
+impl ProfileConfig {
+    pub fn env_file_path(&self) -> PathBuf {
+        self.env_file
+            .clone()
+            .unwrap_or_else(|| PathBuf::from(&format!(".env.{}", self.name)))
+    }
+}
+
+pub fn load_profile_env_vars(profile: &ProfileConfig) -> miette::Result<HashMap<String, String>> {
+    let path = profile.env_file_path();
+
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    dotenvy::from_path(path).into_diagnostic()?;
+
+    let value = dotenvy::vars().collect::<HashMap<String, String>>();
+
+    Ok(value)
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -96,6 +163,24 @@ pub enum KnownChain {
     CardanoPreview,
     CardanoPreprod,
     CardanoDevnet,
+}
+
+const KNOWN_CHAINS: &[KnownChain] = &[
+    KnownChain::CardanoMainnet,
+    KnownChain::CardanoPreview,
+    KnownChain::CardanoPreprod,
+    KnownChain::CardanoDevnet,
+];
+
+impl KnownChain {
+    pub fn as_profile_name(&self) -> &'static str {
+        match self {
+            KnownChain::CardanoMainnet => "mainnet",
+            KnownChain::CardanoPreview => "preview",
+            KnownChain::CardanoPreprod => "preprod",
+            KnownChain::CardanoDevnet => "devnet",
+        }
+    }
 }
 
 impl Default for KnownChain {

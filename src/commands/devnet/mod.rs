@@ -4,20 +4,14 @@ use clap::{Args as ClapArgs, Subcommand};
 use miette::{Context, IntoDiagnostic, bail};
 use pallas::ledger::addresses::Address;
 
-use crate::config::Config;
+use crate::config::{Config, ProfileConfig};
 use crate::devnet::Config as DevnetConfig;
 
+pub mod copy;
 pub mod explore;
 pub mod invoke;
-pub mod copy;
 
-pub fn ensure_devnet_home(config: &Config) -> miette::Result<PathBuf> {
-    let profile = config
-        .profiles
-        .as_ref()
-        .map(|profiles| profiles.devnet.clone())
-        .unwrap_or_default();
-
+pub fn ensure_devnet_home(config: &Config, profile: &ProfileConfig) -> miette::Result<PathBuf> {
     let profile_hashable = serde_json::to_vec(&profile).into_diagnostic()?;
 
     let devnet_home = crate::home::consistent_tmp_dir("devnet", &profile_hashable)?;
@@ -57,7 +51,8 @@ pub fn ensure_devnet_home(config: &Config) -> miette::Result<PathBuf> {
 
     let initial_utxos = devnet_config.iter_utxos_bytes()?;
 
-    let _dolos_config = crate::spawn::dolos::initialize_config(&devnet_home, &initial_funds, &initial_utxos)?;
+    let _dolos_config =
+        crate::spawn::dolos::initialize_config(&devnet_home, &initial_funds, &initial_utxos)?;
     // println!("dolos config initialized at: {}", dolos_config.display());
 
     Ok(devnet_home)
@@ -79,15 +74,15 @@ pub struct Args {
     background: bool,
 }
 
-pub fn run(args: Args, config: &Config) -> miette::Result<()> {
+pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
     match args.command {
-        Some(Command::Copy(args)) => copy::run(args, config),
-        None => run_devnet(args, config),
+        Some(Command::Copy(args)) => copy::run(args, config, profile),
+        None => run_devnet(args, config, profile),
     }
 }
 
-pub fn run_devnet(args: Args, config: &Config) -> miette::Result<()> {
-    let devnet_home = ensure_devnet_home(config)?;
+pub fn run_devnet(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
+    let devnet_home = ensure_devnet_home(config, profile)?;
 
     let mut daemon = crate::spawn::dolos::daemon(&devnet_home, args.background)?;
 

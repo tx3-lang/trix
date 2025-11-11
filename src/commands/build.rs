@@ -23,26 +23,8 @@ pub struct Args {
     profile: Option<String>,
 }
 
-pub fn run(args: Args, config: &Config) -> miette::Result<()> {
-    let profiles = config.profiles.as_ref();
-
-    let profile: miette::Result<ProfileConfig> = match args.profile {
-        Some(profile_arg) => match profiles {
-            Some(p) => match profile_arg.as_str() {
-                "devnet" => Ok(p.devnet.clone()),
-                "preview" => Ok(p.preview.clone().unwrap_or_default()),
-                "preprod" => Ok(p.preprod.clone().unwrap_or_default()),
-                "mainnet" => Ok(p.mainnet.clone().unwrap_or_default()),
-                _ => bail!("invalid profile"),
-            },
-            None => bail!("profile argument was provided but profiles are missing"),
-        },
-        None => Ok(profiles.map(|p| p.devnet.clone()).unwrap_or_default()),
-    };
-
-    let profile = profile?;
-
-    let envs = if let Some(e) = profile.env_file {
+pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
+    let envs = if let Some(e) = &profile.env_file {
         match fs::File::open(e) {
             Ok(file) => {
                 let reader = io::BufReader::new(file);
