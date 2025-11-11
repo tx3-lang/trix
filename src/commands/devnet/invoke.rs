@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use clap::Args as ClapArgs;
-use miette::{Context, IntoDiagnostic, bail};
+use miette::{IntoDiagnostic, bail};
 
-use crate::config::Config;
+use crate::config::{Config, ProfileConfig};
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -20,23 +20,52 @@ pub struct Args {
     skip_submit: bool,
 }
 
-fn load_args_json(args: &Args) -> miette::Result<Option<serde_json::Value>> {
+pub type ArgMap = serde_json::Map<String, serde_json::Value>;
+
+fn merge_json_maps_mut(a: &mut ArgMap, b: &ArgMap) {
+    for (key, value) in b {
+        a.insert(key.clone(), value.clone());
+    }
+}
+
+fn string_to_json_map(s: &str) -> miette::Result<ArgMap> {
+    let value = serde_json::from_str::<serde_json::Value>(s).into_diagnostic()?;
+
+    let value = value
+        .as_object()
+        .ok_or(miette::miette!("json args should be an object"))?;
+
+    Ok(value.to_owned())
+}
+
+fn load_args_json(args: &Args, profile: &ProfileConfig) -> miette::Result<serde_json::Value> {
+    let mut all = serde_json::Map::new();
+
+    let env = crate::config::load_profile_env_vars(profile)?;
+
+    let env = serde_json::to_value(&env).into_diagnostic()?;
+    let env = env
+        .as_object()
+        .ok_or(miette::miette!("env should be an object"))?;
+
+    merge_json_maps_mut(&mut all, env);
+
     if let Some(args_json) = &args.args_json {
-        let value = serde_json::from_str(args_json).into_diagnostic()?;
-        return Ok(Some(value));
+        let value = string_to_json_map(args_json)?;
+        merge_json_maps_mut(&mut all, &value);
     }
 
     if let Some(path) = &args.args_json_path {
         let args_json = std::fs::read_to_string(path).into_diagnostic()?;
-        let value = serde_json::from_str(&args_json).into_diagnostic()?;
-        return Ok(Some(value));
+        let value = string_to_json_map(&args_json)?;
+        merge_json_maps_mut(&mut all, &value);
     }
 
-    Ok(None)
+    Ok(serde_json::Value::Object(all))
 }
 
-pub fn run(args: Args, config: &Config) -> miette::Result<()> {
-    let devnet_home = crate::commands::devnet::ensure_devnet_home(config)?;
+pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
+    let devnet_home = crate::commands::devnet::ensure_devnet_home(config, profile)?;
 
     let cononical = config.protocol.main.canonicalize().into_diagnostic()?;
 
@@ -47,7 +76,7 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
         );
     }
 
-    let args_json = load_args_json(&args)?;
+    let args_json = load_args_json(&args, profile)?;
 
     crate::spawn::cshell::tx_invoke_interactive(
         &devnet_home,

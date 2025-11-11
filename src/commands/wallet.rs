@@ -1,9 +1,10 @@
 use clap::{Args as ClapArgs, Subcommand};
-use cryptoxide::{digest::Digest, sha2::Sha256};
 use miette::IntoDiagnostic;
-use pallas::{crypto::key::ed25519::SecretKey, ledger::addresses::ShelleyAddress};
 
-use crate::{config::Config, spawn};
+use crate::{
+    config::{Config, ProfileConfig},
+    spawn,
+};
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -22,8 +23,8 @@ pub enum Command {
     PublicKeyHash,
 }
 
-pub fn run(args: Args, config: &Config) -> miette::Result<()> {
-    let devnet_home = crate::commands::devnet::ensure_devnet_home(config)?;
+pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
+    let devnet_home = crate::commands::devnet::ensure_devnet_home(config, profile)?;
 
     let info = spawn::cshell::wallet_info(&devnet_home, &args.name)?;
 

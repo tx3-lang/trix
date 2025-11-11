@@ -1,14 +1,8 @@
 use crate::config::{Config, ProfileConfig, U5cConfig};
 
 use utxorpc::{
-    ClientBuilder,
-    QueryClient,
-    Cardano,
-    ChainUtxo,
-    spec::{
-        query::TxoRef,
-        cardano::TxOutput,
-    },
+    Cardano, ChainUtxo, ClientBuilder, QueryClient,
+    spec::{cardano::TxOutput, query::TxoRef},
 };
 
 use clap::Args as ClapArgs;
@@ -29,21 +23,11 @@ pub struct Args {
     output: Option<String>,
 }
 
-pub fn run(args: Args, config: &Config) -> miette::Result<()> {
-    let profiles = config.profiles.as_ref();
-
-    let profile: miette::Result<ProfileConfig> = match profiles {
-        Some(p) => match args.profile.as_str() {
-            "preview" => Ok(p.preview.clone().unwrap_or_default()),
-            "preprod" => Ok(p.preprod.clone().unwrap_or_default()),
-            "mainnet" => Ok(p.mainnet.clone().unwrap_or_default()),
-            "devnet" => Ok(p.devnet.clone()),
-            _ => bail!("invalid profile"),
-        },
-        None => bail!("profile argument was provided but profiles are missing"),
-    };
-
-    let u5c = profile?.u5c.ok_or_else(|| miette::miette!("missing u5c config for profile"))?;
+pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
+    let u5c = profile
+        .u5c
+        .as_ref()
+        .ok_or_else(|| miette::miette!("missing u5c config for profile"))?;
 
     let tx_hash = args.utxo_deps;
 
@@ -62,7 +46,7 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
                 crate::devnet::UtxoSpecBytes {
                     r#ref: format!("{}#{}", hex::encode(txo_ref.hash), txo_ref.index),
                     raw_bytes: hex::encode(utxo.native),
-                }
+                },
             ));
         }
     }
@@ -74,10 +58,13 @@ pub fn run(args: Args, config: &Config) -> miette::Result<()> {
     Ok(())
 }
 
-async fn fetch_utxo_deps(u5c: U5cConfig, tx_hash: &str) -> miette::Result<Vec<ChainUtxo<TxOutput>>> {
-    let mut client_builder = ClientBuilder::new().uri(u5c.url).into_diagnostic()?;
+async fn fetch_utxo_deps(
+    u5c: &U5cConfig,
+    tx_hash: &str,
+) -> miette::Result<Vec<ChainUtxo<TxOutput>>> {
+    let mut client_builder = ClientBuilder::new().uri(&u5c.url).into_diagnostic()?;
 
-    for (key, value) in u5c.headers {
+    for (key, value) in u5c.headers.iter() {
         client_builder = client_builder.metadata(&key, &value).into_diagnostic()?;
     }
 
@@ -85,16 +72,25 @@ async fn fetch_utxo_deps(u5c: U5cConfig, tx_hash: &str) -> miette::Result<Vec<Ch
 
     let tx_hash_bytes = hex::decode(tx_hash).into_diagnostic()?;
 
-    let tx = client.read_tx(tx_hash_bytes.into()).await.into_diagnostic()?;
+    let tx = client
+        .read_tx(tx_hash_bytes.into())
+        .await
+        .into_diagnostic()?;
 
     if let Some(tx) = tx {
         if let Some(tx) = tx.parsed {
-            let utxos = client.read_utxos(
-                tx.inputs.iter().map(|r| TxoRef {
-                    hash: r.tx_hash.clone(),
-                    index: r.output_index,
-                }).collect()
-            ).await.into_diagnostic()?;
+            let utxos = client
+                .read_utxos(
+                    tx.inputs
+                        .iter()
+                        .map(|r| TxoRef {
+                            hash: r.tx_hash.clone(),
+                            index: r.output_index,
+                        })
+                        .collect(),
+                )
+                .await
+                .into_diagnostic()?;
 
             return Ok(utxos);
         }

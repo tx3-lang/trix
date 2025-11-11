@@ -165,7 +165,7 @@ pub fn wallet_list(home: &Path) -> miette::Result<Vec<OutputWallet>> {
 pub fn tx_invoke_cmd(
     home: &Path,
     tx3_file: &Path,
-    tx3_args: &Option<serde_json::Value>,
+    tx3_args: &serde_json::Value,
     tx3_template: Option<&str>,
     signers: Vec<&str>,
     r#unsafe: bool,
@@ -186,10 +186,8 @@ pub fn tx_invoke_cmd(
         cmd.args(["--tx3-template", tx3_template]);
     }
 
-    if let Some(tx3_args) = tx3_args {
-        let tx3_args_json = serde_json::to_string(tx3_args).into_diagnostic()?;
-        cmd.args(["--tx3-args-json", &tx3_args_json]);
-    }
+    let tx3_args_json = serde_json::to_string(tx3_args).into_diagnostic()?;
+    cmd.args(["--tx3-args-json", &tx3_args_json]);
 
     for signer in signers {
         cmd.args(["--signers", signer]);
@@ -211,7 +209,7 @@ pub fn tx_invoke_cmd(
 pub fn tx_invoke_interactive(
     home: &Path,
     tx3_file: &Path,
-    tx3_args: &Option<serde_json::Value>,
+    tx3_args: &serde_json::Value,
     tx3_template: Option<&str>,
     signers: Vec<&str>,
     r#unsafe: bool,
@@ -240,7 +238,7 @@ pub fn tx_invoke_interactive(
 pub fn tx_invoke_json(
     home: &Path,
     tx3_file: &Path,
-    tx3_args: &Option<serde_json::Value>,
+    tx3_args: &serde_json::Value,
     tx3_template: Option<&str>,
     signers: Vec<&str>,
     r#unsafe: bool,
