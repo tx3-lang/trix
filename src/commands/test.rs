@@ -51,7 +51,7 @@ struct Transaction {
 struct ExpectUtxo {
     from: String,
     datum_equals: Option<serde_json::Value>,
-    min_amount: Option<Vec<ExpectMinAmount>>,
+    min_amount: Vec<ExpectMinAmount>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -228,8 +228,7 @@ mod tests {
             other => panic!("unexpected datum kind: {other:?}"),
         }
 
-        assert!(e.min_amount.is_some());
-        let mins = e.min_amount.as_ref().unwrap();
+        let mins = &e.min_amount;
         assert_eq!(mins.len(), 2);
 
         assert_eq!(mins[0].amount, 123);
