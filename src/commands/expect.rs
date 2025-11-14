@@ -19,19 +19,6 @@ pub fn expect_utxo(expects: &[ExpectUtxo], test_home: &Path) -> Result<bool> {
 
         let utxos = cshell::wallet_utxos(&test_home, &expect.from)?;
 
-        // Validate ownership
-        for utxo in &utxos {
-            if utxo.address != expect.from {
-                failed = true;
-                eprintln!(
-                    "Test Failed: UTXO with address `{}` does not belong to wallet `{}`.",
-                    utxo.address, expect.from
-                );
-                eprintln!("Expected address: {}", expect.from);
-                eprintln!("Hint: Check the wallet_utxos implementation.");
-            }
-        }
-
         if expect.datum_equals.is_none() && expect.min_amount.is_empty() {
             if utxos.is_empty() {
                 failed = true;

@@ -64,10 +64,11 @@ fn initialize_wal_store(data_dir: &Path) -> miette::Result<()> {
 }
 
 fn initialize_ledger_store(data_dir: &Path) -> miette::Result<dolos_redb::state::LedgerStore> {
-    let state: dolos_redb::state::LedgerStore = dolos_redb::state::LedgerStore::open(&data_dir.join("ledger"), None)
-        .map_err(dolos_core::StateError::from)
-        .into_diagnostic()
-        .context("creating ledger store")?;
+    let state: dolos_redb::state::LedgerStore =
+        dolos_redb::state::LedgerStore::open(&data_dir.join("ledger"), None)
+            .map_err(dolos_core::StateError::from)
+            .into_diagnostic()
+            .context("creating ledger store")?;
 
     Ok(state)
 }
@@ -81,8 +82,10 @@ fn initialize_chain_store(data_dir: &Path) -> miette::Result<dolos_redb::archive
     Ok(archive)
 }
 
-fn calculate_deltas(initial_utxos: &Vec<(String, Vec<u8>)>) -> miette::Result<Vec<dolos_core::LedgerDelta>> {
-    use dolos_cardano::pallas::ledger::traverse::{MultiEraOutput, Era};
+fn calculate_deltas(
+    initial_utxos: &Vec<(String, Vec<u8>)>,
+) -> miette::Result<Vec<dolos_core::LedgerDelta>> {
+    use dolos_cardano::pallas::ledger::traverse::{Era, MultiEraOutput};
 
     let eras = vec![Era::Conway, Era::Babbage, Era::Alonzo, Era::Byron];
 
@@ -90,12 +93,17 @@ fn calculate_deltas(initial_utxos: &Vec<(String, Vec<u8>)>) -> miette::Result<Ve
 
     println!("Applying initial UTxOs...");
 
+    dbg!(initial_utxos);
     for (address, bytes) in initial_utxos {
         let utxo_hash = hex::decode(address.split('#').nth(0).unwrap_or_default())
             .into_diagnostic()
             .context("decoding tx hash")?;
 
-        let utxo_id = address.split('#').nth(1).unwrap_or_default().parse::<u32>()
+        let utxo_id = address
+            .split('#')
+            .nth(1)
+            .unwrap_or_default()
+            .parse::<u32>()
             .into_diagnostic()
             .context("parsing tx id")?;
 
@@ -113,7 +121,9 @@ fn calculate_deltas(initial_utxos: &Vec<(String, Vec<u8>)>) -> miette::Result<Ve
 
         if let Some(output) = output {
             println!("UTxO {} found", address);
-            delta.produced_utxo.insert(utxo_ref, dolos_core::EraCbor::from(output));
+            delta
+                .produced_utxo
+                .insert(utxo_ref, dolos_core::EraCbor::from(output));
         }
     }
 
@@ -122,8 +132,10 @@ fn calculate_deltas(initial_utxos: &Vec<(String, Vec<u8>)>) -> miette::Result<Ve
     Ok(vec![delta])
 }
 
-fn initialize_initial_utxos(home_dir: &Path, initial_utxos: &Vec<(String, Vec<u8>)>) -> miette::Result<()> {
-
+fn initialize_initial_utxos(
+    home_dir: &Path,
+    initial_utxos: &Vec<(String, Vec<u8>)>,
+) -> miette::Result<()> {
     let data_dir = initialize_data_dir(home_dir)?;
 
     initialize_wal_store(&data_dir)?;
@@ -134,12 +146,14 @@ fn initialize_initial_utxos(home_dir: &Path, initial_utxos: &Vec<(String, Vec<u8
 
     let deltas = calculate_deltas(initial_utxos)?;
 
-    state.apply(&deltas)
+    state
+        .apply(&deltas)
         .map_err(dolos_core::StateError::from)
         .into_diagnostic()
         .context("applying initial utxos to state")?;
 
-    archive.apply(&deltas)
+    archive
+        .apply(&deltas)
         .map_err(dolos_core::ArchiveError::from)
         .into_diagnostic()
         .context("applying initial utxos to archive")?;
@@ -175,6 +189,7 @@ pub fn initialize_config(
 
     let config_path = save_config(home, "dolos.toml", DOLOS_TEMPLATE)?;
 
+    dbg!(initial_utxos);
     initialize_initial_utxos(home, initial_utxos)?;
 
     Ok(config_path)
