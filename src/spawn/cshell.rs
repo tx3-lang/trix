@@ -37,6 +37,43 @@ pub struct OutputBalance {
     pub coin: u64,
 }
 
+// #[derive(Debug, Deserialize)]
+// pub struct UtxoRef {
+//     pub hash: String,
+//     pub index: u64,
+// }
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Asset {
+    #[serde(with = "hex::serde")]
+    pub name: Vec<u8>,
+    pub output_coin: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Datum {
+    #[serde(with = "hex::serde")]
+    pub hash: Vec<u8>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct UtxoAsset {
+    #[serde(with = "hex::serde")]
+    pub policy_id: Vec<u8>,
+    pub assets: Vec<Asset>,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct UTxO {
+    #[serde(with = "hex::serde")]
+    pub tx: Vec<u8>,
+    pub tx_index: u64,
+    pub address: String,
+    pub coin: String, // To avoid overflow
+    pub assets: Vec<UtxoAsset>,
+    pub datum: Option<Datum>,
+}
+
 pub fn initialize_config(root: &Path) -> miette::Result<PathBuf> {
     let config_path = root.join("cshell.toml");
 
@@ -283,6 +320,48 @@ pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBa
     }
 
     serde_json::from_slice(&output.stdout).into_diagnostic()
+}
+
+pub fn wallet_utxos(home: &Path, wallet_name: &str) -> miette::Result<Vec<UTxO>> {
+    dbg!(wallet_name);
+    let mut cmd = new_generic_command(home)?;
+    let output = cmd
+        .args([
+            "wallet",
+            "balance",
+            wallet_name,
+            "--detail",
+            "--output-format",
+            "json",
+        ])
+        .stdout(Stdio::piped())
+        .output()
+        .into_diagnostic()
+        .context("running CShell wallet utxos")?;
+
+    if !output.status.success() {
+        bail!("CShell failed to get wallet utxos");
+    }
+
+    match serde_json::from_slice::<Vec<UTxO>>(&output.stdout) {
+        Ok(list) => Ok(list),
+        Err(_) => {
+            let v: serde_json::Value = serde_json::from_slice(&output.stdout).into_diagnostic()?;
+            if let Some(utxos_val) = v.get("utxos") {
+                let list: Vec<UTxO> =
+                    serde_json::from_value(utxos_val.clone()).into_diagnostic()?;
+                Ok(list)
+            } else {
+                // As a last resort try to deserialize any array value at top-level
+                if v.is_array() {
+                    let list: Vec<UTxO> = serde_json::from_value(v).into_diagnostic()?;
+                    Ok(list)
+                } else {
+                    bail!("unexpected CShell wallet balance output shape")
+                }
+            }
+        }
+    }
 }
 
 pub fn explorer(home: &Path) -> miette::Result<Child> {

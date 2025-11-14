@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fmt::Display,
     path::{Path, PathBuf},
     thread::sleep,
     time::Duration,
@@ -48,17 +47,17 @@ struct Transaction {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ExpectUtxo {
-    from: String,
-    datum_equals: Option<serde_json::Value>,
-    min_amount: Vec<ExpectMinAmount>,
+pub(crate) struct ExpectUtxo {
+    pub(crate) from: String,
+    pub(crate) datum_equals: Option<serde_json::Value>,
+    pub(crate) min_amount: Vec<ExpectMinAmount>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ExpectMinAmount {
-    policy: Option<String>,
-    name: Option<String>,
-    amount: u64,
+pub(crate) struct ExpectMinAmount {
+    pub(crate) policy: Option<String>,
+    pub(crate) name: Option<String>,
+    pub(crate) amount: u64,
 }
 
 fn ensure_test_home(test: &Test, hashable: &[u8]) -> Result<PathBuf> {
@@ -265,24 +264,7 @@ pub fn run(args: Args, _config: &Config, profile: &ProfileConfig) -> Result<()> 
         sleep(Duration::from_secs(BLOCK_PRODUCTION_INTERVAL_SECONDS));
     }
 
-    for expect in test.expect.iter() {
-        // let balance = crate::spawn::cshell::wallet_balance(&test_home, &expect.from)?;
-        todo!();
-        // let r#match = expect.amount.matches(balance.coin);
-
-        // if !r#match {
-        //     failed = true;
-
-        //     eprintln!(
-        //         "Test Failed: `{}` Balance did not match the expected result.",
-        //         expect.from
-        //     );
-        //     eprintln!("Expected: {}", expect.amount);
-        //     eprintln!("Received: {}", balance.coin);
-
-        //     eprintln!("Hint: Check the tx3 file or the test file.");
-        // }
-    }
+    failed |= crate::commands::expect::expect_utxo(&test.expect, &test_home)?;
 
     if !failed {
         println!("Test Passed\n");
