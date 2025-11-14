@@ -2,6 +2,7 @@ pub mod bindgen;
 pub mod build;
 pub mod check;
 pub mod devnet;
+pub mod expect;
 pub mod init;
 pub mod inspect;
 pub mod publish;
