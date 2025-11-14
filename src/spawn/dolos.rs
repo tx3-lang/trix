@@ -93,7 +93,6 @@ fn calculate_deltas(
 
     println!("Applying initial UTxOs...");
 
-    dbg!(initial_utxos);
     for (address, bytes) in initial_utxos {
         let utxo_hash = hex::decode(address.split('#').nth(0).unwrap_or_default())
             .into_diagnostic()
@@ -189,7 +188,6 @@ pub fn initialize_config(
 
     let config_path = save_config(home, "dolos.toml", DOLOS_TEMPLATE)?;
 
-    dbg!(initial_utxos);
     initialize_initial_utxos(home, initial_utxos)?;
 
     Ok(config_path)

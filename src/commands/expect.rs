@@ -21,11 +21,8 @@ pub fn expect_utxo(expects: &[ExpectUtxo], test_home: &Path) -> Result<bool> {
 
         if expect.datum_equals.is_none() && expect.min_amount.is_empty() {
             if utxos.is_empty() {
-                failed = true;
-                eprintln!("Test Failed: No UTXOs found for wallet `{}`.", expect.from);
-            }
-            if failed {
                 failed_any = true;
+                eprintln!("Test Failed: No UTXOs found for wallet `{}`.", expect.from);
             }
             continue;
         }

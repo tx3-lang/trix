@@ -37,12 +37,6 @@ pub struct OutputBalance {
     pub coin: u64,
 }
 
-// #[derive(Debug, Deserialize)]
-// pub struct UtxoRef {
-//     pub hash: String,
-//     pub index: u64,
-// }
-
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Asset {
     #[serde(with = "hex::serde")]
@@ -323,7 +317,6 @@ pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBa
 }
 
 pub fn wallet_utxos(home: &Path, wallet_name: &str) -> miette::Result<Vec<UTxO>> {
-    dbg!(wallet_name);
     let mut cmd = new_generic_command(home)?;
     let output = cmd
         .args([
