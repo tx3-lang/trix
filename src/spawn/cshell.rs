@@ -352,7 +352,6 @@ pub fn wallet_utxos(home: &Path, wallet_name: &str) -> miette::Result<Vec<UTxO>>
                     serde_json::from_value(utxos_val.clone()).into_diagnostic()?;
                 Ok(list)
             } else {
-                // As a last resort try to deserialize any array value at top-level
                 if v.is_array() {
                     let list: Vec<UTxO> = serde_json::from_value(v).into_diagnostic()?;
                     Ok(list)

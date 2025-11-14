@@ -17,27 +17,9 @@ pub fn expect_utxo(expects: &[ExpectUtxo], test_home: &Path) -> Result<bool> {
     for expect in expects.iter() {
         let mut failed = false;
 
-        // // Resolve wallet name or address to an expected testnet address.
-        // let wallets = cshell::wallet_list(&test_home)?;
-        // let expected_wallet = wallets
-        //     .iter()
-        //     .find(|w| w.name == expect.from.trim_start_matches('@'))
-        //     .or_else(|| wallets.iter().find(|w| w.addresses.testnet == expect.from));
-
-        // if expected_wallet.is_none() {
-        //     failed = true;
-        //     eprintln!("Test Failed: Wallet `{}` not found.", expect.from);
-        //     eprintln!("Hint: Check the wallet name in the test file.");
-        //     if failed {
-        //         // mark overall failure and continue to next expectation
-        //         // (keeps behaviour similar to original inline checks)
-        //     }
-        //     continue;
-        // }
-
         let utxos = cshell::wallet_utxos(&test_home, &expect.from)?;
 
-        // Validate ownership: ensure returned UTXOs belong to expected address
+        // Validate ownership
         for utxo in &utxos {
             if utxo.address != expect.from {
                 failed = true;
@@ -50,7 +32,6 @@ pub fn expect_utxo(expects: &[ExpectUtxo], test_home: &Path) -> Result<bool> {
             }
         }
 
-        // Scenario 1: No datum_equals and no min_amount -> just check that at least one UTXO exists
         if expect.datum_equals.is_none() && expect.min_amount.is_empty() {
             if utxos.is_empty() {
                 failed = true;
@@ -121,14 +102,8 @@ pub fn expect_utxo(expects: &[ExpectUtxo], test_home: &Path) -> Result<bool> {
                     };
 
                 eprintln!(
-                    "Test Failed: `{}` UTXOs {} have insufficient {}.",
-                    expect.from,
-                    if expect.datum_equals.is_some() {
-                        "with matching datum"
-                    } else {
-                        ""
-                    },
-                    asset_desc
+                    "Test Failed: wallet `{}` with insufficient {}.",
+                    expect.from, asset_desc
                 );
                 eprintln!("Expected minimum: {}", min_req.amount);
                 eprintln!("Found: {}", total_amount);
