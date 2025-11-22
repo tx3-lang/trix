@@ -230,6 +230,8 @@ impl From<KnownChain> for TrpConfig {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct U5cConfig {
     pub url: String,
+
+    #[serde(default)]
     pub headers: HashMap<String, String>,
 }
 

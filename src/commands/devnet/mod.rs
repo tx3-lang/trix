@@ -41,7 +41,8 @@ pub fn ensure_devnet_home(config: &Config, profile: &ProfileConfig) -> miette::R
     // TODO: the actual devent file should be defined in the profile config
     let path = crate::dirs::protocol_root()?.join("devnet.toml");
 
-    let devnet_config = DevnetConfig::load(&path)?;
+    let devnet_config =
+        DevnetConfig::load(&path).context("can't find devnet config (devnet.toml)")?;
 
     let initial_funds: Vec<(String, u64)> = devnet_config
         .iter_utxos_values(&wallets)
