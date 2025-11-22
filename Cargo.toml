@@ -7,12 +7,13 @@ repository = "https://github.com/tx3-lang/trix"
 homepage = "https://github.com/tx3-lang/trix"
 
 [dependencies]
-tx3-lang = "0.12.0"
+tx3-lang = "0.13.0"
 # tx3-lang = { path = "../tx3/crates/tx3-lang" }
 # tx3-lang = { git = "https://github.com/tx3-lang/tx3.git" }
 
-utxorpc = { git = "https://github.com/utxorpc/rust-sdk.git" }
-# utxorpc = { path = "../utxorpc" }
+utxorpc = "0.12.0"
+# utxorpc = { git = "https://github.com/utxorpc/rust-sdk.git" }
+# utxorpc = { path = "../../utxorpc/rust-sdk" }
 
 dolos-core = { git = "https://github.com/txpipe/dolos.git", tag = "v0.32.0" }
 dolos-cardano = { git = "https://github.com/txpipe/dolos.git", tag = "v0.32.0" }
