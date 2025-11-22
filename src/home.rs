@@ -33,24 +33,41 @@ pub fn bin_dir() -> miette::Result<PathBuf> {
     Ok(bin)
 }
 
-pub fn tool_path(name: &str) -> miette::Result<PathBuf> {
+pub fn default_tool_path(name: &str) -> miette::Result<PathBuf> {
     let bin = bin_dir()?;
 
     let mut file = bin.join(name);
 
     if cfg!(target_os = "windows") {
         file.set_extension("exe");
-    };
+    }
 
-    if !file.exists() {
-        return Err(miette::miette!(
+    if !file.is_file() {
+        miette::bail!(
             help = "please run tx3up or make sure your tx3 toolchain is correctly installed",
             "tool {} not found",
             name
-        ));
+        );
     }
 
     Ok(file)
+}
+
+pub fn custom_tool_path(name: &str) -> miette::Result<Option<PathBuf>> {
+    let var = format!("TX3_{}_PATH", name.to_uppercase());
+
+    let Ok(path) = std::env::var(var) else {
+        return Ok(None);
+    };
+
+    Ok(Some(PathBuf::from(path)))
+}
+
+pub fn tool_path(name: &str) -> miette::Result<PathBuf> {
+    match custom_tool_path(name)? {
+        Some(path) => Ok(path),
+        None => default_tool_path(name),
+    }
 }
 
 pub fn tmp_dir() -> miette::Result<PathBuf> {
