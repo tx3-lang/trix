@@ -30,7 +30,7 @@ struct Test {
     file: PathBuf,
     wallets: Vec<Wallet>,
     transactions: Vec<Transaction>,
-    expect: Vec<Expect>,
+    expect: Vec<ExpectUtxo>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,53 +48,17 @@ struct Transaction {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum Expect {
-    Balance(ExpectBalance),
-    // TODO: improve expect adding more options
+struct ExpectUtxo {
+    from: String,
+    datum_equals: Option<serde_json::Value>,
+    min_amount: Vec<ExpectMinAmount>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ExpectBalance {
-    wallet: String,
-    amount: ExpectAmount,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-enum ExpectAmount {
-    Absolute(u64),
-    Aprox(ExpectAmountAprox),
-}
-
-impl ExpectAmount {
-    pub fn matches(&self, value: u64) -> bool {
-        match self {
-            ExpectAmount::Absolute(x) => x.eq(&value),
-            ExpectAmount::Aprox(x) => {
-                let lower = x.target.saturating_sub(x.threshold);
-                let upper = x.target + x.threshold;
-                value >= lower && value <= upper
-            }
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ExpectAmountAprox {
-    target: u64,
-    threshold: u64,
-}
-
-impl Display for ExpectAmount {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExpectAmount::Absolute(value) => write!(f, "{value}"),
-            ExpectAmount::Aprox(value) => {
-                write!(f, "target: ~{} (+/- {})", value.target, value.threshold)
-            }
-        }
-    }
+struct ExpectMinAmount {
+    policy: Option<String>,
+    name: Option<String>,
+    amount: u64,
 }
 
 fn ensure_test_home(test: &Test, hashable: &[u8]) -> Result<PathBuf> {
@@ -207,6 +171,75 @@ fn trigger_transaction(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn parse_expect_utxo_toml() {
+        let toml = r#"
+            file = "./main.tx3"
+
+            [[wallets]]
+            name = "oracle"
+            balance = 10000000
+
+            [[wallets]]
+            name = "operator"
+            balance = 5000000
+
+            [[transactions]]
+            description = "Simple Oracle"
+            template = "create"
+            signers = ["operator"]
+            args = { rate = 42, operator = "@operator", oracle = "@oracle" }
+
+            [[expect]]
+            from = "@oracle"
+            datum_equals = 42
+
+            [[expect.min_amount]]
+            amount = 123
+
+            [[expect.min_amount]]
+            policy = "xyz"
+            name = "abc"
+            amount = 456
+        "#;
+
+        let parsed: Test = toml::from_str(toml).expect("parse toml");
+
+        assert_eq!(parsed.file, PathBuf::from("./main.tx3"));
+        assert_eq!(parsed.wallets.len(), 2);
+
+        assert_eq!(parsed.transactions.len(), 1);
+
+        assert_eq!(parsed.expect.len(), 1);
+        let e = &parsed.expect[0];
+        assert_eq!(e.from, "@oracle");
+
+        assert!(e.datum_equals.is_some());
+        let datum = e.datum_equals.as_ref().unwrap();
+        match datum {
+            serde_json::Value::Number(n) => {
+                assert_eq!(n.as_i64(), Some(42));
+            }
+            other => panic!("unexpected datum kind: {other:?}"),
+        }
+
+        let mins = &e.min_amount;
+        assert_eq!(mins.len(), 2);
+
+        assert_eq!(mins[0].amount, 123);
+        assert!(mins[0].policy.is_none() && mins[0].name.is_none());
+
+        assert_eq!(mins[1].policy.as_ref().unwrap(), "xyz");
+        assert_eq!(mins[1].name.as_ref().unwrap(), "abc");
+        assert_eq!(mins[1].amount, 456);
+    }
+}
+
 pub fn run(args: Args, _config: &Config, profile: &ProfileConfig) -> Result<()> {
     println!("== Starting tests ==\n");
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
@@ -233,26 +266,22 @@ pub fn run(args: Args, _config: &Config, profile: &ProfileConfig) -> Result<()> 
     }
 
     for expect in test.expect.iter() {
-        match expect {
-            Expect::Balance(expect) => {
-                let balance = crate::spawn::cshell::wallet_balance(&test_home, &expect.wallet)?;
+        // let balance = crate::spawn::cshell::wallet_balance(&test_home, &expect.from)?;
+        todo!();
+        // let r#match = expect.amount.matches(balance.coin);
 
-                let r#match = expect.amount.matches(balance.coin);
+        // if !r#match {
+        //     failed = true;
 
-                if !r#match {
-                    failed = true;
+        //     eprintln!(
+        //         "Test Failed: `{}` Balance did not match the expected result.",
+        //         expect.from
+        //     );
+        //     eprintln!("Expected: {}", expect.amount);
+        //     eprintln!("Received: {}", balance.coin);
 
-                    eprintln!(
-                        "Test Failed: `{}` Balance did not match the expected result.",
-                        expect.wallet
-                    );
-                    eprintln!("Expected: {}", expect.amount);
-                    eprintln!("Received: {}", balance.coin);
-
-                    eprintln!("Hint: Check the tx3 file or the test file.");
-                }
-            }
-        }
+        //     eprintln!("Hint: Check the tx3 file or the test file.");
+        // }
     }
 
     if !failed {
