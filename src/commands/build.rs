@@ -257,7 +257,6 @@ impl Tx3Type {
                         "required": ["amount", "policy", "asset_name"]
                     })
                 }
-                // TODO: make sure this is factual
                 ir::Type::Utxo => {
                     serde_json::json!({
                         "type": "object",
@@ -268,7 +267,6 @@ impl Tx3Type {
                         "required": ["tx_hash", "output_index"]
                     })
                 }
-                // TODO: add type parameters here if possible
                 ir::Type::List => serde_json::json!({"type": "array", "items": {}}),
                 ir::Type::Map => serde_json::json!({"type": "object", "additionalProperties": {}}),
                 _ => panic!("Custom types are not primitive types"),
