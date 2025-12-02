@@ -1,7 +1,7 @@
 use std::io::Read;
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::config::{BindingsTemplateConfig, Config, KnownChain, ProfileConfig, TrpConfig};
+use crate::config::{BindingsTemplateConfig, Config, ProfileConfig};
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
 use serde::{Serialize, Serializer};
@@ -51,11 +51,27 @@ fn parse_type_from_string(type_str: &str) -> Result<tx3_lang::ir::Type, String> 
         "Utxo" => Ok(tx3_lang::ir::Type::Utxo),
         "Undefined" => Ok(tx3_lang::ir::Type::Undefined),
         "List" => Ok(tx3_lang::ir::Type::List),
-        _ => {
-            // You would need to create a CustomId here. This depends on how CustomId is defined
-            // Ok(tx3_lang::ir::Type::Custom(CustomId { value: type_str.to_string() }))
-            Ok(tx3_lang::ir::Type::Custom(type_str.to_string())) // Keep your current implementation if CustomId is not accessible
-        }
+        _ => Ok(tx3_lang::ir::Type::Custom(type_str.to_string())),
+    }
+}
+
+fn get_argvalue_type_for_language(type_: &tx3_lang::ir::Type, language: &str) -> String {
+    match language {
+        "typescript" => match &type_ {
+            tx3_lang::ir::Type::Int => "ArgValueInt | number | bigint".to_string(),
+            tx3_lang::ir::Type::Bool => "ArgValueBool | bool".to_string(),
+            tx3_lang::ir::Type::Bytes => "ArgValueBytes | Uint8Array".to_string(),
+            tx3_lang::ir::Type::Unit => "string".to_string(),
+            tx3_lang::ir::Type::Address => "ArgValueAddress | Uint8Array | string".to_string(),
+            tx3_lang::ir::Type::UtxoRef => "ArgValueUtxoRef".to_string(),
+            tx3_lang::ir::Type::List => "any[]".to_string(),
+            tx3_lang::ir::Type::Custom(name) => name.clone(),
+            tx3_lang::ir::Type::AnyAsset => "any".to_string(),
+            tx3_lang::ir::Type::Utxo => "any".to_string(),
+            tx3_lang::ir::Type::Undefined => "any".to_string(),
+            tx3_lang::ir::Type::Map => "any".to_string(),
+        },
+        _ => "ArgValue".to_string(),
     }
 }
 
@@ -132,7 +148,7 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
     }
     // Add more helpers as needed
 
-    // Register helper to convert ir types to language types.
+    // helper to convert ir types to language types
     handlebars.register_helper(
         "typeFor",
         Box::new(
@@ -148,12 +164,25 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
                     .param(1)
                     .ok_or_else(|| RenderErrorReason::ParamNotFoundForIndex("typeFor", 1))?;
 
-                let type_str = type_param.value().as_str().ok_or_else(|| {
-                    RenderErrorReason::InvalidParamType("Expected type as string")
-                })?;
-
-                let type_ = parse_type_from_string(type_str)
-                    .map_err(|_| RenderErrorReason::InvalidParamType("Failed to parse type"))?;
+                let type_ = if let Some(type_str) = type_param.value().as_str() {
+                    parse_type_from_string(type_str)
+                        .map_err(|_| RenderErrorReason::InvalidParamType("Failed to parse type"))?
+                } else if let Some(obj) = type_param.value().as_object() {
+                    // Handle {"Custom": "TypeName"} format
+                    if let Some(custom_name) = obj.get("Custom").and_then(|v| v.as_str()) {
+                        tx3_lang::ir::Type::Custom(custom_name.to_string())
+                    } else {
+                        return Err(RenderErrorReason::InvalidParamType(
+                            "Unknown type object format",
+                        )
+                        .into());
+                    }
+                } else {
+                    return Err(RenderErrorReason::InvalidParamType(
+                        "Expected type as string or object",
+                    )
+                    .into());
+                };
 
                 let language = lang_param.value().as_str().ok_or_else(|| {
                     RenderErrorReason::InvalidParamType("Expected language as string")
@@ -162,6 +191,80 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
                 let output_type = get_type_for_language(&type_, language);
 
                 out.write(&output_type)?;
+                Ok(())
+            },
+        ),
+    );
+
+    // helper to convert types to ArgValue type names (Int -> ArgValueInt)
+    handlebars.register_helper(
+        "argValueType",
+        Box::new(
+            |h: &Helper,
+             _: &Handlebars,
+             _: &Context,
+             _: &mut RenderContext,
+             out: &mut dyn Output| {
+                let type_param = h
+                    .param(0)
+                    .ok_or_else(|| RenderErrorReason::ParamNotFoundForIndex("argValueType", 0))?;
+                let lang_param = h
+                    .param(1)
+                    .ok_or_else(|| RenderErrorReason::ParamNotFoundForIndex("argValueType", 1))?;
+
+                let type_ = if let Some(type_str) = type_param.value().as_str() {
+                    parse_type_from_string(type_str)
+                        .map_err(|_| RenderErrorReason::InvalidParamType("Failed to parse type"))?
+                } else if let Some(obj) = type_param.value().as_object() {
+                    if let Some(custom_name) = obj.get("Custom").and_then(|v| v.as_str()) {
+                        tx3_lang::ir::Type::Custom(custom_name.to_string())
+                    } else {
+                        return Err(RenderErrorReason::InvalidParamType(
+                            "Unknown type object format",
+                        )
+                        .into());
+                    }
+                } else {
+                    return Err(RenderErrorReason::InvalidParamType(
+                        "Expected type as string or object",
+                    )
+                    .into());
+                };
+
+                let language = lang_param.value().as_str().ok_or_else(|| {
+                    RenderErrorReason::InvalidParamType("Expected language as string")
+                })?;
+
+                let output_type = get_argvalue_type_for_language(&type_, language);
+
+                out.write(&output_type)?;
+                Ok(())
+            },
+        ),
+    );
+
+    // helper to check if a type is a custom type
+    handlebars.register_helper(
+        "isCustomType",
+        Box::new(
+            |h: &Helper,
+             _: &Handlebars,
+             _: &Context,
+             _: &mut RenderContext,
+             out: &mut dyn Output| {
+                let type_param = h
+                    .param(0)
+                    .ok_or_else(|| RenderErrorReason::ParamNotFoundForIndex("isCustomType", 0))?;
+
+                let is_custom = if type_param.value().as_str().is_some() {
+                    false // Simple string types are not custom
+                } else if let Some(obj) = type_param.value().as_object() {
+                    obj.contains_key("Custom")
+                } else {
+                    false
+                };
+
+                out.write(if is_custom { "true" } else { "false" })?;
                 Ok(())
             },
         ),
@@ -322,9 +425,34 @@ impl Serialize for BytesHex {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct TxParameter {
     name: String,
     type_name: tx3_lang::ir::Type,
+    is_custom: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TypeField {
+    name: String,
+    type_name: String,
+    is_custom: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TypeVariant {
+    name: String,
+    index: usize,
+    fields: Vec<TypeField>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomTypeDef {
+    name: String,
+    variants: Vec<TypeVariant>,
 }
 
 #[derive(Serialize)]
@@ -348,6 +476,7 @@ struct HandlebarsData {
     headers: HashMap<String, String>,
     env_vars: HashMap<String, String>,
     options: HashMap<String, serde_json::Value>,
+    custom_types: Vec<CustomTypeDef>,
 }
 
 struct Job {
@@ -360,7 +489,68 @@ struct Job {
     options: HashMap<String, serde_json::Value>,
 }
 
+fn ast_type_to_string(ty: &tx3_lang::ast::Type) -> String {
+    match ty {
+        tx3_lang::ast::Type::Undefined => "Undefined".to_string(),
+        tx3_lang::ast::Type::Unit => "Unit".to_string(),
+        tx3_lang::ast::Type::Int => "Int".to_string(),
+        tx3_lang::ast::Type::Bool => "Bool".to_string(),
+        tx3_lang::ast::Type::Bytes => "Bytes".to_string(),
+        tx3_lang::ast::Type::Address => "Address".to_string(),
+        tx3_lang::ast::Type::UtxoRef => "UtxoRef".to_string(),
+        tx3_lang::ast::Type::AnyAsset => "AnyAsset".to_string(),
+        tx3_lang::ast::Type::Utxo => "Utxo".to_string(),
+        tx3_lang::ast::Type::List(inner) => format!("List<{}>", ast_type_to_string(inner)),
+        tx3_lang::ast::Type::Map(k, v) => {
+            format!("Map<{}, {}>", ast_type_to_string(k), ast_type_to_string(v))
+        }
+        tx3_lang::ast::Type::Custom(id) => id.value.clone(),
+    }
+}
+
+fn is_custom_type(ty: &tx3_lang::ir::Type) -> bool {
+    matches!(ty, tx3_lang::ir::Type::Custom(_))
+}
+
 fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData> {
+    let custom_types: Vec<CustomTypeDef> = job
+        .protocol
+        .ast()
+        .types
+        .iter()
+        .map(|type_def| {
+            let variants: Vec<TypeVariant> = type_def
+                .cases
+                .iter()
+                .enumerate()
+                .map(|(index, variant)| {
+                    let fields: Vec<TypeField> = variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            let type_name = ast_type_to_string(&field.r#type);
+                            let is_custom = matches!(&field.r#type, tx3_lang::ast::Type::Custom(_));
+                            TypeField {
+                                name: field.name.value.clone(),
+                                type_name,
+                                is_custom,
+                            }
+                        })
+                        .collect();
+                    TypeVariant {
+                        name: variant.name.value.clone(),
+                        index,
+                        fields,
+                    }
+                })
+                .collect();
+            CustomTypeDef {
+                name: type_def.name.value.clone(),
+                variants,
+            }
+        })
+        .collect();
+
     let transactions = job
         .protocol
         .txs()
@@ -373,6 +563,7 @@ fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData
                 .iter()
                 .map(|(key, type_)| TxParameter {
                     name: key.as_str().to_case(Case::Camel),
+                    is_custom: is_custom_type(type_),
                     type_name: type_.clone(),
                 })
                 .collect();
@@ -409,6 +600,7 @@ fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData
         headers,
         env_vars,
         options: job.options.clone(),
+        custom_types,
     })
 }
 
