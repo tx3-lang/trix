@@ -55,6 +55,29 @@ fn parse_type_from_string(type_str: &str) -> Result<tx3_lang::ir::Type, String> 
     }
 }
 
+fn get_argvalue_type_from_string(type_str: &str, language: &str) -> String {
+    if language == "typescript" {
+        if let Some(inner) = type_str
+            .strip_prefix("List<")
+            .and_then(|s| s.strip_suffix(">"))
+        {
+            let inner_av = if let Ok(ir_inner) = parse_type_from_string(inner) {
+                get_argvalue_type_for_language(&ir_inner, "typescript")
+            } else {
+                // Custom inner types
+                inner.to_string()
+            };
+            return format!("Array<{}>", inner_av);
+        }
+    }
+
+    if let Ok(ir_type) = parse_type_from_string(type_str) {
+        get_argvalue_type_for_language(&ir_type, language)
+    } else {
+        type_str.to_string()
+    }
+}
+
 fn get_argvalue_type_for_language(type_: &tx3_lang::ir::Type, language: &str) -> String {
     match language {
         "typescript" => match &type_ {
@@ -212,12 +235,11 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
                     .param(1)
                     .ok_or_else(|| RenderErrorReason::ParamNotFoundForIndex("argValueType", 1))?;
 
-                let type_ = if let Some(type_str) = type_param.value().as_str() {
-                    parse_type_from_string(type_str)
-                        .map_err(|_| RenderErrorReason::InvalidParamType("Failed to parse type"))?
+                let type_str = if let Some(s) = type_param.value().as_str() {
+                    s.to_string()
                 } else if let Some(obj) = type_param.value().as_object() {
                     if let Some(custom_name) = obj.get("Custom").and_then(|v| v.as_str()) {
-                        tx3_lang::ir::Type::Custom(custom_name.to_string())
+                        custom_name.to_string()
                     } else {
                         return Err(RenderErrorReason::InvalidParamType(
                             "Unknown type object format",
@@ -235,7 +257,7 @@ fn register_handlebars_helpers(handlebars: &mut Handlebars<'_>) {
                     RenderErrorReason::InvalidParamType("Expected language as string")
                 })?;
 
-                let output_type = get_argvalue_type_for_language(&type_, language);
+                let output_type = get_argvalue_type_from_string(&type_str, language);
 
                 out.write(&output_type)?;
                 Ok(())
@@ -428,7 +450,7 @@ impl Serialize for BytesHex {
 #[serde(rename_all = "camelCase")]
 struct TxParameter {
     name: String,
-    type_name: tx3_lang::ir::Type,
+    type_name: String,
     is_custom: bool,
 }
 
@@ -508,8 +530,21 @@ fn ast_type_to_string(ty: &tx3_lang::ast::Type) -> String {
     }
 }
 
-fn is_custom_type(ty: &tx3_lang::ir::Type) -> bool {
-    matches!(ty, tx3_lang::ir::Type::Custom(_))
+fn ir_type_to_string(ty: &tx3_lang::ir::Type) -> String {
+    match ty {
+        tx3_lang::ir::Type::Undefined => "Undefined".to_string(),
+        tx3_lang::ir::Type::Unit => "Unit".to_string(),
+        tx3_lang::ir::Type::Int => "Int".to_string(),
+        tx3_lang::ir::Type::Bool => "Bool".to_string(),
+        tx3_lang::ir::Type::Bytes => "Bytes".to_string(),
+        tx3_lang::ir::Type::Address => "Address".to_string(),
+        tx3_lang::ir::Type::UtxoRef => "UtxoRef".to_string(),
+        tx3_lang::ir::Type::AnyAsset => "AnyAsset".to_string(),
+        tx3_lang::ir::Type::Utxo => "Utxo".to_string(),
+        tx3_lang::ir::Type::List => "List".to_string(),
+        tx3_lang::ir::Type::Map => "Map".to_string(),
+        tx3_lang::ir::Type::Custom(name) => name.clone(),
+    }
 }
 
 fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData> {
@@ -558,13 +593,36 @@ fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData
             let tx_name = tx_def.name.value.as_str();
             let proto_tx = job.protocol.new_tx(tx_name).unwrap();
 
+            let ast_params: HashMap<_, _> = tx_def
+                .parameters
+                .parameters
+                .iter()
+                .map(|p| (p.name.value.clone(), p))
+                .collect();
+
+            // Helper to extract type info from AST or IR
+            let param_info = |name: &str, ir_ty: &tx3_lang::ir::Type| match ast_params.get(name) {
+                Some(ast_param) => (
+                    ast_type_to_string(&ast_param.r#type),
+                    matches!(ast_param.r#type, tx3_lang::ast::Type::Custom(_)),
+                ),
+                None => (
+                    ir_type_to_string(ir_ty),
+                    matches!(ir_ty, tx3_lang::ir::Type::Custom(_)),
+                ),
+            };
+
             let parameters: Vec<TxParameter> = proto_tx
                 .find_params()
                 .iter()
-                .map(|(key, type_)| TxParameter {
-                    name: key.as_str().to_case(Case::Camel),
-                    is_custom: is_custom_type(type_),
-                    type_name: type_.clone(),
+                .map(|(name, ir_ty)| {
+                    let (type_name, is_custom) = param_info(name, ir_ty);
+
+                    TxParameter {
+                        name: name.to_case(Case::Camel),
+                        type_name,
+                        is_custom,
+                    }
                 })
                 .collect();
 
