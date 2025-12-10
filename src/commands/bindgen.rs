@@ -547,7 +547,25 @@ fn ir_type_to_string(ty: &tx3_lang::ir::Type) -> String {
     }
 }
 
+fn resolve_type_alias<'a>(
+    ty: &'a tx3_lang::ast::Type,
+    aliases: &'a [tx3_lang::ast::AliasDef],
+) -> &'a tx3_lang::ast::Type {
+    match ty {
+        tx3_lang::ast::Type::Custom(id) => {
+            if let Some(alias_def) = aliases.iter().find(|a| a.name.value == id.value) {
+                resolve_type_alias(&alias_def.alias_type, aliases)
+            } else {
+                ty
+            }
+        }
+        _ => ty,
+    }
+}
+
 fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData> {
+    let aliases = &job.protocol.ast().aliases;
+
     let custom_types: Vec<CustomTypeDef> = job
         .protocol
         .ast()
@@ -563,8 +581,9 @@ fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData
                         .fields
                         .iter()
                         .map(|field| {
-                            let type_name = ast_type_to_string(&field.r#type);
-                            let is_custom = matches!(&field.r#type, tx3_lang::ast::Type::Custom(_));
+                            let resolved_type = resolve_type_alias(&field.r#type, aliases);
+                            let type_name = ast_type_to_string(resolved_type);
+                            let is_custom = matches!(resolved_type, tx3_lang::ast::Type::Custom(_));
                             TypeField {
                                 name: field.name.value.clone(),
                                 type_name,
@@ -602,10 +621,13 @@ fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData
 
             // Helper to extract type info from AST or IR
             let param_info = |name: &str, ir_ty: &tx3_lang::ir::Type| match ast_params.get(name) {
-                Some(ast_param) => (
-                    ast_type_to_string(&ast_param.r#type),
-                    matches!(ast_param.r#type, tx3_lang::ast::Type::Custom(_)),
-                ),
+                Some(ast_param) => {
+                    let resolved_type = resolve_type_alias(&ast_param.r#type, aliases);
+                    (
+                        ast_type_to_string(resolved_type),
+                        matches!(resolved_type, tx3_lang::ast::Type::Custom(_)),
+                    )
+                }
                 None => (
                     ir_type_to_string(ir_ty),
                     matches!(ir_ty, tx3_lang::ir::Type::Custom(_)),
