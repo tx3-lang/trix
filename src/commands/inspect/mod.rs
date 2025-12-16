@@ -20,7 +20,7 @@ pub struct Args {
 
 pub fn run(args: Args, config: &Config) -> miette::Result<()> {
     match args.command {
-        Command::Scope(_) => scope::run(config),
+        Command::Scope(args) => scope::run(args, config),
         Command::Tir(args) => tir::run(args, config),
     }
 }

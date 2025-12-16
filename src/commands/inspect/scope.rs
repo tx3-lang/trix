@@ -1,99 +1,147 @@
+use crate::config::Config;
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic as _;
-use serde::Serialize;
-
-use crate::config::Config;
+use std::collections::HashSet;
 use tx3_lang::ast::Symbol;
 
 #[derive(ClapArgs)]
 pub struct Args {
-    #[arg(short, long)]
-    pretty: bool,
+    #[arg(
+        short = 't',
+        long = "type",
+        value_name = "TYPE",
+        num_args = 1..,
+        action = clap::ArgAction::Append,
+        value_delimiter = ' ',
+        help = "Filter by symbol type (e.g. typedef, assetdef, envvar, paramvar, localexpr, output, input,
+        partydef, policydef, aliasdef, recordfield, variantcase, fees).
+        Accepts multiple values."
+    )]
+    types: Vec<String>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Debug)]
 struct SymbolInfo {
     name: String,
     r#type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     cases: Option<String>,
 }
 
-pub fn run(config: &Config) -> miette::Result<()> {
-    let main_path = config.protocol.main.clone();
-
-    let content = std::fs::read_to_string(main_path).into_diagnostic()?;
-
-    let mut ast = tx3_lang::parsing::parse_string(&content)?;
-
-    tx3_lang::analyzing::analyze(&mut ast).ok()?;
-
-    // Extract symbols from the global scope
-    let symbols = if let Some(scope) = ast.scope() {
-        let mut symbol_list = Vec::new();
-
-        for (name, symbol) in scope.symbols() {
-            let r#type = match symbol {
-                Symbol::EnvVar(_, ty) => format!("EnvVar({})", ty),
-                Symbol::ParamVar(_, ty) => format!("ParamVar({})", ty),
-                Symbol::LocalExpr(_) => "LocalExpr".to_string(),
-                Symbol::Output(idx) => format!("Output({})", idx),
-                Symbol::Input(_) => "Input".to_string(),
-                Symbol::PartyDef(_) => "PartyDef".to_string(),
-                Symbol::PolicyDef(_) => "PolicyDef".to_string(),
-                Symbol::AssetDef(_) => "AssetDef".to_string(),
-                Symbol::TypeDef(_) => "TypeDef".to_string(),
-                Symbol::AliasDef(_) => "AliasDef".to_string(),
-                Symbol::RecordField(_) => "RecordField".to_string(),
-                Symbol::VariantCase(_) => "VariantCase".to_string(),
-                Symbol::Fees => "Fees".to_string(),
-            };
-
-            let cases = match symbol {
-                Symbol::EnvVar(env_name, ty) => Some(format!("env: {}, type: {}", env_name, ty)),
-                Symbol::ParamVar(param_name, ty) => {
-                    Some(format!("param: {}, type: {}", param_name, ty))
-                }
-                Symbol::TypeDef(typedef) => {
-                    let cases: Vec<String> = typedef
-                        .cases
-                        .iter()
-                        .map(|c| {
-                            if c.fields.is_empty() {
-                                c.name.value.clone()
-                            } else {
-                                let fields: Vec<String> = c
-                                    .fields
-                                    .iter()
-                                    .map(|f| format!("{}: {}", f.name.value, f.r#type))
-                                    .collect();
-                                format!("{} {{ {} }}", c.name.value, fields.join(", "))
-                            }
-                        })
-                        .collect();
-                    Some(format!("{}", cases.join(", ")))
-                }
-                Symbol::AliasDef(aliasdef) => Some(format!("alias: {}", aliasdef.alias_type)),
-                _ => None,
-            };
-
-            symbol_list.push(SymbolInfo {
-                name: name.clone(),
-                r#type,
-                cases,
-            });
-        }
-
-        symbol_list.sort_by(|a, b| a.r#type.cmp(&b.r#type));
-        symbol_list
-    } else {
-        vec![]
+fn build_symbol_info(name: &str, symbol: &Symbol) -> SymbolInfo {
+    let r#type = match symbol {
+        Symbol::EnvVar(_, ty) => format!("EnvVar({})", ty),
+        Symbol::ParamVar(_, ty) => format!("ParamVar({})", ty),
+        Symbol::LocalExpr(_) => "LocalExpr".to_string(),
+        Symbol::Output(idx) => format!("Output({})", idx),
+        Symbol::Input(_) => "Input".to_string(),
+        Symbol::PartyDef(_) => "PartyDef".to_string(),
+        Symbol::PolicyDef(_) => "PolicyDef".to_string(),
+        Symbol::AssetDef(_) => "AssetDef".to_string(),
+        Symbol::TypeDef(_) => "TypeDef".to_string(),
+        Symbol::AliasDef(_) => "AliasDef".to_string(),
+        Symbol::RecordField(_) => "RecordField".to_string(),
+        Symbol::VariantCase(_) => "VariantCase".to_string(),
+        Symbol::Fees => "Fees".to_string(),
     };
 
-    println!(
-        "{}",
-        serde_json::to_string_pretty(&symbols).into_diagnostic()?
-    );
+    let cases = match symbol {
+        Symbol::EnvVar(env, ty) => Some(format!("env: {}, type: {}", env, ty)),
+        Symbol::ParamVar(param, ty) => Some(format!("param: {}, type: {}", param, ty)),
+        Symbol::AliasDef(alias) => Some(format!("alias: {}", alias.alias_type)),
+        Symbol::TypeDef(typedef) => {
+            let cases = typedef
+                .cases
+                .iter()
+                .map(|case| {
+                    if case.fields.is_empty() {
+                        format!("- {}", case.name.value)
+                    } else {
+                        let fields = case
+                            .fields
+                            .iter()
+                            .map(|f| format!("  + {}: {}", f.name.value, f.r#type))
+                            .collect::<Vec<_>>()
+                            .join("\n");
+
+                        format!("- {}\n{}", case.name.value, fields)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            Some(cases)
+        }
+        _ => None,
+    };
+
+    SymbolInfo {
+        name: name.to_string(),
+        r#type,
+        cases,
+    }
+}
+
+pub fn run(args: Args, config: &Config) -> miette::Result<()> {
+    let content = std::fs::read_to_string(&config.protocol.main).into_diagnostic()?;
+
+    let mut ast = tx3_lang::parsing::parse_string(&content)?;
+    tx3_lang::analyzing::analyze(&mut ast).ok()?;
+
+    let mut symbols = match ast.scope() {
+        Some(scope) => scope
+            .symbols()
+            .into_iter()
+            .map(|(name, symbol)| build_symbol_info(name, symbol))
+            .collect::<Vec<_>>(),
+        None => Vec::new(),
+    };
+
+    symbols.sort_by(|a, b| a.r#type.cmp(&b.r#type).then(a.name.cmp(&b.name)));
+
+    if !args.types.is_empty() {
+        let filters: HashSet<String> = args.types.iter().map(|t| t.to_ascii_lowercase()).collect();
+
+        symbols.retain(|s| {
+            s.r#type
+                .split('(')
+                .next()
+                .map(|k| filters.contains(&k.to_ascii_lowercase()))
+                .unwrap_or(false)
+        });
+    }
+
+    if symbols.is_empty() {
+        if args.types.is_empty() {
+            println!("No symbols found in scope.");
+        } else {
+            println!("No symbols found for types: {}", args.types.join(", "));
+        }
+        return Ok(());
+    }
+
+    let mut last_type: Option<&str> = None;
+
+    for sym in &symbols {
+        if last_type != Some(sym.r#type.as_str()) {
+            println!("\n\x1b[1m{}\x1b[0m", sym.r#type);
+            last_type = Some(&sym.r#type);
+        }
+
+        match &sym.cases {
+            Some(cases) if cases.contains('\n') => {
+                println!("  {}", sym.name);
+                for line in cases.lines() {
+                    println!("    {}", line);
+                }
+            }
+            Some(cases) => {
+                println!("  {} — {}", sym.name, cases);
+            }
+            None => {
+                println!("  {}", sym.name);
+            }
+        }
+    }
 
     Ok(())
 }
