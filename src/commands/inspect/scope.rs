@@ -1,6 +1,5 @@
 use crate::config::Config;
 use clap::Args as ClapArgs;
-use miette::IntoDiagnostic as _;
 use std::collections::HashSet;
 use tx3_lang::ast::Symbol;
 
@@ -54,7 +53,7 @@ fn build_symbol_info(name: &str, symbol: &Symbol) -> SymbolInfo {
                 .iter()
                 .map(|case| {
                     if case.fields.is_empty() {
-                        format!("- {}", case.name.value)
+                        format!("{}", case.name.value)
                     } else {
                         let fields = case
                             .fields
