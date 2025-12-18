@@ -474,8 +474,8 @@ pub async fn run(_args: Args, config: &Config, profile: &ProfileConfig) -> miett
 
         let trp_config = profile
             .trp
-            .as_ref()
-            .ok_or_else(|| miette::miette!("TRP config not found"))?;
+            .clone()
+            .unwrap_or_else(|| TrpConfig::from(profile.chain.clone()));
 
         let job = Job {
             name: config.protocol.name.clone(),
