@@ -82,19 +82,18 @@ fn build_symbol_info(name: &str, symbol: &Symbol) -> SymbolInfo {
 }
 
 pub fn run(args: Args, config: &Config) -> miette::Result<()> {
-    let content = std::fs::read_to_string(&config.protocol.main).into_diagnostic()?;
+    let loader = tx3_lang::loading::ProtocolLoader::from_file(&config.protocol.main);
+    let protocol = loader.load()?;
 
-    let mut ast = tx3_lang::parsing::parse_string(&content)?;
-    tx3_lang::analyzing::analyze(&mut ast).ok()?;
+    let mut symbols = Vec::new();
+    let mut current_scope = protocol.ast().scope();
 
-    let mut symbols = match ast.scope() {
-        Some(scope) => scope
-            .symbols()
-            .into_iter()
-            .map(|(name, symbol)| build_symbol_info(name, symbol))
-            .collect::<Vec<_>>(),
-        None => Vec::new(),
-    };
+    while let Some(scope) = current_scope {
+        for (name, symbol) in scope.symbols().iter() {
+            symbols.push(build_symbol_info(name, symbol));
+        }
+        current_scope = scope.parent();
+    }
 
     symbols.sort_by(|a, b| a.r#type.cmp(&b.r#type).then(a.name.cmp(&b.name)));
 
