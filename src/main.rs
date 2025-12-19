@@ -63,6 +63,9 @@ enum Commands {
     /// Manage crypographic identities
     Identities(cmds::identities::Args),
 
+    /// Connect to wallets via Wallet Connect protocol
+    WalletConnect(cmds::wallet_connect::Args),
+
     /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
     #[command(hide = true)]
     Publish(cmds::publish::Args),
@@ -111,6 +114,7 @@ async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
         Commands::Identities(args) => cmds::identities::run(args, &config, &profile),
         Commands::Publish(args) => cmds::publish::run(args, &config),
         Commands::Telemetry(args) => cmds::telemetry::run(args),
+        Commands::WalletConnect(args) => cmds::wallet_connect::run(args, &config).await,
     };
 
     if let Some(handle) = metric {

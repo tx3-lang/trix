@@ -11,3 +11,4 @@ pub mod invoke;
 pub mod publish;
 pub mod telemetry;
 pub mod test;
+pub mod wallet_connect;
