@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tx3 Wallet Connect</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin: 15px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            resize: vertical;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #connect {
+            background-color: #0070f3;
+            color: white;
+        }
+
+        #connect:hover {
+            background-color: #0051a2;
+        }
+
+        #disconnect {
+            background-color: #ef4444;
+            color: white;
+            display: none;
+        }
+
+        #disconnect:hover {
+            background-color: #dc2626;
+        }
+
+        #sign {
+            background-color: #10b981;
+            color: white;
+        }
+
+        #sign:hover {
+            background-color: #059669;
+        }
+
+        #submit {
+            background-color: #8b5cf6;
+            color: white;
+            display: none;
+        }
+
+        #submit:hover {
+            background-color: #7c3aed;
+        }
+
+        #status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            word-break: break-all;
+        }
+
+        /* Modal Styles */
+        dialog {
+            border: none;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        .wallet-list {
+            list-style: none;
+            padding: 0;
+            margin: 15px 0;
+        }
+
+        .wallet-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border: 1px solid #eee;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .wallet-item:hover {
+            background-color: #f5f5f5;
+        }
+
+        .wallet-icon {
+            width: 32px;
+            height: 32px;
+            margin-right: 12px;
+            object-fit: contain;
+        }
+
+        .wallet-name {
+            font-weight: 500;
+            text-transform: capitalize;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0;
+            color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Sign Transaction</h1>
+        <p>Connect your Cardano wallet to sign the transaction below.</p>
+
+        <textarea id="cbor" placeholder="Transaction CBOR Hex">__CBOR_PLACEHOLDER__</textarea>
+
+        <div class="controls">
+            <button id="connect">Connect Wallet</button>
+            <button id="disconnect">Disconnect</button>
+            <button id="sign" disabled>Sign Transaction</button>
+            <button id="submit">Submit Transaction</button>
+        </div>
+
+        <div id="status">Ready to connect</div>
+    </div>
+
+    <dialog id="walletModal">
+        <div class="modal-header">
+            <h3>Select Wallet</h3>
+            <button class="close-btn" id="closeModal">&times;</button>
+        </div>
+        <ul class="wallet-list" id="walletList">
+            <!-- Wallets will be injected here -->
+        </ul>
+    </dialog>
+
+    <script>
+        const cborInput = document.getElementById('cbor');
+        const connectBtn = document.getElementById('connect');
+        const disconnectBtn = document.getElementById('disconnect');
+        const signBtn = document.getElementById('sign');
+        const submitBtn = document.getElementById('submit');
+        const statusDiv = document.getElementById('status');
+        const walletModal = document.getElementById('walletModal');
+        const walletList = document.getElementById('walletList');
+        const closeModalBtn = document.getElementById('closeModal');
+
+        let walletApi;
+        let connectedWalletName = null;
+        let lastWitness = null;
+
+        // --- Wallet Discovery ---
+        function getWallets() {
+            const wallets = [];
+            if (window.cardano) {
+                for (const key in window.cardano) {
+                    const w = window.cardano[key];
+                    if (w.enable && w.apiVersion) {
+                        wallets.push({
+                            name: key,
+                            icon: w.icon,
+                            apiVersion: w.apiVersion
+                        });
+                    }
+                }
+            }
+            return wallets;
+        }
+
+        // --- Connection Logic ---
+        async function connectWallet(walletName) {
+            try {
+                statusDiv.innerText = `Connecting to ${walletName}...`;
+                walletApi = await window.cardano[walletName].enable();
+
+                connectedWalletName = walletName;
+                localStorage.setItem('trix_connected_wallet', walletName);
+
+                updateUIState(true);
+                statusDiv.innerText = `Connected to ${walletName}`;
+                statusDiv.style.color = 'green';
+                walletModal.close();
+            } catch (err) {
+                console.error(err);
+                statusDiv.innerText = `Connection failed: ${err.message}`;
+                statusDiv.style.color = 'red';
+            }
+        }
+
+        function disconnectWallet() {
+            walletApi = null;
+            connectedWalletName = null;
+            lastWitness = null;
+            localStorage.removeItem('trix_connected_wallet');
+            updateUIState(false);
+            statusDiv.innerText = 'Disconnected';
+            statusDiv.style.color = '#333';
+        }
+
+        function updateUIState(isConnected) {
+            if (isConnected) {
+                connectBtn.style.display = 'none';
+                disconnectBtn.style.display = 'inline-block';
+                signBtn.disabled = false;
+            } else {
+                connectBtn.style.display = 'inline-block';
+                disconnectBtn.style.display = 'none';
+                signBtn.disabled = true;
+                submitBtn.style.display = 'none';
+            }
+        }
+
+        // --- Modal Logic ---
+        function openWalletModal() {
+            const wallets = getWallets();
+            walletList.innerHTML = '';
+
+            if (wallets.length === 0) {
+                walletList.innerHTML = '<li style="padding:10px; text-align:center;">No Cardano wallets found. Please install a wallet extension.</li>';
+            } else {
+                wallets.forEach(w => {
+                    const li = document.createElement('li');
+                    li.className = 'wallet-item';
+                    li.innerHTML = `
+                        <img src="${w.icon}" class="wallet-icon" alt="${w.name}">
+                        <span class="wallet-name">${w.name}</span>
+                    `;
+                    li.onclick = () => connectWallet(w.name);
+                    walletList.appendChild(li);
+                });
+            }
+            walletModal.showModal();
+        }
+
+        // --- Event Listeners ---
+        connectBtn.addEventListener('click', openWalletModal);
+        disconnectBtn.addEventListener('click', disconnectWallet);
+        closeModalBtn.addEventListener('click', () => walletModal.close());
+
+        // Close modal when clicking outside
+        walletModal.addEventListener('click', (e) => {
+            if (e.target === walletModal) walletModal.close();
+        });
+
+        // Auto-connect
+        window.addEventListener('load', () => {
+            const savedWallet = localStorage.getItem('trix_connected_wallet');
+            if (savedWallet && window.cardano && window.cardano[savedWallet]) {
+                connectWallet(savedWallet);
+            }
+        });
+
+        // --- Sign & Submit ---
+        signBtn.addEventListener('click', async () => {
+            const cbor = cborInput.value.trim();
+            if (!cbor) {
+                statusDiv.innerText = 'Please enter CBOR hex';
+                return;
+            }
+
+            try {
+                statusDiv.innerText = 'Requesting signature...';
+                // signTx(tx: string, partialSign: boolean = false): Promise<string>
+                lastWitness = await walletApi.signTx(cbor, true);
+
+                statusDiv.innerHTML = `<strong>Signed!</strong><br>Witness Set (CBOR):<br>${lastWitness}`;
+                statusDiv.style.color = 'green';
+
+                // Show submit button
+                submitBtn.style.display = 'inline-block';
+            } catch (err) {
+                statusDiv.innerText = 'Sign Error: ' + (err.info || err.message);
+                statusDiv.style.color = 'red';
+                console.error(err);
+            }
+        });
+
+        submitBtn.addEventListener('click', async () => {
+            if (!lastWitness) return;
+
+            try {
+                statusDiv.innerText = 'Submitting transaction...';
+                /// Solve signedTxCbor tx
+
+                // Should take lastWitness and merge with original tx cbor
+                const txId = await walletApi.submitTx(cborInput.value.trim());
+
+                statusDiv.innerHTML = `<strong>Submitted!</strong><br>Tx ID: ${txId}`;
+                statusDiv.style.color = 'green';
+            } catch (err) {
+                statusDiv.innerHTML = `<strong>Submit Failed</strong><br>
+                Note: Submitting usually requires merging the witness set with the transaction body using a serialization library.<br>
+                Error: ${err.info || err.message}`;
+                statusDiv.style.color = 'red';
+                console.error(err);
+            }
+        });
+    </script>
+</body>
+
+</html>

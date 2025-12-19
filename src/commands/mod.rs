@@ -8,3 +8,4 @@ pub mod publish;
 pub mod telemetry;
 pub mod test;
 pub mod wallet;
+pub mod wallet_connect;

@@ -59,6 +59,9 @@ enum Commands {
     /// Manage wallets
     Wallet(cmds::wallet::Args),
 
+    /// Connect to wallets via Wallet Connect protocol
+    WalletConnect(cmds::wallet_connect::Args),
+
     /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
     #[command(hide = true)]
     Publish(cmds::publish::Args),
@@ -113,6 +116,7 @@ async fn run_scoped_command(cli: Cli, config: Config) -> Result<()> {
         Commands::Wallet(args) => cmds::wallet::run(args, &config, &profile),
         Commands::Publish(args) => cmds::publish::run(args, &config),
         Commands::Telemetry(args) => cmds::telemetry::run(args),
+        Commands::WalletConnect(args) => cmds::wallet_connect::run(args, &config).await,
     }
 }
 
