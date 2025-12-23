@@ -6,30 +6,35 @@ description = ""
 main = "main.tx3"
 
 [registry]
-url = "https://registry.dgram.io"
+url = "https://tx3.land"
 
-[profiles.devnet]
-chain = "CardanoDevnet"
+[[bindings]]
+output_dir = "./gen/typescript"
 
-[[profiles.devnet.wallets]]
-name = "alice"
-random_key = true
-initial_balance = 1000000000000000000
-
-[[profiles.devnet.wallets]]
-name = "bob"
-random_key = true
-initial_balance = 1000000000000000000
-
-[profiles.preview]
-chain = "CardanoPreview"
-
-[profiles.preprod]
-chain = "CardanoPreprod"
+[bindings.template]
+repo = "tx3-lang/web-sdk"
+path = ".trix/client-lib"
+ref = "bindgen-v1alpha2"
 
 [profiles.mainnet]
 chain = "CardanoMainnet"
 
-[[bindings]]
-plugin = "typescript"
-output_dir = "./gen/typescript"
+[profiles.preview]
+chain = "CardanoPreview"
+
+[profiles.devnet]
+chain = "CardanoDevnet"
+
+[profiles.preprod]
+chain = "CardanoPreprod"
+
+[profiles.local]
+chain = "CardanoDevnet"
+
+[[utxos]]
+address = "@alice"
+value = 100000000000
+
+[[utxos]]
+address = "@bob"
+value = 100000000000

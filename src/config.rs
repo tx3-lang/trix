@@ -3,19 +3,6 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Config {
-    pub protocol: ProtocolConfig,
-    pub registry: Option<RegistryConfig>,
-    pub bindings: Vec<BindingsConfig>,
-
-    #[serde(default)]
-    pub profiles: ProfilesConfig,
-
-    #[serde(default)]
-    pub wallets: Vec<WalletConfig>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProtocolConfig {
     pub name: String,
     pub scope: Option<String>,
@@ -104,6 +91,10 @@ impl From<KnownChain> for ProfileConfig {
             env_file: None,
             trp: None,
             u5c: None,
+            devnet: match &chain {
+                KnownChain::CardanoDevnet => Some(PathBuf::from("devnet.toml")),
+                _ => None,
+            },
         }
     }
 }
@@ -125,6 +116,7 @@ pub struct ProfileConfig {
     pub env_file: Option<PathBuf>,
     pub trp: Option<TrpConfig>,
     pub u5c: Option<U5cConfig>,
+    pub devnet: Option<PathBuf>,
 }
 
 impl ProfileConfig {
@@ -150,7 +142,7 @@ pub fn load_profile_env_vars(profile: &ProfileConfig) -> miette::Result<HashMap<
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct WalletConfig {
+pub struct ActorConfig {
     pub name: String,
     pub random_key: bool,
     pub key_path: Option<PathBuf>,
@@ -324,6 +316,30 @@ pub struct BindingsConfig {
     pub template: BindingsTemplateConfig,
     pub output_dir: PathBuf,
     pub options: Option<HashMap<String, serde_json::Value>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct KeyConfig {
+    pub name: String,
+    pub random: bool,
+    pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Config {
+    pub protocol: ProtocolConfig,
+
+    #[serde(default)]
+    pub registry: Option<RegistryConfig>,
+
+    #[serde(default)]
+    pub bindings: Vec<BindingsConfig>,
+
+    #[serde(default)]
+    pub profiles: ProfilesConfig,
+
+    #[serde(default)]
+    pub keys: Vec<KeyConfig>,
 }
 
 impl Config {

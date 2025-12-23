@@ -6,158 +6,26 @@ use std::{
     process::{Child, Command, Stdio},
 };
 
-pub const DOLOS_TEMPLATE: &str = include_str!("../templates/configs/dolos/dolos.toml");
-pub const ALONZO_TEMPLATE: &str = include_str!("../templates/configs/dolos/alonzo.json");
-pub const BYRON_TEMPLATE: &str = include_str!("../templates/configs/dolos/byron.json");
-pub const CONWAY_TEMPLATE: &str = include_str!("../templates/configs/dolos/conway.json");
-pub const SHELLEY_TEMPLATE: &str = include_str!("../templates/configs/dolos/shelley.json");
+pub const DOLOS_TEMPLATE: &str = include_str!("../../templates/configs/dolos/dolos.toml");
+pub const ALONZO_TEMPLATE: &str = include_str!("../../templates/configs/dolos/alonzo.json");
+pub const BYRON_TEMPLATE: &str = include_str!("../../templates/configs/dolos/byron.json");
+pub const CONWAY_TEMPLATE: &str = include_str!("../../templates/configs/dolos/conway.json");
+pub const SHELLEY_TEMPLATE: &str = include_str!("../../templates/configs/dolos/shelley.json");
 
-fn initialize_shelley_config(initial_funds: &HashMap<String, u64>) -> miette::Result<String> {
-    let mut original: Value = serde_json::from_str(SHELLEY_TEMPLATE)
+fn build_root_config(
+    custom_utxos: Vec<dolos_core::config::CustomUtxo>,
+) -> miette::Result<dolos_core::config::RootConfig> {
+    let mut config: dolos_core::config::RootConfig = toml::from_str(DOLOS_TEMPLATE)
         .into_diagnostic()
-        .context("parsing shelley JSON")?;
+        .context("parsing dolos.toml template")?;
 
-    let object = original
-        .get_mut("initialFunds")
-        .context("missing 'initialFunds' field")?
-        .as_object_mut()
-        .context("'initialFunds' is not a JSON object")?;
+    // Override chain config with custom UTXOs
+    config.chain = dolos_core::config::ChainConfig::Cardano(dolos_core::config::CardanoConfig {
+        custom_utxos,
+        ..Default::default()
+    });
 
-    for (address, balance) in initial_funds {
-        object.insert(
-            address.clone(),
-            serde_json::Value::Number(serde_json::Number::from(*balance)),
-        );
-    }
-
-    serde_json::to_string_pretty(&original)
-        .into_diagnostic()
-        .context("serializing shelley JSON")
-}
-
-fn initialize_data_dir(home_dir: &Path) -> miette::Result<PathBuf> {
-    let data_dir = home_dir.join("data");
-
-    if data_dir.exists() {
-        std::fs::remove_dir_all(&data_dir)
-            .into_diagnostic()
-            .context("prunning data directory")?;
-    }
-
-    std::fs::create_dir_all(&data_dir)
-        .into_diagnostic()
-        .context("creating data directory")?;
-
-    Ok(data_dir)
-}
-
-fn initialize_wal_store(data_dir: &Path) -> miette::Result<()> {
-    let wal = dolos_redb::wal::RedbWalStore::open(&data_dir.join("wal"), None)
-        .into_diagnostic()
-        .context("creating wal store")?;
-
-    wal.initialize_from_origin()
-        .into_diagnostic()
-        .context("initializing wal from origin")?;
-
-    Ok(())
-}
-
-fn initialize_ledger_store(data_dir: &Path) -> miette::Result<dolos_redb::state::LedgerStore> {
-    let state: dolos_redb::state::LedgerStore =
-        dolos_redb::state::LedgerStore::open(&data_dir.join("ledger"), None)
-            .map_err(dolos_core::StateError::from)
-            .into_diagnostic()
-            .context("creating ledger store")?;
-
-    Ok(state)
-}
-
-fn initialize_chain_store(data_dir: &Path) -> miette::Result<dolos_redb::archive::ChainStore> {
-    let archive = dolos_redb::archive::ChainStore::open(&data_dir.join("chain"), None)
-        .map_err(dolos_core::ArchiveError::from)
-        .into_diagnostic()
-        .context("creating chain store")?;
-
-    Ok(archive)
-}
-
-fn calculate_deltas(
-    initial_utxos: &Vec<(String, Vec<u8>)>,
-) -> miette::Result<Vec<dolos_core::LedgerDelta>> {
-    use dolos_cardano::pallas::ledger::traverse::{Era, MultiEraOutput};
-
-    let eras = vec![Era::Conway, Era::Babbage, Era::Alonzo, Era::Byron];
-
-    let mut delta = dolos_core::LedgerDelta::default();
-
-    println!("Applying initial UTxOs...");
-
-    for (address, bytes) in initial_utxos {
-        let utxo_hash = hex::decode(address.split('#').nth(0).unwrap_or_default())
-            .into_diagnostic()
-            .context("decoding tx hash")?;
-
-        let utxo_id = address
-            .split('#')
-            .nth(1)
-            .unwrap_or_default()
-            .parse::<u32>()
-            .into_diagnostic()
-            .context("parsing tx id")?;
-
-        let utxo_ref = dolos_core::TxoRef(dolos_core::TxHash::from(utxo_hash.as_slice()), utxo_id);
-
-        let mut output: Option<MultiEraOutput> = None;
-
-        for era in &eras {
-            let o = MultiEraOutput::decode(*era, &bytes);
-            if o.is_ok() {
-                output = o.ok();
-                break;
-            }
-        }
-
-        if let Some(output) = output {
-            println!("UTxO {} found", address);
-            delta
-                .produced_utxo
-                .insert(utxo_ref, dolos_core::EraCbor::from(output));
-        }
-    }
-
-    println!("");
-
-    Ok(vec![delta])
-}
-
-fn initialize_initial_utxos(
-    home_dir: &Path,
-    initial_utxos: &Vec<(String, Vec<u8>)>,
-) -> miette::Result<()> {
-    let data_dir = initialize_data_dir(home_dir)?;
-
-    initialize_wal_store(&data_dir)?;
-
-    let state = initialize_ledger_store(&data_dir)?;
-
-    let archive = initialize_chain_store(&data_dir)?;
-
-    let deltas = calculate_deltas(initial_utxos)?;
-
-    state
-        .apply(&deltas)
-        .map_err(dolos_core::StateError::from)
-        .into_diagnostic()
-        .context("applying initial utxos to state")?;
-
-    archive
-        .apply(&deltas)
-        .map_err(dolos_core::ArchiveError::from)
-        .into_diagnostic()
-        .context("applying initial utxos to archive")?;
-
-    Ok(())
+    Ok(config)
 }
 
 fn save_config(home: &Path, name: &str, content: &str) -> miette::Result<PathBuf> {
@@ -172,28 +40,24 @@ fn save_config(home: &Path, name: &str, content: &str) -> miette::Result<PathBuf
 
 pub fn initialize_config(
     home: &Path,
-    initial_funds: &HashMap<String, u64>,
-    initial_utxos: &Vec<(String, Vec<u8>)>,
+    custom_utxos: Vec<dolos_core::config::CustomUtxo>,
 ) -> miette::Result<PathBuf> {
     std::fs::create_dir_all(home).into_diagnostic()?;
 
     save_config(home, "byron.json", BYRON_TEMPLATE)?;
-
-    let shelley_content = initialize_shelley_config(initial_funds)?;
-    save_config(home, "shelley.json", &shelley_content)?;
-
+    save_config(home, "shelley.json", SHELLEY_TEMPLATE)?;
     save_config(home, "alonzo.json", ALONZO_TEMPLATE)?;
-
     save_config(home, "conway.json", CONWAY_TEMPLATE)?;
 
-    let config_path = save_config(home, "dolos.toml", DOLOS_TEMPLATE)?;
+    let root_content = build_root_config(custom_utxos)?;
+    let root_content = toml::to_string_pretty(&root_content).into_diagnostic()?;
 
-    initialize_initial_utxos(home, initial_utxos)?;
+    let root_path = save_config(home, "dolos.toml", &root_content)?;
 
-    Ok(config_path)
+    Ok(root_path)
 }
 
-pub fn daemon(home: &Path, background: bool) -> miette::Result<Child> {
+pub fn daemon(home: &Path, silent: bool) -> miette::Result<Child> {
     let tool_path = crate::home::tool_path("dolos")?;
 
     let config_path = home.join("dolos.toml");
@@ -203,7 +67,7 @@ pub fn daemon(home: &Path, background: bool) -> miette::Result<Child> {
     cmd.args(["-c", config_path.to_str().unwrap(), "daemon"]);
     cmd.current_dir(home);
 
-    if background {
+    if silent {
         cmd.stdout(Stdio::null()).stderr(Stdio::null());
     } else {
         cmd.stdout(Stdio::inherit()).stderr(Stdio::inherit());

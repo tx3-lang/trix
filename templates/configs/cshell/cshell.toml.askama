@@ -1,0 +1,9 @@
+wallets = []
+
+[[providers]]
+type = "Provider"
+name = "trix-{{ profile.name }}"
+url = "{{ u5c_url() }}"
+is_default = true
+is_testnet = true
+trp_url = "{{ trp_url() }}"

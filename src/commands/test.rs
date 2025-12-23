@@ -6,17 +6,17 @@ use std::{
 };
 
 use clap::Args as ClapArgs;
-use miette::{Context, IntoDiagnostic, Result, bail};
-use pallas::ledger::addresses::Address;
+use miette::{Context as _, IntoDiagnostic, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     config::{Config, ProfileConfig, load_profile_env_vars},
+    devnet::Config as DevnetConfig,
     spawn::cshell::OutputWallet,
 };
 
 const BLOCK_PRODUCTION_INTERVAL_SECONDS: u64 = 5;
-const BOROS_SPAW_DELAY_SECONDS: u64 = 2;
+const DOLOS_SPAWN_DELAY_SECONDS: u64 = 2;
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -25,10 +25,32 @@ pub struct Args {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct Context {
+    protocol: PathBuf,
+    devnet: PathBuf,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self {
+            protocol: PathBuf::from("./main.tx3"),
+            devnet: PathBuf::from("./devnet.toml"),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct Test {
-    file: PathBuf,
+    #[serde(default)]
+    context: Context,
+
+    #[serde(default)]
     wallets: Vec<Wallet>,
+
+    #[serde(default)]
     transactions: Vec<Transaction>,
+
+    #[serde(default)]
     expect: Vec<ExpectUtxo>,
 }
 
@@ -58,38 +80,6 @@ pub(crate) struct ExpectMinAmount {
     pub(crate) policy: Option<String>,
     pub(crate) name: Option<String>,
     pub(crate) amount: u64,
-}
-
-fn ensure_test_home(test: &Test, hashable: &[u8]) -> Result<PathBuf> {
-    let test_home = crate::home::consistent_tmp_dir("test", hashable)?;
-
-    // if the test with the exact hash already exists, we assume it's already initialized
-    if test_home.exists() {
-        return Ok(test_home);
-    }
-
-    crate::spawn::cshell::initialize_config(&test_home)?;
-
-    let mut initial_funds = HashMap::new();
-
-    for wallet in &test.wallets {
-        let output = crate::spawn::cshell::wallet_create(&test_home, &wallet.name)?;
-
-        let address = output
-            .get("addresses")
-            .context("missing 'addresses' field in cshell JSON output")?
-            .get("testnet")
-            .context("missing 'testnet' field in cshell 'addresses'")?
-            .as_str()
-            .unwrap();
-
-        let address = Address::from_bech32(address).into_diagnostic()?.to_hex();
-        initial_funds.insert(address, wallet.balance);
-    }
-
-    crate::spawn::dolos::initialize_config(&test_home, &initial_funds, &vec![])?;
-
-    Ok(test_home)
 }
 
 fn replace_placeholder_args(args: &mut ArgMap, wallets: &Vec<OutputWallet>) {
@@ -170,6 +160,59 @@ fn trigger_transaction(
     Ok(())
 }
 
+pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> Result<()> {
+    println!("== Starting tests ==\n");
+    let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
+    let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
+
+    let wallet = crate::wallet::setup(config, profile)?;
+
+    let devnet = DevnetConfig::load(&test.context.devnet)?;
+
+    let ctx = crate::devnet::Context::from_wallet(&wallet);
+
+    let mut devnet = crate::devnet::start_daemon(&devnet, &ctx, true)?;
+
+    println!("Dolos daemon started");
+
+    sleep(Duration::from_secs(DOLOS_SPAWN_DELAY_SECONDS));
+
+    let mut failed = false;
+    for transaction in &test.transactions {
+        println!("--- Running transaction: {} ---", transaction.description);
+
+        let result =
+            trigger_transaction(&devnet.home, &test.context.protocol, transaction, &profile);
+
+        if let Err(err) = result {
+            eprintln!("Transaction `{}` failed.\n", transaction.description);
+            eprintln!("Error: {err}\n");
+            failed = true;
+        }
+
+        println!("Waiting next block...");
+        sleep(Duration::from_secs(BLOCK_PRODUCTION_INTERVAL_SECONDS));
+    }
+
+    failed |= crate::commands::expect::expect_utxo(&test.expect, &devnet.home)?;
+
+    if !failed {
+        println!("Test Passed\n");
+    }
+
+    devnet
+        .daemon
+        .kill()
+        .into_diagnostic()
+        .context("failed to stop dolos devnet in background")?;
+
+    if failed {
+        bail!("Test failed, see the output above for details.");
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,16 +221,10 @@ mod tests {
     #[test]
     fn parse_expect_utxo_toml() {
         let toml = r#"
-            file = "./main.tx3"
-
-            [[wallets]]
-            name = "oracle"
-            balance = 10000000
-
-            [[wallets]]
-            name = "operator"
-            balance = 5000000
-
+            [context]
+            protocol = "./main.tx3"
+            devnet = "./devnet.toml"
+            
             [[transactions]]
             description = "Simple Oracle"
             template = "create"
@@ -209,7 +246,8 @@ mod tests {
 
         let parsed: Test = toml::from_str(toml).expect("parse toml");
 
-        assert_eq!(parsed.file, PathBuf::from("./main.tx3"));
+        assert_eq!(parsed.context.protocol, PathBuf::from("./main.tx3"));
+        assert_eq!(parsed.context.devnet, PathBuf::from("./devnet.toml"));
         assert_eq!(parsed.wallets.len(), 2);
 
         assert_eq!(parsed.transactions.len(), 1);
@@ -237,47 +275,4 @@ mod tests {
         assert_eq!(mins[1].name.as_ref().unwrap(), "abc");
         assert_eq!(mins[1].amount, 456);
     }
-}
-
-pub fn run(args: Args, _config: &Config, profile: &ProfileConfig) -> Result<()> {
-    println!("== Starting tests ==\n");
-    let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
-    let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
-
-    let test_home = ensure_test_home(&test, test_content.as_bytes())?;
-
-    let mut dolos = crate::spawn::dolos::daemon(&test_home, true)?;
-    println!("Dolos daemon started");
-
-    sleep(Duration::from_secs(BOROS_SPAW_DELAY_SECONDS));
-
-    let mut failed = false;
-    for transaction in &test.transactions {
-        println!("--- Running transaction: {} ---", transaction.description);
-        if let Err(err) = trigger_transaction(&test_home, &test.file, transaction, &profile) {
-            eprintln!("Transaction `{}` failed.\n", transaction.description);
-            eprintln!("Error: {err}\n");
-            failed = true;
-        }
-
-        println!("Waiting next block...");
-        sleep(Duration::from_secs(BLOCK_PRODUCTION_INTERVAL_SECONDS));
-    }
-
-    failed |= crate::commands::expect::expect_utxo(&test.expect, &test_home)?;
-
-    if !failed {
-        println!("Test Passed\n");
-    }
-
-    dolos
-        .kill()
-        .into_diagnostic()
-        .context("failed to stop dolos devnet in background")?;
-
-    if failed {
-        bail!("Test failed, see the output above for details.");
-    }
-
-    Ok(())
 }

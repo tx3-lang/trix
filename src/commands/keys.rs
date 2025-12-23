@@ -24,9 +24,9 @@ pub enum Command {
 }
 
 pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
-    let devnet_home = crate::commands::devnet::ensure_devnet_home(config, profile)?;
+    let wallet = crate::wallet::setup(config, profile)?;
 
-    let info = spawn::cshell::wallet_info(&devnet_home, &args.name)?;
+    let info = spawn::cshell::wallet_info(&wallet.home, &args.name)?;
 
     let Some(command) = args.command else {
         let pretty = serde_json::to_string_pretty(&info).into_diagnostic()?;
