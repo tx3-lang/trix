@@ -3,7 +3,10 @@ use std::path::PathBuf;
 use clap::Args as ClapArgs;
 use miette::{IntoDiagnostic, bail};
 
-use crate::config::{Config, ProfileConfig};
+use crate::{
+    builder,
+    config::{Config, ProfileConfig},
+};
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -65,7 +68,9 @@ fn load_args_json(args: &Args, profile: &ProfileConfig) -> miette::Result<serde_
 }
 
 pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
-    let devnet_home = crate::commands::devnet::ensure_devnet_home(config, profile)?;
+    let tii_file = builder::ensure_tii(config, profile)?;
+
+    let wallet = crate::wallet::setup(config, profile)?;
 
     let cononical = config.protocol.main.canonicalize().into_diagnostic()?;
 
@@ -79,8 +84,8 @@ pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Resu
     let args_json = load_args_json(&args, profile)?;
 
     crate::spawn::cshell::tx_invoke_interactive(
-        &devnet_home,
-        &cononical,
+        &wallet.home,
+        &tii_file,
         &args_json,
         None,
         vec![],

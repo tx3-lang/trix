@@ -42,8 +42,8 @@ pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Resu
 
     for utxo in utxos {
         if let Some(txo_ref) = utxo.txo_ref {
-            devnet.utxos.push(crate::devnet::UtxoSpec::Bytes(
-                crate::devnet::UtxoSpecBytes {
+            devnet.utxos.push(crate::devnet::UtxoSpec::NativeBytes(
+                crate::devnet::NativeBytesUtxoSpec {
                     r#ref: format!("{}#{}", hex::encode(txo_ref.hash), txo_ref.index),
                     raw_bytes: hex::encode(utxo.native),
                 },

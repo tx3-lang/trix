@@ -7,9 +7,9 @@ use crate::config::{Config, ProfileConfig};
 pub struct Args {}
 
 pub fn run(_args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
-    let devnet_home = crate::commands::devnet::ensure_devnet_home(config, profile)?;
+    let wallet = crate::wallet::setup(config, profile)?;
 
-    let mut child = crate::spawn::cshell::explorer(&devnet_home)?;
+    let mut child = crate::spawn::cshell::explorer(&wallet.home)?;
 
     let status = child
         .wait()

@@ -1,6 +1,12 @@
-[context]
-protocol = "./main.tx3"
-devnet = "./devnet.toml"
+file="./main.tx3"
+
+[[wallets]]
+name = "bob"
+balance = 10000000
+
+[[wallets]]
+name = "alice"
+balance = 5000000
 
 [[transactions]]
 description = "bob sends 2 ada to alice"
@@ -22,4 +28,4 @@ amount = 9638899
 [[expect]]
 type = "Balance"
 wallet = "alice"
-amount = { target = 4638899, threshold = 300000 }
+amount = { target = 4638899, threshold = 300000 } 

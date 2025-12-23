@@ -1,18 +1,19 @@
 use std::path::PathBuf;
 
 use crate::config::{
-    BindingsConfig, BindingsTemplateConfig, Config, ProfilesConfig, ProtocolConfig, RegistryConfig,
-    WalletConfig,
+    ActorConfig, BindingsConfig, BindingsTemplateConfig, Config, KeyConfig, ProfilesConfig,
+    ProtocolConfig, RegistryConfig,
 };
 use clap::Args as ClapArgs;
 use inquire::{Confirm, MultiSelect, Text};
 use miette::{Context, IntoDiagnostic};
 
 // Include template files at compile time
-const TEMPLATE_MAIN_TX3: &str = include_str!("../templates/tx3/main.tx3.tpl");
-const TEMPLATE_TEST_TOML: &str = include_str!("../templates/tx3/test.toml.tpl");
-
+const TEMPLATE_MAIN_TX3: &str = include_str!("../../templates/tx3/main.tx3.tpl");
+const TEMPLATE_TEST_TOML: &str = include_str!("../../templates/tx3/test.toml.tpl");
 const DEFAULT_PROJECT_NAME: &str = "my-project";
+const DEFAULT_ACTORS: [&str; 2] = ["alice", "bob"];
+const DEFAULT_DEVNET_WALLET_AMOUNT: u64 = 100_000_000_000;
 
 fn infer_project_name() -> String {
     let current_dir = match std::env::current_dir() {
@@ -40,18 +41,27 @@ fn prompt<'a>(msg: &'a str, default: Option<&'a str>, initial: Option<&'a str>) 
     prompt
 }
 
-const DEFAULT_DEVNET_WALLET_AMOUNT: u64 = 100_000_000_000;
-
-fn infer_devnet(wallets: &[WalletConfig]) -> crate::devnet::Config {
-    let utxos = wallets
+fn infer_devnet() -> crate::devnet::Config {
+    let actors: Vec<_> = DEFAULT_ACTORS
         .iter()
-        .map(|wallet| crate::devnet::UtxoSpec::Value(crate::devnet::UtxoSpecValue {
-            address: crate::devnet::AddressSpec::NamedWallet(wallet.name.clone()),
-            value: DEFAULT_DEVNET_WALLET_AMOUNT,
-        }))
+        .map(|actor| ActorConfig {
+            name: actor.to_string(),
+            random_key: true,
+            key_path: None,
+        })
         .collect();
 
-    crate::devnet::Config { utxos }
+    let utxos = actors
+        .iter()
+        .map(|actor| {
+            crate::devnet::UtxoSpec::Explicit(crate::devnet::ExplicitUtxoSpec {
+                address: crate::devnet::AddressSpec::NamedWallet(actor.name.clone()),
+                value: DEFAULT_DEVNET_WALLET_AMOUNT,
+            })
+        })
+        .collect();
+
+    crate::devnet::Config { utxos, actors }
 }
 
 fn apply(config: Config, devnet: crate::devnet::Config) -> miette::Result<()> {
@@ -80,6 +90,17 @@ fn apply(config: Config, devnet: crate::devnet::Config) -> miette::Result<()> {
     Ok(())
 }
 
+fn infer_keys() -> Vec<KeyConfig> {
+    DEFAULT_ACTORS
+        .iter()
+        .map(|actor| KeyConfig {
+            name: actor.to_string(),
+            random: true,
+            path: None,
+        })
+        .collect()
+}
+
 fn default_config() -> Config {
     Config {
         protocol: ProtocolConfig {
@@ -90,21 +111,10 @@ fn default_config() -> Config {
             main: "main.tx3".into(),
             readme: None,
         },
+        keys: infer_keys(),
         bindings: Vec::default(),
         profiles: ProfilesConfig::default().into(),
         registry: Some(RegistryConfig::default()),
-        wallets: vec![
-            WalletConfig {
-                name: "alice".to_string(),
-                random_key: true,
-                key_path: None,
-            },
-            WalletConfig {
-                name: "bob".to_string(),
-                random_key: true,
-                key_path: None,
-            },
-        ],
     }
 }
 
@@ -156,18 +166,6 @@ fn inquire_config(initial: &Config) -> miette::Result<Config> {
             .collect(),
         profiles: ProfilesConfig::default().into(),
         registry: Some(RegistryConfig::default()),
-        wallets: vec![
-            WalletConfig {
-                name: "alice".to_string(),
-                random_key: true,
-                key_path: None,
-            },
-            WalletConfig {
-                name: "bob".to_string(),
-                random_key: true,
-                key_path: None,
-            },
-        ],
         ..initial.clone()
     };
 
@@ -197,7 +195,7 @@ pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
         config = inquire_config(&config)?;
     };
 
-    let devnet = infer_devnet(&config.wallets);
+    let devnet = infer_devnet();
 
     apply(config, devnet)?;
 
