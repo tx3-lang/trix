@@ -2,12 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.0] - 2025-12-29
+
+### 🚀 Features
+
+- Introduce devnet copy command (#84)
+- Add u5c endpoint headers support
+- Load profile-specific env vars when required (#87)
+- Support custom tool path via env vars (#90)
+
+### 🐛 Bug Fixes
+
+- Use correct `signers` args in cshell invoke (#82)
+- Improve compatibility with previous config formats
+
+### 🚜 Refactor
+
+- Apply alpha learnings to beta version (#94)
+
+### ⚙️ Miscellaneous Tasks
+
+- Update tx3 to v0.12 (#86)
+- Update tx3 and u5c deps
+
 ## [0.18.0] - 2025-08-06
 
 ### 🐛 Bug Fixes
 
 - Use cshell for wallet data
 - Clean-up noise on invoke stdout
+
+### 💼 Other
+
+- V0.18.0
 
 ## [0.17.0] - 2025-08-06
 
