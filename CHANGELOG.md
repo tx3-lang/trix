@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.1] - 2025-12-29
+
+### 🐛 Bug Fixes
+
+- Pass implicit profiles to tx3c
+- Include placeholder for ledger family config
+
 ## [0.19.0] - 2025-12-29
 
 ### 🚀 Features
@@ -16,6 +23,10 @@ All notable changes to this project will be documented in this file.
 - Use correct `signers` args in cshell invoke (#82)
 - Improve compatibility with previous config formats
 
+### 💼 Other
+
+- V0.19.0
+
 ### 🚜 Refactor
 
 - Apply alpha learnings to beta version (#94)
@@ -24,6 +35,7 @@ All notable changes to this project will be documented in this file.
 
 - Update tx3 to v0.12 (#86)
 - Update tx3 and u5c deps
+- Remove x86 apple binary build
 
 ## [0.18.0] - 2025-08-06
 
