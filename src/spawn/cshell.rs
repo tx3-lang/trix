@@ -6,12 +6,11 @@ use std::{
 
 use askama::Template;
 use bip39::Mnemonic;
-use cryptoxide::{digest::Digest, sha2::Sha256};
 
 use miette::{Context as _, IntoDiagnostic as _, bail};
 use serde::{Deserialize, Deserializer, Serialize, de};
 
-use crate::config::ProfileConfig;
+use crate::config::{ProfileConfig, RootConfig, TrpConfig, U5cConfig};
 
 #[derive(Debug, Deserialize)]
 pub struct OutputWallet {
@@ -69,45 +68,17 @@ pub struct UTxO {
     pub datum: Option<Datum>,
 }
 
+pub struct Provider {
+    pub name: String,
+    pub u5c: U5cConfig,
+    pub trp: TrpConfig,
+    pub is_testnet: bool,
+}
+
 #[derive(Template)]
 #[template(path = "configs/cshell/cshell.toml.askama")]
-struct CshellTomlTemplate {
-    profile: ProfileConfig,
-}
-
-impl CshellTomlTemplate {
-    fn u5c_url(&self) -> &str {
-        self.profile
-            .u5c
-            .as_ref()
-            .map(|u5c| u5c.url.as_str())
-            .unwrap_or("http://localhost:5164")
-    }
-
-    fn trp_url(&self) -> &str {
-        self.profile
-            .trp
-            .as_ref()
-            .map(|trp| trp.url.as_str())
-            .unwrap_or("http://localhost:8164")
-    }
-}
-
-pub fn initialize_config(root: &Path, profile: &ProfileConfig) -> miette::Result<PathBuf> {
-    let config_path = root.join("cshell.toml");
-
-    std::fs::create_dir_all(root).into_diagnostic()?;
-
-    let template = CshellTomlTemplate {
-        profile: profile.clone(),
-    };
-    let rendered = template.render().into_diagnostic()?;
-
-    std::fs::write(&config_path, rendered)
-        .into_diagnostic()
-        .context("writing cshell config")?;
-
-    Ok(config_path)
+pub struct CshellTomlTemplate {
+    pub provider: Provider,
 }
 
 fn new_generic_command(home: &Path) -> miette::Result<Command> {
@@ -120,16 +91,6 @@ fn new_generic_command(home: &Path) -> miette::Result<Command> {
     cmd.args(["-s", config_path.to_str().unwrap_or_default()]);
 
     Ok(cmd)
-}
-
-fn generate_deterministic_mnemonic(input: &str) -> miette::Result<Mnemonic> {
-    let mut hasher = Sha256::new();
-    hasher.input(input.as_bytes());
-    let hash = hasher.result_str();
-
-    let entropy: [u8; 32] = hash[..32].as_bytes().try_into().unwrap();
-
-    Mnemonic::from_entropy(&entropy).into_diagnostic()
 }
 
 #[derive(Deserialize, Serialize)]
@@ -171,16 +132,14 @@ pub fn wallet_info(home: &Path, wallet_name: &str) -> miette::Result<WalletInfoO
     Ok(output)
 }
 
-pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_json::Value> {
+pub fn wallet_create(home: &Path, name: &str, mnemonic: &str) -> miette::Result<serde_json::Value> {
     let mut cmd = new_generic_command(home)?;
-
-    let mnemonic = generate_deterministic_mnemonic(wallet_name)?.to_string();
 
     cmd.args([
         "wallet",
         "restore",
         "--name",
-        wallet_name,
+        name,
         "--mnemonic",
         &mnemonic,
         "--unsafe",
@@ -226,11 +185,13 @@ pub fn wallet_list(home: &Path) -> miette::Result<Vec<OutputWallet>> {
 pub fn tx_invoke_cmd(
     home: &Path,
     tii_file: &Path,
-    args: &serde_json::Value,
+    tii_profile: Option<&str>,
     tx_template: Option<&str>,
+    args: &serde_json::Value,
     signers: Vec<&str>,
     r#unsafe: bool,
     skip_submit: bool,
+    provider: Option<&str>,
 ) -> miette::Result<Command> {
     let mut cmd = new_generic_command(home)?;
 
@@ -242,6 +203,10 @@ pub fn tx_invoke_cmd(
         "--output-format",
         "json",
     ]);
+
+    if let Some(tii_profile) = tii_profile {
+        cmd.args(["--profile", tii_profile]);
+    }
 
     if let Some(tx_template) = tx_template {
         cmd.args(["--tx-template", tx_template]);
@@ -262,7 +227,9 @@ pub fn tx_invoke_cmd(
         cmd.args(["--skip-submit"]);
     }
 
-    // println!("{:#?}", cmd);
+    if let Some(provider) = provider {
+        cmd.args(["--provider", provider]);
+    }
 
     Ok(cmd)
 }
@@ -270,20 +237,24 @@ pub fn tx_invoke_cmd(
 pub fn tx_invoke_interactive(
     home: &Path,
     tii_file: &Path,
-    args: &serde_json::Value,
+    tii_profile: Option<&str>,
     tx_template: Option<&str>,
+    args: &serde_json::Value,
     signers: Vec<&str>,
     r#unsafe: bool,
     skip_submit: bool,
+    provider: Option<&str>,
 ) -> miette::Result<()> {
     let mut cmd = tx_invoke_cmd(
         home,
         tii_file,
-        args,
+        tii_profile,
         tx_template,
+        args,
         signers,
         r#unsafe,
         skip_submit,
+        provider,
     )?;
 
     cmd.stdout(Stdio::inherit())
@@ -298,21 +269,25 @@ pub fn tx_invoke_interactive(
 
 pub fn tx_invoke_json(
     home: &Path,
-    tx3_file: &Path,
-    tx3_args: &serde_json::Value,
-    tx3_template: Option<&str>,
+    tii_file: &Path,
+    tii_profile: Option<&str>,
+    args: &serde_json::Value,
+    tx_template: Option<&str>,
     signers: Vec<&str>,
     r#unsafe: bool,
     skip_submit: bool,
+    provider: Option<&str>,
 ) -> miette::Result<serde_json::Value> {
     let mut cmd = tx_invoke_cmd(
         home,
-        tx3_file,
-        tx3_args,
-        tx3_template,
+        tii_file,
+        tii_profile,
+        tx_template,
+        args,
         signers,
         r#unsafe,
         skip_submit,
+        provider,
     )?;
 
     let output = cmd
@@ -351,15 +326,11 @@ pub fn wallet_utxos(home: &Path, wallet_name: &str) -> miette::Result<Vec<UTxO>>
 
     cmd.args(["wallet", "utxos", wallet_name, "--output-format", "json"]);
 
-    dbg!(&cmd);
-
     let output = cmd
         .stdout(Stdio::piped())
         .output()
         .into_diagnostic()
         .context("running CShell wallet utxos")?;
-
-    dbg!(&output);
 
     if !output.status.success() {
         bail!("CShell failed to get wallet utxos");
@@ -385,10 +356,11 @@ pub fn wallet_utxos(home: &Path, wallet_name: &str) -> miette::Result<Vec<UTxO>>
     }
 }
 
-pub fn explorer(home: &Path) -> miette::Result<Child> {
+pub fn explorer(home: &Path, provider: &str) -> miette::Result<Child> {
     let mut cmd = new_generic_command(home)?;
 
     cmd.args(["explorer"]);
+    cmd.args(["--provider", provider]);
 
     let child = cmd
         .stdout(Stdio::inherit())

@@ -1,62 +1,12 @@
 [protocol]
-name = "v1-demo"
+name = "v1"
 scope = ""
 version = "0.0.0"
 description = ""
 main = "main.tx3"
 
-[registry]
-url = "https://tx3.land"
+[[codegen]]
+plugin = "ts-client"
 
-[[bindings]]
-output_dir = "./gen/typescript"
-
-[bindings.template]
-repo = "tx3-lang/web-sdk"
-path = ".trix/client-lib"
-ref = "bindgen-v1alpha2"
-
-[[bindings]]
-output_dir = "./gen/rust"
-
-[bindings.template]
-repo = "tx3-lang/rust-sdk"
-path = ".trix/client-lib"
-ref = "bindgen-v1alpha2"
-
-[[bindings]]
-output_dir = "./gen/go"
-
-[bindings.template]
-repo = "tx3-lang/go-sdk"
-path = ".trix/client-lib"
-ref = "bindgen-v1alpha2"
-
-[[bindings]]
-output_dir = "./gen/python"
-
-[bindings.template]
-repo = "tx3-lang/python-sdk"
-path = ".trix/client-lib"
-ref = "bindgen-v1alpha2"
-
-[profiles.preview]
-chain = "CardanoPreview"
-
-[profiles.mainnet]
-chain = "CardanoMainnet"
-
-[profiles.preprod]
-chain = "CardanoPreprod"
-
-[profiles.devnet]
-chain = "CardanoDevnet"
-devnet = "devnet.toml"
-
-[[keys]]
-name = "alice"
-random = true
-
-[[keys]]
-name = "bob"
-random = true
+[[codegen]]
+plugin = "rust-client"

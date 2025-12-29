@@ -1,4 +1,4 @@
-use crate::config::{Config, ProfileConfig, U5cConfig};
+use crate::config::{ProfileConfig, RootConfig, U5cConfig};
 
 use utxorpc::{
     Cardano, ChainUtxo, ClientBuilder, QueryClient,
@@ -23,11 +23,10 @@ pub struct Args {
     output: Option<String>,
 }
 
-pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
-    let u5c = profile
-        .u5c
-        .as_ref()
-        .ok_or_else(|| miette::miette!("missing u5c config for profile"))?;
+pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
+    let network = config.resolve_profile_network(profile.name.as_str())?;
+
+    let u5c = &network.u5c;
 
     let tx_hash = args.utxo_deps;
 

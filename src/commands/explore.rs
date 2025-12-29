@@ -1,24 +1,14 @@
 use clap::Args as ClapArgs;
-use miette::{Context, IntoDiagnostic, bail};
 
-use crate::config::{Config, ProfileConfig};
+use crate::config::{ProfileConfig, RootConfig};
 
 #[derive(ClapArgs)]
 pub struct Args {}
 
-pub fn run(_args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
+pub fn run(_args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
     let wallet = crate::wallet::setup(config, profile)?;
 
-    let mut child = crate::spawn::cshell::explorer(&wallet.home)?;
-
-    let status = child
-        .wait()
-        .into_diagnostic()
-        .context("failed to wait for cshell explorer")?;
-
-    if !status.success() {
-        bail!("cshell explorer exited with code: {}", status);
-    }
+    wallet.explorer(profile.name.as_str())?;
 
     Ok(())
 }

@@ -2,7 +2,7 @@ use clap::{Args as ClapArgs, Subcommand};
 use miette::IntoDiagnostic;
 
 use crate::{
-    config::{Config, ProfileConfig},
+    config::{ProfileConfig, RootConfig},
     spawn,
 };
 
@@ -23,10 +23,10 @@ pub enum Command {
     PublicKeyHash,
 }
 
-pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
+pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
     let wallet = crate::wallet::setup(config, profile)?;
 
-    let info = spawn::cshell::wallet_info(&wallet.home, &args.name)?;
+    let info = wallet.info(&args.name)?;
 
     let Some(command) = args.command else {
         let pretty = serde_json::to_string_pretty(&info).into_diagnostic()?;

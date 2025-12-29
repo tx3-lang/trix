@@ -1,18 +1,18 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::config::{
-    ActorConfig, BindingsConfig, BindingsTemplateConfig, Config, KeyConfig, ProfilesConfig,
-    ProtocolConfig, RegistryConfig,
+    CodegenConfig, CodegenPlugin, KNOWN_CODEGEN_PLUGINS, ProfileConfig, ProtocolConfig, RootConfig,
+    serde::NamedMap,
 };
 use clap::Args as ClapArgs;
-use inquire::{Confirm, MultiSelect, Text};
+use inquire::{MultiSelect, Text};
 use miette::{Context, IntoDiagnostic};
 
 // Include template files at compile time
 const TEMPLATE_MAIN_TX3: &str = include_str!("../../templates/tx3/main.tx3.tpl");
 const TEMPLATE_TEST_TOML: &str = include_str!("../../templates/tx3/test.toml.tpl");
+const TEMPLATE_GITIGNORE: &str = include_str!("../../templates/tx3/.gitignore.tpl");
 const DEFAULT_PROJECT_NAME: &str = "my-project";
-const DEFAULT_ACTORS: [&str; 2] = ["alice", "bob"];
 const DEFAULT_DEVNET_WALLET_AMOUNT: u64 = 100_000_000_000;
 
 fn infer_project_name() -> String {
@@ -41,68 +41,61 @@ fn prompt<'a>(msg: &'a str, default: Option<&'a str>, initial: Option<&'a str>) 
     prompt
 }
 
-fn infer_devnet() -> crate::devnet::Config {
-    let actors: Vec<_> = DEFAULT_ACTORS
-        .iter()
-        .map(|actor| ActorConfig {
-            name: actor.to_string(),
-            random_key: true,
-            key_path: None,
-        })
-        .collect();
-
-    let utxos = actors
-        .iter()
-        .map(|actor| {
+fn infer_devnet(profile: &ProfileConfig) -> crate::devnet::Config {
+    let utxos = profile
+        .identities
+        .keys()
+        .map(|key| {
             crate::devnet::UtxoSpec::Explicit(crate::devnet::ExplicitUtxoSpec {
-                address: crate::devnet::AddressSpec::NamedWallet(actor.name.clone()),
+                address: crate::devnet::AddressSpec::NamedWallet(key.clone()),
                 value: DEFAULT_DEVNET_WALLET_AMOUNT,
             })
         })
         .collect();
 
-    crate::devnet::Config { utxos, actors }
+    crate::devnet::Config {
+        utxos,
+        actors: vec![],
+    }
 }
 
-fn apply(config: Config, devnet: crate::devnet::Config) -> miette::Result<()> {
-    let devnet_toml = toml::to_string_pretty(&devnet).into_diagnostic()?;
+fn apply_template_if_not_exists(path: impl Into<PathBuf>, template: &str) -> miette::Result<()> {
+    let path = path.into();
 
-    std::fs::write("devnet.toml", devnet_toml)
-        .into_diagnostic()
-        .context("writing devnet.toml")?;
-
-    let trix_toml = toml::to_string_pretty(&config).into_diagnostic()?;
-
-    std::fs::write("trix.toml", trix_toml)
-        .into_diagnostic()
-        .context("writing trix.toml")?;
-
-    std::fs::write("main.tx3", TEMPLATE_MAIN_TX3)
-        .into_diagnostic()
-        .context("writing main.tx3")?;
-
-    std::fs::create_dir_all("tests").into_diagnostic()?;
-
-    std::fs::write("tests/basic.toml", TEMPLATE_TEST_TOML)
-        .into_diagnostic()
-        .context("writing tests/basic.toml")?;
+    if !path.exists() {
+        std::fs::write(&path, template)
+            .into_diagnostic()
+            .context(format!("writing template to {}", path.to_string_lossy()))?;
+    }
 
     Ok(())
 }
 
-fn infer_keys() -> Vec<KeyConfig> {
-    DEFAULT_ACTORS
-        .iter()
-        .map(|actor| KeyConfig {
-            name: actor.to_string(),
-            random: true,
-            path: None,
-        })
-        .collect()
+fn apply(config: RootConfig, devnet: Option<crate::devnet::Config>) -> miette::Result<()> {
+    if let Some(devnet) = devnet {
+        let devnet_toml = toml::to_string_pretty(&devnet).into_diagnostic()?;
+        apply_template_if_not_exists("devnet.toml", &devnet_toml)?;
+    }
+
+    apply_template_if_not_exists(".gitignore", TEMPLATE_GITIGNORE)?;
+
+    apply_template_if_not_exists("main.tx3", TEMPLATE_MAIN_TX3)?;
+
+    std::fs::create_dir_all("tests").into_diagnostic()?;
+
+    apply_template_if_not_exists("tests/basic.toml", TEMPLATE_TEST_TOML)?;
+
+    let trix_toml = toml::to_string_pretty(&config).into_diagnostic()?;
+
+    std::fs::write("trix.toml", &trix_toml)
+        .into_diagnostic()
+        .context("writing trix.toml")?;
+
+    Ok(())
 }
 
-fn default_config() -> Config {
-    Config {
+fn default_config() -> RootConfig {
+    RootConfig {
         protocol: ProtocolConfig {
             name: infer_project_name(),
             scope: None,
@@ -111,14 +104,14 @@ fn default_config() -> Config {
             main: "main.tx3".into(),
             readme: None,
         },
-        keys: infer_keys(),
-        bindings: Vec::default(),
-        profiles: ProfilesConfig::default().into(),
-        registry: Some(RegistryConfig::default()),
+        codegen: Vec::new(),
+        profiles: NamedMap::default(),
+        networks: NamedMap::default(),
+        registry: None,
     }
 }
 
-fn inquire_config(initial: &Config) -> miette::Result<Config> {
+fn inquire_config(initial: &RootConfig) -> miette::Result<RootConfig> {
     let protocol_name = prompt("Protocol name:", None, Some(&initial.protocol.name))
         .prompt()
         .into_diagnostic()?;
@@ -139,14 +132,12 @@ fn inquire_config(initial: &Config) -> miette::Result<Config> {
         .prompt()
         .into_diagnostic()?;
 
-    let generate_bindings = MultiSelect::new(
-        "Generate bindings for:",
-        vec!["Typescript", "Rust", "Go", "Python"],
-    )
-    .prompt()
-    .unwrap_or_default();
+    let generate_bindings =
+        MultiSelect::new("Generate bindings for:", KNOWN_CODEGEN_PLUGINS.to_vec())
+            .prompt()
+            .unwrap_or_default();
 
-    let config = Config {
+    let config = RootConfig {
         protocol: ProtocolConfig {
             name: protocol_name,
             scope: owner_scope,
@@ -155,28 +146,20 @@ fn inquire_config(initial: &Config) -> miette::Result<Config> {
             main: "main.tx3".into(),
             readme: None,
         },
-        bindings: generate_bindings
+        codegen: generate_bindings
             .iter()
-            .map(|binding| BindingsConfig {
-                output_dir: PathBuf::from(format!("./gen/{}", binding.to_string().to_lowercase())),
-                plugin: None, // Deprecated
-                template: BindingsTemplateConfig::from_plugin(binding.to_lowercase().as_str()),
+            .map(|binding| CodegenConfig {
+                plugin: CodegenPlugin::Known(*binding),
+                job_id: None,
+                output_dir: None,
                 options: None,
             })
             .collect(),
-        profiles: ProfilesConfig::default().into(),
-        registry: Some(RegistryConfig::default()),
+        profiles: NamedMap::default(),
+        networks: NamedMap::default(),
+        registry: None,
         ..initial.clone()
     };
-
-    let confirm = Confirm::new("Is this OK?")
-        .with_default(true)
-        .prompt()
-        .into_diagnostic()?;
-
-    if !confirm {
-        return Err(miette::miette!("Nothing done"));
-    }
 
     Ok(config)
 }
@@ -188,14 +171,17 @@ pub struct Args {
     yes: bool,
 }
 
-pub fn run(args: Args, config: Option<&Config>) -> miette::Result<()> {
+pub fn run(args: Args, config: Option<&RootConfig>) -> miette::Result<()> {
     let mut config = config.cloned().unwrap_or(default_config());
 
     if !args.yes {
         config = inquire_config(&config)?;
     };
 
-    let devnet = infer_devnet();
+    let devnet = config
+        .resolve_profile("local")
+        .ok()
+        .map(|x| infer_devnet(&x));
 
     apply(config, devnet)?;
 

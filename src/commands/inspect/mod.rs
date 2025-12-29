@@ -1,5 +1,6 @@
-use crate::config::Config;
 use clap::{Args as ClapArgs, Subcommand};
+
+use crate::config::RootConfig;
 
 mod tir;
 
@@ -15,7 +16,7 @@ pub struct Args {
     command: Command,
 }
 
-pub fn run(args: Args, config: &Config) -> miette::Result<()> {
+pub fn run(args: Args, config: &RootConfig) -> miette::Result<()> {
     match args.command {
         Command::Tir(args) => tir::run(args, config),
     }

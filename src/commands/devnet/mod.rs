@@ -2,7 +2,7 @@ use clap::{Args as ClapArgs, Subcommand};
 use miette::{Context, IntoDiagnostic, bail};
 use std::path::PathBuf;
 
-use crate::config::{Config, ProfileConfig};
+use crate::config::{ProfileConfig, RootConfig};
 use crate::devnet::Config as DevnetConfig;
 
 pub mod copy;
@@ -27,14 +27,14 @@ pub struct Args {
     background: bool,
 }
 
-pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
+pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
     match args.command {
         Some(Command::Copy(args)) => copy::run(args, config, profile),
         None => run_devnet(args, config, profile),
     }
 }
 
-pub fn run_devnet(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
+pub fn run_devnet(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
     let path = match args.config {
         Some(path) => path,
         None => crate::dirs::protocol_root()?.join("devnet.toml"),

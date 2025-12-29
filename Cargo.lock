@@ -345,12 +345,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
 
 [[package]]
-name = "bech32"
-version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
-
-[[package]]
 name = "binary-layout"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -969,12 +963,6 @@ dependencies = [
  "tracing",
  "trait-variant",
 ]
-
-[[package]]
-name = "dotenvy"
-version = "0.15.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "dyn-clone"
@@ -2319,7 +2307,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef0ef7593326952c54c2a3b74621a7b2db01a134a957063b9e1a02b4599fdf89"
 dependencies = [
  "base58",
- "bech32 0.9.1",
+ "bech32",
  "crc",
  "cryptoxide 0.4.4",
  "hex",
@@ -4021,7 +4009,6 @@ dependencies = [
  "cryptoxide 0.5.1",
  "dirs",
  "dolos-core",
- "dotenvy",
  "ed25519-bip32",
  "futures",
  "handlebars",
@@ -4053,8 +4040,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tx3-lang"
-version = "0.13.0"
-source = "git+https://github.com/tx3-lang/tx3.git#b70f6433bd8cc51d4e9bd78aec856c00d3599ce6"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f417262ee0e5c4f4749ca355054dd790126a1cc5d69307d0f220df3b0f8c68d4"
 dependencies = [
  "ciborium",
  "hex",
@@ -4069,15 +4057,13 @@ dependencies = [
 
 [[package]]
 name = "tx3-tir"
-version = "0.13.0"
-source = "git+https://github.com/tx3-lang/tx3.git#b70f6433bd8cc51d4e9bd78aec856c00d3599ce6"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a98854a4d5de6cde2025a5e84d596c5e7128219b594a08156c3f2270923fc165"
 dependencies = [
- "base64 0.22.1",
- "bech32 0.11.1",
  "ciborium",
  "hex",
  "serde",
- "serde_json",
  "thiserror 2.0.17",
 ]
 

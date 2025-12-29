@@ -10,9 +10,11 @@ use miette::{Context as _, IntoDiagnostic, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::{Config, ProfileConfig, load_profile_env_vars},
+    builder,
+    config::{ProfileConfig, RootConfig},
     devnet::Config as DevnetConfig,
     spawn::cshell::OutputWallet,
+    wallet::WalletProxy,
 };
 
 const BLOCK_PRODUCTION_INTERVAL_SECONDS: u64 = 5;
@@ -82,18 +84,21 @@ pub(crate) struct ExpectMinAmount {
     pub(crate) amount: u64,
 }
 
-fn replace_placeholder_args(args: &mut ArgMap, wallets: &Vec<OutputWallet>) {
+fn replace_placeholder_args(args: &mut ArgMap, wallet: &WalletProxy) {
     for (_, value) in args.iter_mut() {
-        if let serde_json::Value::String(s) = value {
-            if s.starts_with('@') {
-                if let Some(wallet) = wallets
-                    .iter()
-                    .find(|w| w.name.eq(s.trim_start_matches('@')))
-                {
-                    *value = serde_json::Value::String(wallet.addresses.testnet.clone());
-                }
-            }
+        let serde_json::Value::String(value) = value else {
+            continue;
+        };
+
+        if !value.starts_with('@') {
+            continue;
         }
+
+        let name = value.trim_start_matches('@');
+
+        let address = wallet.addresses.get(name).unwrap();
+
+        *value = address.clone();
     }
 }
 
@@ -105,11 +110,7 @@ fn merge_json_maps_mut(a: &mut ArgMap, b: &ArgMap) {
     }
 }
 
-fn define_args(
-    transaction: &Transaction,
-    wallets: &Vec<OutputWallet>,
-    profile: &ProfileConfig,
-) -> Result<serde_json::Value> {
+fn define_args(transaction: &Transaction, wallet: &WalletProxy) -> Result<serde_json::Value> {
     let mut all = ArgMap::new();
 
     let explicit = serde_json::to_value(&transaction.args).into_diagnostic()?;
@@ -117,26 +118,18 @@ fn define_args(
 
     merge_json_maps_mut(&mut all, explicit);
 
-    let env = serde_json::to_value(&load_profile_env_vars(profile)?).into_diagnostic()?;
-    let env = env.as_object().unwrap();
-    merge_json_maps_mut(&mut all, &env);
-
-    replace_placeholder_args(&mut all, wallets);
+    replace_placeholder_args(&mut all, wallet);
 
     Ok(serde_json::json!(all))
 }
 
 fn trigger_transaction(
-    home: &Path,
-    tx3_file: &Path,
+    wallet: &WalletProxy,
+    tii_file: &Path,
     transaction: &Transaction,
     profile: &ProfileConfig,
 ) -> Result<()> {
-    let wallets = crate::spawn::cshell::wallet_list(home)?;
-
-    let args = define_args(transaction, &wallets, profile)?;
-
-    dbg!(&args);
+    let args = define_args(transaction, wallet)?;
 
     let signer = match transaction.signers.len() {
         1 => transaction.signers[0].clone(),
@@ -145,14 +138,12 @@ fn trigger_transaction(
         }
     };
 
-    let output = crate::spawn::cshell::tx_invoke_json(
-        home,
-        tx3_file,
-        &serde_json::json!(args),
-        Some(&transaction.template),
+    let output = wallet.invoke_json(
+        &tii_file,
+        &transaction.template,
+        &args,
         vec![&signer],
-        true,
-        false,
+        &profile.name,
     )?;
 
     println!("Invoke output: {:#?}", output);
@@ -160,12 +151,14 @@ fn trigger_transaction(
     Ok(())
 }
 
-pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> Result<()> {
+pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> Result<()> {
     println!("== Starting tests ==\n");
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
     let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
 
     let wallet = crate::wallet::setup(config, profile)?;
+
+    let tii_file = builder::build_tii(config)?;
 
     let devnet = DevnetConfig::load(&test.context.devnet)?;
 
@@ -181,8 +174,7 @@ pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> Result<()> {
     for transaction in &test.transactions {
         println!("--- Running transaction: {} ---", transaction.description);
 
-        let result =
-            trigger_transaction(&devnet.home, &test.context.protocol, transaction, &profile);
+        let result = trigger_transaction(&wallet, &tii_file, transaction, &profile);
 
         if let Err(err) = result {
             eprintln!("Transaction `{}` failed.\n", transaction.description);

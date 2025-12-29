@@ -2,8 +2,6 @@ use std::path::PathBuf;
 
 use miette::{Context as _, IntoDiagnostic as _};
 
-use crate::config::ProtocolConfig;
-
 // crawl up the directory tree until we find a trix.toml file
 pub fn protocol_root() -> miette::Result<PathBuf> {
     let mut cwd = std::env::current_dir().unwrap();

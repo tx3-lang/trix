@@ -1,15 +1,13 @@
-[[utxos]]
-address = "@alice"
-value = 100000000000
+actors = []
 
 [[utxos]]
 address = "@bob"
 value = 100000000000
 
-[[actors]]
-name = "alice"
-random_key = true
+[[utxos]]
+address = "@alice"
+value = 100000000000
 
-[[actors]]
-name = "bob"
-random_key = true
+[[utxos]]
+address = "@charlie"
+value = 100000000000

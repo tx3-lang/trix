@@ -11,10 +11,7 @@ use miette::IntoDiagnostic as _;
 use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
 
-use crate::{
-    config::{ActorConfig, ProfileConfig},
-    wallet::WalletProxy,
-};
+use crate::{config::IdentityConfig, wallet::WalletProxy};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum AddressSpec {
@@ -83,7 +80,7 @@ pub enum UtxoSpec {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub utxos: Vec<UtxoSpec>,
-    pub actors: Vec<ActorConfig>,
+    pub actors: Vec<IdentityConfig>,
 }
 
 impl Default for Config {
@@ -107,7 +104,6 @@ fn map_address(
     address: &AddressSpec,
     aliases: &HashMap<String, String>,
 ) -> miette::Result<pallas::ledger::addresses::Address> {
-    dbg!(&address, aliases);
     let resolved = address.resolve_address(aliases)?;
     pallas::ledger::addresses::Address::from_bech32(&resolved).into_diagnostic()
 }

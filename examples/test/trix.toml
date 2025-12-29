@@ -17,16 +17,16 @@ path = ".trix/client-lib"
 ref = "bindgen-v1alpha2"
 
 [profiles.mainnet]
-chain = "CardanoMainnet"
+env_file = ".env.mainnet"
+network = "cardano-mainnet"
 
-[profiles.preview]
-chain = "CardanoPreview"
+[profiles.custom1]
+env_file = ".env.custom1"
 
-[profiles.devnet]
-chain = "CardanoDevnet"
+[profiles.custom1.network]
+trp = { url = "http://localhost:3000/trp" }
+u5c = { url = "http://localhost:3000/u5c" }
 
-[profiles.preprod]
-chain = "CardanoPreprod"
 
 [profiles.local]
 chain = "CardanoDevnet"

@@ -5,7 +5,7 @@ use miette::{IntoDiagnostic, bail};
 
 use crate::{
     builder,
-    config::{Config, ProfileConfig},
+    config::{ProfileConfig, RootConfig},
 };
 
 #[derive(ClapArgs)]
@@ -41,17 +41,8 @@ fn string_to_json_map(s: &str) -> miette::Result<ArgMap> {
     Ok(value.to_owned())
 }
 
-fn load_args_json(args: &Args, profile: &ProfileConfig) -> miette::Result<serde_json::Value> {
+fn load_args_json(args: &Args) -> miette::Result<serde_json::Value> {
     let mut all = serde_json::Map::new();
-
-    let env = crate::config::load_profile_env_vars(profile)?;
-
-    let env = serde_json::to_value(&env).into_diagnostic()?;
-    let env = env
-        .as_object()
-        .ok_or(miette::miette!("env should be an object"))?;
-
-    merge_json_maps_mut(&mut all, env);
 
     if let Some(args_json) = &args.args_json {
         let value = string_to_json_map(args_json)?;
@@ -67,31 +58,14 @@ fn load_args_json(args: &Args, profile: &ProfileConfig) -> miette::Result<serde_
     Ok(serde_json::Value::Object(all))
 }
 
-pub fn run(args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
-    let tii_file = builder::ensure_tii(config, profile)?;
-
+pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
     let wallet = crate::wallet::setup(config, profile)?;
 
-    let cononical = config.protocol.main.canonicalize().into_diagnostic()?;
+    let tii_file = builder::build_tii(config)?;
 
-    if !cononical.is_file() {
-        bail!(
-            "The main protocol file is not a file: {}",
-            cononical.display()
-        );
-    }
+    let args_json = load_args_json(&args)?;
 
-    let args_json = load_args_json(&args, profile)?;
-
-    crate::spawn::cshell::tx_invoke_interactive(
-        &wallet.home,
-        &tii_file,
-        &args_json,
-        None,
-        vec![],
-        true,
-        args.skip_submit,
-    )?;
+    wallet.invoke_interactive(&tii_file, &args_json, &profile.name, args.skip_submit)?;
 
     Ok(())
 }
