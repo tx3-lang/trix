@@ -1,9 +1,0 @@
-wallets = []
-
-[[providers]]
-type = "Provider"
-name = "local"
-url = "http://localhost:5164"
-is_default = true
-is_testnet = true
-trp_url = "http://localhost:8164"

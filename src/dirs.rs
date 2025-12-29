@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use miette::{Context as _, IntoDiagnostic as _};
+
 // crawl up the directory tree until we find a trix.toml file
 pub fn protocol_root() -> miette::Result<PathBuf> {
     let mut cwd = std::env::current_dir().unwrap();
@@ -15,4 +17,32 @@ pub fn protocol_root() -> miette::Result<PathBuf> {
 
         cwd = parent.to_path_buf();
     }
+}
+
+pub fn toolchain_owned_dir() -> miette::Result<PathBuf> {
+    let root = protocol_root()?;
+
+    let target = root.join(".tx3");
+
+    if !target.exists() {
+        std::fs::create_dir_all(&target)
+            .into_diagnostic()
+            .context("creating tx3 target directory")?;
+    }
+
+    Ok(target)
+}
+
+pub fn target_dir(artifact_kind: &str) -> miette::Result<PathBuf> {
+    let mut target = toolchain_owned_dir()?;
+
+    target.push(artifact_kind);
+
+    if !target.exists() {
+        std::fs::create_dir_all(&target)
+            .into_diagnostic()
+            .context("creating tx3 target directory")?;
+    }
+
+    Ok(target)
 }

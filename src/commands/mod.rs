@@ -1,10 +1,13 @@
-pub mod bindgen;
 pub mod build;
 pub mod check;
+pub mod codegen;
 pub mod devnet;
+pub mod expect;
+pub mod explore;
+pub mod identities;
 pub mod init;
 pub mod inspect;
+pub mod invoke;
 pub mod publish;
 pub mod telemetry;
 pub mod test;
-pub mod wallet;

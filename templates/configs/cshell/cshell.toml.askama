@@ -1,0 +1,20 @@
+wallets = []
+
+[[providers]]
+type = "Provider"
+name = "{{ provider.name }}"
+is_default = false
+is_testnet = {{ provider.is_testnet }}
+url = "{{ provider.u5c.url }}"
+trp_url = "{{ provider.trp.url }}"
+
+[providers.headers]
+{% for header in provider.u5c.headers %}
+{{header.0}} = "{{header.1}}"
+{% endfor %}
+
+[providers.trp_headers]
+{% for header in provider.trp.headers %}
+{{header.0}} = "{{header.1}}"
+{% endfor %}
+

@@ -4,13 +4,13 @@ use std::{
     process::{Child, Command, Stdio},
 };
 
+use askama::Template;
 use bip39::Mnemonic;
-use cryptoxide::{digest::Digest, sha2::Sha256};
 
 use miette::{Context as _, IntoDiagnostic as _, bail};
 use serde::{Deserialize, Deserializer, Serialize, de};
 
-pub const CONFIG_TEMPLATE: &str = include_str!("../templates/configs/cshell/cshell.toml");
+use crate::config::{ProfileConfig, RootConfig, TrpConfig, U5cConfig};
 
 #[derive(Debug, Deserialize)]
 pub struct OutputWallet {
@@ -37,16 +37,48 @@ pub struct OutputBalance {
     pub coin: u64,
 }
 
-pub fn initialize_config(root: &Path) -> miette::Result<PathBuf> {
-    let config_path = root.join("cshell.toml");
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Asset {
+    #[serde(with = "hex::serde")]
+    pub name: Vec<u8>,
+    pub output_coin: String,
+}
 
-    std::fs::create_dir_all(root).into_diagnostic()?;
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct Datum {
+    #[serde(with = "hex::serde")]
+    pub hash: Vec<u8>,
+}
 
-    std::fs::write(&config_path, CONFIG_TEMPLATE)
-        .into_diagnostic()
-        .context("writing cshell config")?;
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct UtxoAsset {
+    #[serde(with = "hex::serde")]
+    pub policy_id: Vec<u8>,
+    pub assets: Vec<Asset>,
+}
 
-    Ok(config_path)
+#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+pub struct UTxO {
+    #[serde(with = "hex::serde")]
+    pub tx: Vec<u8>,
+    pub tx_index: u64,
+    pub address: String,
+    pub coin: String, // To avoid overflow
+    pub assets: Vec<UtxoAsset>,
+    pub datum: Option<Datum>,
+}
+
+pub struct Provider {
+    pub name: String,
+    pub u5c: U5cConfig,
+    pub trp: TrpConfig,
+    pub is_testnet: bool,
+}
+
+#[derive(Template)]
+#[template(path = "configs/cshell/cshell.toml.askama")]
+pub struct CshellTomlTemplate {
+    pub provider: Provider,
 }
 
 fn new_generic_command(home: &Path) -> miette::Result<Command> {
@@ -59,16 +91,6 @@ fn new_generic_command(home: &Path) -> miette::Result<Command> {
     cmd.args(["-s", config_path.to_str().unwrap_or_default()]);
 
     Ok(cmd)
-}
-
-fn generate_deterministic_mnemonic(input: &str) -> miette::Result<Mnemonic> {
-    let mut hasher = Sha256::new();
-    hasher.input(input.as_bytes());
-    let hash = hasher.result_str();
-
-    let entropy: [u8; 32] = hash[..32].as_bytes().try_into().unwrap();
-
-    Mnemonic::from_entropy(&entropy).into_diagnostic()
 }
 
 #[derive(Deserialize, Serialize)]
@@ -110,16 +132,14 @@ pub fn wallet_info(home: &Path, wallet_name: &str) -> miette::Result<WalletInfoO
     Ok(output)
 }
 
-pub fn wallet_create(home: &Path, wallet_name: &str) -> miette::Result<serde_json::Value> {
+pub fn wallet_create(home: &Path, name: &str, mnemonic: &str) -> miette::Result<serde_json::Value> {
     let mut cmd = new_generic_command(home)?;
-
-    let mnemonic = generate_deterministic_mnemonic(wallet_name)?.to_string();
 
     cmd.args([
         "wallet",
         "restore",
         "--name",
-        wallet_name,
+        name,
         "--mnemonic",
         &mnemonic,
         "--unsafe",
@@ -164,30 +184,36 @@ pub fn wallet_list(home: &Path) -> miette::Result<Vec<OutputWallet>> {
 
 pub fn tx_invoke_cmd(
     home: &Path,
-    tx3_file: &Path,
-    tx3_args: &serde_json::Value,
-    tx3_template: Option<&str>,
+    tii_file: &Path,
+    tii_profile: Option<&str>,
+    tx_template: Option<&str>,
+    args: &serde_json::Value,
     signers: Vec<&str>,
     r#unsafe: bool,
     skip_submit: bool,
+    provider: Option<&str>,
 ) -> miette::Result<Command> {
     let mut cmd = new_generic_command(home)?;
 
     cmd.args([
         "tx",
         "invoke",
-        "--tx3-file",
-        tx3_file.to_str().unwrap(),
+        "--tii-file",
+        tii_file.to_str().unwrap(),
         "--output-format",
         "json",
     ]);
 
-    if let Some(tx3_template) = tx3_template {
-        cmd.args(["--tx3-template", tx3_template]);
+    if let Some(tii_profile) = tii_profile {
+        cmd.args(["--profile", tii_profile]);
     }
 
-    let tx3_args_json = serde_json::to_string(tx3_args).into_diagnostic()?;
-    cmd.args(["--tx3-args-json", &tx3_args_json]);
+    if let Some(tx_template) = tx_template {
+        cmd.args(["--tx-template", tx_template]);
+    }
+
+    let args_json = serde_json::to_string(args).into_diagnostic()?;
+    cmd.args(["--args-json", &args_json]);
 
     for signer in signers {
         cmd.args(["--signers", signer]);
@@ -201,28 +227,34 @@ pub fn tx_invoke_cmd(
         cmd.args(["--skip-submit"]);
     }
 
-    // println!("{:#?}", cmd);
+    if let Some(provider) = provider {
+        cmd.args(["--provider", provider]);
+    }
 
     Ok(cmd)
 }
 
 pub fn tx_invoke_interactive(
     home: &Path,
-    tx3_file: &Path,
-    tx3_args: &serde_json::Value,
-    tx3_template: Option<&str>,
+    tii_file: &Path,
+    tii_profile: Option<&str>,
+    tx_template: Option<&str>,
+    args: &serde_json::Value,
     signers: Vec<&str>,
     r#unsafe: bool,
     skip_submit: bool,
+    provider: Option<&str>,
 ) -> miette::Result<()> {
     let mut cmd = tx_invoke_cmd(
         home,
-        tx3_file,
-        tx3_args,
-        tx3_template,
+        tii_file,
+        tii_profile,
+        tx_template,
+        args,
         signers,
         r#unsafe,
         skip_submit,
+        provider,
     )?;
 
     cmd.stdout(Stdio::inherit())
@@ -237,21 +269,25 @@ pub fn tx_invoke_interactive(
 
 pub fn tx_invoke_json(
     home: &Path,
-    tx3_file: &Path,
-    tx3_args: &serde_json::Value,
-    tx3_template: Option<&str>,
+    tii_file: &Path,
+    tii_profile: Option<&str>,
+    args: &serde_json::Value,
+    tx_template: Option<&str>,
     signers: Vec<&str>,
     r#unsafe: bool,
     skip_submit: bool,
+    provider: Option<&str>,
 ) -> miette::Result<serde_json::Value> {
     let mut cmd = tx_invoke_cmd(
         home,
-        tx3_file,
-        tx3_args,
-        tx3_template,
+        tii_file,
+        tii_profile,
+        tx_template,
+        args,
         signers,
         r#unsafe,
         skip_submit,
+        provider,
     )?;
 
     let output = cmd
@@ -285,10 +321,46 @@ pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBa
     serde_json::from_slice(&output.stdout).into_diagnostic()
 }
 
-pub fn explorer(home: &Path) -> miette::Result<Child> {
+pub fn wallet_utxos(home: &Path, wallet_name: &str) -> miette::Result<Vec<UTxO>> {
+    let mut cmd = new_generic_command(home)?;
+
+    cmd.args(["wallet", "utxos", wallet_name, "--output-format", "json"]);
+
+    let output = cmd
+        .stdout(Stdio::piped())
+        .output()
+        .into_diagnostic()
+        .context("running CShell wallet utxos")?;
+
+    if !output.status.success() {
+        bail!("CShell failed to get wallet utxos");
+    }
+
+    match serde_json::from_slice::<Vec<UTxO>>(&output.stdout) {
+        Ok(list) => Ok(list),
+        Err(_) => {
+            let v: serde_json::Value = serde_json::from_slice(&output.stdout).into_diagnostic()?;
+            if let Some(utxos_val) = v.get("utxos") {
+                let list: Vec<UTxO> =
+                    serde_json::from_value(utxos_val.clone()).into_diagnostic()?;
+                Ok(list)
+            } else {
+                if v.is_array() {
+                    let list: Vec<UTxO> = serde_json::from_value(v).into_diagnostic()?;
+                    Ok(list)
+                } else {
+                    bail!("unexpected CShell wallet balance output shape")
+                }
+            }
+        }
+    }
+}
+
+pub fn explorer(home: &Path, provider: &str) -> miette::Result<Child> {
     let mut cmd = new_generic_command(home)?;
 
     cmd.args(["explorer"]);
+    cmd.args(["--provider", provider]);
 
     let child = cmd
         .stdout(Stdio::inherit())

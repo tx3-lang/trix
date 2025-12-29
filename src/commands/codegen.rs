@@ -1,17 +1,19 @@
 use std::io::Read;
 use std::{collections::HashMap, path::PathBuf};
 
-use crate::config::{BindingsTemplateConfig, Config, KnownChain, ProfileConfig, TrpConfig};
+use crate::config::{CodegenPluginConfig, ProfileConfig, RootConfig};
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
 use serde::{Serialize, Serializer};
-use tx3_lang::Protocol;
 
 use convert_case::{Case, Casing};
 use handlebars::{Context, Handlebars, Helper, Output, RenderContext, RenderErrorReason};
 use reqwest::Client;
 use tempfile::TempDir;
+use tx3_lang::Workspace;
 use zip::ZipArchive;
+
+use tx3_tir::model::core::Type as TirType;
 
 #[derive(ClapArgs)]
 pub struct Args {}
@@ -39,70 +41,66 @@ where
     }
 }
 
-fn parse_type_from_string(type_str: &str) -> Result<tx3_lang::ir::Type, String> {
+fn parse_type_from_string(type_str: &str) -> Result<TirType, String> {
     match type_str {
-        "Int" => Ok(tx3_lang::ir::Type::Int),
-        "Bool" => Ok(tx3_lang::ir::Type::Bool),
-        "Bytes" => Ok(tx3_lang::ir::Type::Bytes),
-        "Unit" => Ok(tx3_lang::ir::Type::Unit),
-        "Address" => Ok(tx3_lang::ir::Type::Address),
-        "UtxoRef" => Ok(tx3_lang::ir::Type::UtxoRef),
-        "AnyAsset" => Ok(tx3_lang::ir::Type::AnyAsset),
-        "Utxo" => Ok(tx3_lang::ir::Type::Utxo),
-        "Undefined" => Ok(tx3_lang::ir::Type::Undefined),
-        "List" => Ok(tx3_lang::ir::Type::List),
-        _ => {
-            // You would need to create a CustomId here. This depends on how CustomId is defined
-            // Ok(tx3_lang::ir::Type::Custom(CustomId { value: type_str.to_string() }))
-            Ok(tx3_lang::ir::Type::Custom(type_str.to_string())) // Keep your current implementation if CustomId is not accessible
-        }
+        "Int" => Ok(TirType::Int),
+        "Bool" => Ok(TirType::Bool),
+        "Bytes" => Ok(TirType::Bytes),
+        "Unit" => Ok(TirType::Unit),
+        "Address" => Ok(TirType::Address),
+        "UtxoRef" => Ok(TirType::UtxoRef),
+        "AnyAsset" => Ok(TirType::AnyAsset),
+        "Utxo" => Ok(TirType::Utxo),
+        "Undefined" => Ok(TirType::Undefined),
+        "List" => Ok(TirType::List),
+        x => Ok(TirType::Custom(x.to_string())),
     }
 }
 
-fn get_type_for_language(type_: &tx3_lang::ir::Type, language: &str) -> String {
+fn get_type_for_language(type_: &TirType, language: &str) -> String {
     match language {
         "rust" => "ArgValue".to_string(),
         "typescript" => match &type_ {
-            tx3_lang::ir::Type::Int => "bigint | number".to_string(),
-            tx3_lang::ir::Type::Bool => "boolean".to_string(),
-            tx3_lang::ir::Type::Bytes => "Uint8Array".to_string(),
-            tx3_lang::ir::Type::Unit => "void".to_string(),
-            tx3_lang::ir::Type::Address => "string".to_string(),
-            tx3_lang::ir::Type::UtxoRef => "string".to_string(),
-            tx3_lang::ir::Type::List => "any[]".to_string(),
-            tx3_lang::ir::Type::Custom(name) => name.clone(),
-            tx3_lang::ir::Type::AnyAsset => "string".to_string(),
-            tx3_lang::ir::Type::Utxo => "any".to_string(),
-            tx3_lang::ir::Type::Undefined => "any".to_string(),
-            tx3_lang::ir::Type::Map => "any".to_string(),
+            TirType::Int => "bigint | number".to_string(),
+            TirType::Bool => "boolean".to_string(),
+            TirType::Bytes => "Uint8Array".to_string(),
+            TirType::Unit => "void".to_string(),
+            TirType::Address => "string".to_string(),
+            TirType::UtxoRef => "string".to_string(),
+            TirType::List => "any[]".to_string(),
+            TirType::Custom(name) => name.clone(),
+            TirType::AnyAsset => "string".to_string(),
+            TirType::Utxo => "any".to_string(),
+            TirType::Undefined => "any".to_string(),
+            TirType::Map => "any".to_string(),
         },
         "python" => match &type_ {
-            tx3_lang::ir::Type::Int => "int".to_string(),
-            tx3_lang::ir::Type::Bool => "bool".to_string(),
-            tx3_lang::ir::Type::Bytes => "bytes".to_string(),
-            tx3_lang::ir::Type::Unit => "None".to_string(),
-            tx3_lang::ir::Type::List => "list[Any]".to_string(),
-            tx3_lang::ir::Type::Address => "str".to_string(),
-            tx3_lang::ir::Type::UtxoRef => "str".to_string(),
-            tx3_lang::ir::Type::Custom(name) => name.clone(),
-            tx3_lang::ir::Type::AnyAsset => "str".to_string(),
-            tx3_lang::ir::Type::Undefined => "Any".to_string(),
-            tx3_lang::ir::Type::Utxo => "Any".to_string(),
-            tx3_lang::ir::Type::Map => "Any".to_string(),
+            TirType::Int => "int".to_string(),
+            TirType::Bool => "bool".to_string(),
+            TirType::Bytes => "bytes".to_string(),
+            TirType::Unit => "None".to_string(),
+            TirType::List => "list[Any]".to_string(),
+            TirType::Address => "str".to_string(),
+            TirType::UtxoRef => "str".to_string(),
+            TirType::Custom(name) => name.clone(),
+            TirType::AnyAsset => "str".to_string(),
+            TirType::Undefined => "Any".to_string(),
+            TirType::Utxo => "Any".to_string(),
+            TirType::Map => "Any".to_string(),
         },
         "go" => match &type_ {
-            tx3_lang::ir::Type::Int => "int64".to_string(),
-            tx3_lang::ir::Type::Bool => "bool".to_string(),
-            tx3_lang::ir::Type::Bytes => "[]byte".to_string(),
-            tx3_lang::ir::Type::Unit => "struct{}".to_string(),
-            tx3_lang::ir::Type::Address => "string".to_string(),
-            tx3_lang::ir::Type::UtxoRef => "string".to_string(),
-            tx3_lang::ir::Type::List => "[]interface{}".to_string(),
-            tx3_lang::ir::Type::Custom(name) => name.clone(),
-            tx3_lang::ir::Type::AnyAsset => "string".to_string(),
-            tx3_lang::ir::Type::Utxo => "interface{}".to_string(),
-            tx3_lang::ir::Type::Undefined => "interface{}".to_string(),
-            tx3_lang::ir::Type::Map => "interface{}".to_string(),
+            TirType::Int => "int64".to_string(),
+            TirType::Bool => "bool".to_string(),
+            TirType::Bytes => "[]byte".to_string(),
+            TirType::Unit => "struct{}".to_string(),
+            TirType::Address => "string".to_string(),
+            TirType::UtxoRef => "string".to_string(),
+            TirType::List => "[]interface{}".to_string(),
+            TirType::Custom(name) => name.clone(),
+            TirType::AnyAsset => "string".to_string(),
+            TirType::Utxo => "interface{}".to_string(),
+            TirType::Undefined => "interface{}".to_string(),
+            TirType::Map => "interface{}".to_string(),
         },
         _ => "ArgValue".to_string(), // Default fallback
     }
@@ -324,7 +322,7 @@ impl Serialize for BytesHex {
 #[derive(Serialize)]
 struct TxParameter {
     name: String,
-    type_name: tx3_lang::ir::Type,
+    type_name: tx3_tir::model::core::Type,
 }
 
 #[derive(Serialize)]
@@ -350,9 +348,9 @@ struct HandlebarsData {
     options: HashMap<String, serde_json::Value>,
 }
 
-struct Job {
+struct Job<'a> {
     name: String,
-    protocol: Protocol,
+    workspace: &'a Workspace,
     dest_path: PathBuf,
     trp_endpoint: String,
     trp_headers: HashMap<String, String>,
@@ -361,15 +359,19 @@ struct Job {
 }
 
 fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData> {
-    let transactions = job
-        .protocol
-        .txs()
+    let ast = job
+        .workspace
+        .ast()
+        .ok_or(miette::miette!("No AST available in workspace"))?;
+
+    let transactions = ast
+        .txs
+        .iter()
         .map(|tx_def| {
             let tx_name = tx_def.name.value.as_str();
-            let proto_tx = job.protocol.new_tx(tx_name).unwrap();
+            let tx_tir = job.workspace.tir(tx_def.name.value.as_str()).unwrap();
 
-            let parameters: Vec<TxParameter> = proto_tx
-                .find_params()
+            let parameters: Vec<TxParameter> = tx3_tir::reduce::find_params(tx_tir)
                 .iter()
                 .map(|(key, type_)| TxParameter {
                     name: key.as_str().to_case(Case::Camel),
@@ -377,13 +379,15 @@ fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData
                 })
                 .collect();
 
+            let (tx_bytes, version) = tx3_tir::encoding::to_bytes(tx_tir);
+
             Transaction {
                 name: tx_name.to_string(),
                 params_name: format!("{}Params", tx_name).to_case(Case::Camel),
                 function_name: format!("{}Tx", tx_name).to_case(Case::Camel),
                 constant_name: format!("{}Ir", tx_name).to_case(Case::Camel),
-                ir_bytes: BytesHex(proto_tx.ir_bytes()),
-                ir_version: tx3_lang::ir::IR_VERSION.to_string(),
+                ir_bytes: BytesHex(tx_bytes),
+                ir_version: version.to_string(),
                 parameters,
             }
         })
@@ -413,8 +417,8 @@ fn generate_arguments(job: &Job, version: &str) -> miette::Result<HandlebarsData
 }
 
 async fn execute_bindgen(
-    job: &Job,
-    template_config: &BindingsTemplateConfig,
+    job: &Job<'_>,
+    template_config: &CodegenPluginConfig,
     version: &str,
 ) -> miette::Result<()> {
     // Create a temporary directory to extract files
@@ -466,28 +470,35 @@ async fn execute_bindgen(
     Ok(())
 }
 
-pub async fn run(_args: Args, config: &Config, profile: &ProfileConfig) -> miette::Result<()> {
-    for bindgen in config.bindings.iter() {
-        let protocol = Protocol::from_file(config.protocol.main.clone()).load()?;
+pub async fn run(_args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
+    let mut ws = Workspace::from_file(&config.protocol.main)?;
 
-        std::fs::create_dir_all(&bindgen.output_dir).into_diagnostic()?;
+    ws.parse()?;
+    ws.analyze()?;
+    ws.lower()?;
 
-        let trp_config = profile
-            .trp
-            .as_ref()
-            .ok_or_else(|| miette::miette!("TRP config not found"))?;
+    for codegen in config.codegen.iter() {
+        let output_dir = codegen.output_dir()?;
+
+        std::fs::create_dir_all(&output_dir).into_diagnostic()?;
+
+        let plugin = CodegenPluginConfig::from(codegen.plugin.clone());
+
+        let network = config.resolve_profile_network(profile.name.as_str())?;
+
+        let trp_config = &network.trp;
 
         let job = Job {
             name: config.protocol.name.clone(),
-            protocol,
-            dest_path: bindgen.output_dir.clone(),
+            workspace: &ws,
+            dest_path: output_dir,
             trp_endpoint: trp_config.url.clone(),
             trp_headers: trp_config.headers.clone(),
             env_args: HashMap::new(),
-            options: bindgen.options.clone().unwrap_or_default(),
+            options: codegen.options.clone().unwrap_or_default(),
         };
 
-        execute_bindgen(&job, &bindgen.template, &config.protocol.version).await?;
+        execute_bindgen(&job, &plugin, &config.protocol.version).await?;
         println!("Bindgen successful");
     }
 

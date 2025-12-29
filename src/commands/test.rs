@@ -1,23 +1,24 @@
 use std::{
     collections::HashMap,
-    fmt::Display,
     path::{Path, PathBuf},
     thread::sleep,
     time::Duration,
 };
 
 use clap::Args as ClapArgs;
-use miette::{Context, IntoDiagnostic, Result, bail};
-use pallas::ledger::addresses::Address;
+use miette::{Context as _, IntoDiagnostic, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    config::{Config, ProfileConfig, load_profile_env_vars},
+    builder,
+    config::{ProfileConfig, RootConfig},
+    devnet::Config as DevnetConfig,
     spawn::cshell::OutputWallet,
+    wallet::WalletProxy,
 };
 
 const BLOCK_PRODUCTION_INTERVAL_SECONDS: u64 = 5;
-const BOROS_SPAW_DELAY_SECONDS: u64 = 2;
+const DOLOS_SPAWN_DELAY_SECONDS: u64 = 2;
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -26,11 +27,33 @@ pub struct Args {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+struct Context {
+    protocol: PathBuf,
+    devnet: PathBuf,
+}
+
+impl Default for Context {
+    fn default() -> Self {
+        Self {
+            protocol: PathBuf::from("./main.tx3"),
+            devnet: PathBuf::from("./devnet.toml"),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct Test {
-    file: PathBuf,
+    #[serde(default)]
+    context: Context,
+
+    #[serde(default)]
     wallets: Vec<Wallet>,
+
+    #[serde(default)]
     transactions: Vec<Transaction>,
-    expect: Vec<Expect>,
+
+    #[serde(default)]
+    expect: Vec<ExpectUtxo>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -48,99 +71,34 @@ struct Transaction {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum Expect {
-    Balance(ExpectBalance),
-    // TODO: improve expect adding more options
+pub(crate) struct ExpectUtxo {
+    pub(crate) from: String,
+    pub(crate) datum_equals: Option<serde_json::Value>,
+    pub(crate) min_amount: Vec<ExpectMinAmount>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ExpectBalance {
-    wallet: String,
-    amount: ExpectAmount,
+pub(crate) struct ExpectMinAmount {
+    pub(crate) policy: Option<String>,
+    pub(crate) name: Option<String>,
+    pub(crate) amount: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-enum ExpectAmount {
-    Absolute(u64),
-    Aprox(ExpectAmountAprox),
-}
-
-impl ExpectAmount {
-    pub fn matches(&self, value: u64) -> bool {
-        match self {
-            ExpectAmount::Absolute(x) => x.eq(&value),
-            ExpectAmount::Aprox(x) => {
-                let lower = x.target.saturating_sub(x.threshold);
-                let upper = x.target + x.threshold;
-                value >= lower && value <= upper
-            }
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ExpectAmountAprox {
-    target: u64,
-    threshold: u64,
-}
-
-impl Display for ExpectAmount {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ExpectAmount::Absolute(value) => write!(f, "{value}"),
-            ExpectAmount::Aprox(value) => {
-                write!(f, "target: ~{} (+/- {})", value.target, value.threshold)
-            }
-        }
-    }
-}
-
-fn ensure_test_home(test: &Test, hashable: &[u8]) -> Result<PathBuf> {
-    let test_home = crate::home::consistent_tmp_dir("test", hashable)?;
-
-    // if the test with the exact hash already exists, we assume it's already initialized
-    if test_home.exists() {
-        return Ok(test_home);
-    }
-
-    crate::spawn::cshell::initialize_config(&test_home)?;
-
-    let mut initial_funds = HashMap::new();
-
-    for wallet in &test.wallets {
-        let output = crate::spawn::cshell::wallet_create(&test_home, &wallet.name)?;
-
-        let address = output
-            .get("addresses")
-            .context("missing 'addresses' field in cshell JSON output")?
-            .get("testnet")
-            .context("missing 'testnet' field in cshell 'addresses'")?
-            .as_str()
-            .unwrap();
-
-        let address = Address::from_bech32(address).into_diagnostic()?.to_hex();
-        initial_funds.insert(address, wallet.balance);
-    }
-
-    crate::spawn::dolos::initialize_config(&test_home, &initial_funds, &vec![])?;
-
-    Ok(test_home)
-}
-
-fn replace_placeholder_args(args: &mut ArgMap, wallets: &Vec<OutputWallet>) {
+fn replace_placeholder_args(args: &mut ArgMap, wallet: &WalletProxy) {
     for (_, value) in args.iter_mut() {
-        if let serde_json::Value::String(s) = value {
-            if s.starts_with('@') {
-                if let Some(wallet) = wallets
-                    .iter()
-                    .find(|w| w.name.eq(s.trim_start_matches('@')))
-                {
-                    *value = serde_json::Value::String(wallet.addresses.testnet.clone());
-                }
-            }
+        let serde_json::Value::String(value) = value else {
+            continue;
+        };
+
+        if !value.starts_with('@') {
+            continue;
         }
+
+        let name = value.trim_start_matches('@');
+
+        let address = wallet.addresses.get(name).unwrap();
+
+        *value = address.clone();
     }
 }
 
@@ -152,11 +110,7 @@ fn merge_json_maps_mut(a: &mut ArgMap, b: &ArgMap) {
     }
 }
 
-fn define_args(
-    transaction: &Transaction,
-    wallets: &Vec<OutputWallet>,
-    profile: &ProfileConfig,
-) -> Result<serde_json::Value> {
+fn define_args(transaction: &Transaction, wallet: &WalletProxy) -> Result<serde_json::Value> {
     let mut all = ArgMap::new();
 
     let explicit = serde_json::to_value(&transaction.args).into_diagnostic()?;
@@ -164,26 +118,18 @@ fn define_args(
 
     merge_json_maps_mut(&mut all, explicit);
 
-    let env = serde_json::to_value(&load_profile_env_vars(profile)?).into_diagnostic()?;
-    let env = env.as_object().unwrap();
-    merge_json_maps_mut(&mut all, &env);
-
-    replace_placeholder_args(&mut all, wallets);
+    replace_placeholder_args(&mut all, wallet);
 
     Ok(serde_json::json!(all))
 }
 
 fn trigger_transaction(
-    home: &Path,
-    tx3_file: &Path,
+    wallet: &WalletProxy,
+    tii_file: &Path,
     transaction: &Transaction,
     profile: &ProfileConfig,
 ) -> Result<()> {
-    let wallets = crate::spawn::cshell::wallet_list(home)?;
-
-    let args = define_args(transaction, &wallets, profile)?;
-
-    dbg!(&args);
+    let args = define_args(transaction, wallet)?;
 
     let signer = match transaction.signers.len() {
         1 => transaction.signers[0].clone(),
@@ -192,14 +138,12 @@ fn trigger_transaction(
         }
     };
 
-    let output = crate::spawn::cshell::tx_invoke_json(
-        home,
-        tx3_file,
-        &serde_json::json!(args),
-        Some(&transaction.template),
+    let output = wallet.invoke_json(
+        &tii_file,
+        &transaction.template,
+        &args,
         vec![&signer],
-        true,
-        false,
+        &profile.name,
     )?;
 
     println!("Invoke output: {:#?}", output);
@@ -207,22 +151,32 @@ fn trigger_transaction(
     Ok(())
 }
 
-pub fn run(args: Args, _config: &Config, profile: &ProfileConfig) -> Result<()> {
+pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> Result<()> {
     println!("== Starting tests ==\n");
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
     let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
 
-    let test_home = ensure_test_home(&test, test_content.as_bytes())?;
+    let wallet = crate::wallet::setup(config, profile)?;
 
-    let mut dolos = crate::spawn::dolos::daemon(&test_home, true)?;
+    let tii_file = builder::build_tii(config)?;
+
+    let devnet = DevnetConfig::load(&test.context.devnet)?;
+
+    let ctx = crate::devnet::Context::from_wallet(&wallet);
+
+    let mut devnet = crate::devnet::start_daemon(&devnet, &ctx, true)?;
+
     println!("Dolos daemon started");
 
-    sleep(Duration::from_secs(BOROS_SPAW_DELAY_SECONDS));
+    sleep(Duration::from_secs(DOLOS_SPAWN_DELAY_SECONDS));
 
     let mut failed = false;
     for transaction in &test.transactions {
         println!("--- Running transaction: {} ---", transaction.description);
-        if let Err(err) = trigger_transaction(&test_home, &test.file, transaction, &profile) {
+
+        let result = trigger_transaction(&wallet, &tii_file, transaction, &profile);
+
+        if let Err(err) = result {
             eprintln!("Transaction `{}` failed.\n", transaction.description);
             eprintln!("Error: {err}\n");
             failed = true;
@@ -232,34 +186,14 @@ pub fn run(args: Args, _config: &Config, profile: &ProfileConfig) -> Result<()> 
         sleep(Duration::from_secs(BLOCK_PRODUCTION_INTERVAL_SECONDS));
     }
 
-    for expect in test.expect.iter() {
-        match expect {
-            Expect::Balance(expect) => {
-                let balance = crate::spawn::cshell::wallet_balance(&test_home, &expect.wallet)?;
-
-                let r#match = expect.amount.matches(balance.coin);
-
-                if !r#match {
-                    failed = true;
-
-                    eprintln!(
-                        "Test Failed: `{}` Balance did not match the expected result.",
-                        expect.wallet
-                    );
-                    eprintln!("Expected: {}", expect.amount);
-                    eprintln!("Received: {}", balance.coin);
-
-                    eprintln!("Hint: Check the tx3 file or the test file.");
-                }
-            }
-        }
-    }
+    failed |= crate::commands::expect::expect_utxo(&test.expect, &devnet.home)?;
 
     if !failed {
         println!("Test Passed\n");
     }
 
-    dolos
+    devnet
+        .daemon
         .kill()
         .into_diagnostic()
         .context("failed to stop dolos devnet in background")?;
@@ -269,4 +203,68 @@ pub fn run(args: Args, _config: &Config, profile: &ProfileConfig) -> Result<()> 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn parse_expect_utxo_toml() {
+        let toml = r#"
+            [context]
+            protocol = "./main.tx3"
+            devnet = "./devnet.toml"
+            
+            [[transactions]]
+            description = "Simple Oracle"
+            template = "create"
+            signers = ["operator"]
+            args = { rate = 42, operator = "@operator", oracle = "@oracle" }
+
+            [[expect]]
+            from = "@oracle"
+            datum_equals = 42
+
+            [[expect.min_amount]]
+            amount = 123
+
+            [[expect.min_amount]]
+            policy = "xyz"
+            name = "abc"
+            amount = 456
+        "#;
+
+        let parsed: Test = toml::from_str(toml).expect("parse toml");
+
+        assert_eq!(parsed.context.protocol, PathBuf::from("./main.tx3"));
+        assert_eq!(parsed.context.devnet, PathBuf::from("./devnet.toml"));
+        assert_eq!(parsed.wallets.len(), 2);
+
+        assert_eq!(parsed.transactions.len(), 1);
+
+        assert_eq!(parsed.expect.len(), 1);
+        let e = &parsed.expect[0];
+        assert_eq!(e.from, "@oracle");
+
+        assert!(e.datum_equals.is_some());
+        let datum = e.datum_equals.as_ref().unwrap();
+        match datum {
+            serde_json::Value::Number(n) => {
+                assert_eq!(n.as_i64(), Some(42));
+            }
+            other => panic!("unexpected datum kind: {other:?}"),
+        }
+
+        let mins = &e.min_amount;
+        assert_eq!(mins.len(), 2);
+
+        assert_eq!(mins[0].amount, 123);
+        assert!(mins[0].policy.is_none() && mins[0].name.is_none());
+
+        assert_eq!(mins[1].policy.as_ref().unwrap(), "xyz");
+        assert_eq!(mins[1].name.as_ref().unwrap(), "abc");
+        assert_eq!(mins[1].amount, 456);
+    }
 }

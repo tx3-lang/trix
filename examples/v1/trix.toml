@@ -1,0 +1,12 @@
+[protocol]
+name = "v1"
+scope = ""
+version = "0.0.0"
+description = ""
+main = "main.tx3"
+
+[[codegen]]
+plugin = "ts-client"
+
+[[codegen]]
+plugin = "rust-client"

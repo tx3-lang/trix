@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+mod builder;
 mod commands;
 mod config;
 mod devnet;
@@ -8,12 +9,11 @@ mod global;
 mod home;
 mod spawn;
 mod updates;
+mod wallet;
 
 use commands as cmds;
-use config::Config;
+use config::RootConfig;
 use miette::{IntoDiagnostic as _, Result};
-
-use crate::config::ProfileConfig;
 
 #[derive(Parser)]
 #[command(name = "trix")]
@@ -23,7 +23,7 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[arg(long, short, default_value = "devnet")]
+    #[arg(long, short, default_value = "local", global = true)]
     profile: String,
 }
 
@@ -33,16 +33,16 @@ enum Commands {
     Init(cmds::init::Args),
 
     /// Invoke a transaction template
-    Invoke(cmds::devnet::invoke::Args),
+    Invoke(cmds::invoke::Args),
 
     /// Start development network (powered by Dolos)
     Devnet(cmds::devnet::Args),
 
     /// Explore a network (powered by CShell)
-    Explore(cmds::devnet::explore::Args),
+    Explore(cmds::explore::Args),
 
     /// Generate bindings for smart contracts
-    Bindgen(cmds::bindgen::Args),
+    Codegen(cmds::codegen::Args),
 
     /// Check a Tx3 package and all of its dependencies for errors
     Check(cmds::check::Args),
@@ -56,8 +56,8 @@ enum Commands {
     /// Build a Tx3 file
     Build(cmds::build::Args),
 
-    /// Manage wallets
-    Wallet(cmds::wallet::Args),
+    /// Manage crypographic identities
+    Identities(cmds::identities::Args),
 
     /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
     #[command(hide = true)]
@@ -67,7 +67,7 @@ enum Commands {
     Telemetry(cmds::telemetry::Args),
 }
 
-pub fn load_config() -> Result<Option<Config>> {
+pub fn load_config() -> Result<Option<RootConfig>> {
     let current_dir = std::env::current_dir().into_diagnostic()?;
 
     let config_path = current_dir.join("trix.toml");
@@ -76,17 +76,9 @@ pub fn load_config() -> Result<Option<Config>> {
         return Ok(None);
     }
 
-    let config = Config::load(&config_path)?;
+    let config = RootConfig::load(&config_path)?;
 
     Ok(Some(config))
-}
-
-pub fn load_profile(config: &Config, profile: &str) -> Result<ProfileConfig> {
-    let profiles = config.profiles.get_by_name(profile);
-
-    let profile = profiles.ok_or_else(|| miette::miette!("Profile not found"))?;
-
-    Ok(profile.clone())
 }
 
 fn run_global_command(cli: Cli) -> Result<()> {
@@ -97,20 +89,20 @@ fn run_global_command(cli: Cli) -> Result<()> {
     }
 }
 
-async fn run_scoped_command(cli: Cli, config: Config) -> Result<()> {
-    let profile = load_profile(&config, &cli.profile)?;
+async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
+    let profile = config.resolve_profile(&cli.profile)?;
 
     match cli.command {
         Commands::Init(args) => cmds::init::run(args, Some(&config)),
-        Commands::Invoke(args) => cmds::devnet::invoke::run(args, &config, &profile),
+        Commands::Invoke(args) => cmds::invoke::run(args, &config, &profile),
         Commands::Devnet(args) => cmds::devnet::run(args, &config, &profile),
-        Commands::Explore(args) => cmds::devnet::explore::run(args, &config, &profile),
-        Commands::Bindgen(args) => cmds::bindgen::run(args, &config, &profile).await,
+        Commands::Explore(args) => cmds::explore::run(args, &config, &profile),
+        Commands::Codegen(args) => cmds::codegen::run(args, &config, &profile).await,
         Commands::Check(args) => cmds::check::run(args, &config),
         Commands::Inspect(args) => cmds::inspect::run(args, &config),
         Commands::Test(args) => cmds::test::run(args, &config, &profile),
         Commands::Build(args) => cmds::build::run(args, &config, &profile),
-        Commands::Wallet(args) => cmds::wallet::run(args, &config, &profile),
+        Commands::Identities(args) => cmds::identities::run(args, &config, &profile),
         Commands::Publish(args) => cmds::publish::run(args, &config),
         Commands::Telemetry(args) => cmds::telemetry::run(args),
     }

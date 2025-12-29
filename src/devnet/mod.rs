@@ -1,8 +1,17 @@
-use std::{collections::HashMap, fmt::Display, path::Path, str::FromStr};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    path::{Path, PathBuf},
+    process::Child,
+    str::FromStr,
+};
 
 use miette::IntoDiagnostic as _;
+
 use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
+
+use crate::{config::IdentityConfig, wallet::WalletProxy};
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum AddressSpec {
@@ -46,62 +55,40 @@ impl FromStr for AddressSpec {
     }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(untagged)]
-pub enum UtxoSpec {
-    Value(UtxoSpecValue),
-    Bytes(UtxoSpecBytes),
-}
-
 #[serde_as]
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct UtxoSpecValue {
+pub struct ExplicitUtxoSpec {
     #[serde_as(as = "DisplayFromStr")]
     pub address: AddressSpec,
     pub value: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct UtxoSpecBytes {
+pub struct NativeBytesUtxoSpec {
     #[serde(rename = "ref")]
     pub r#ref: String,
     pub raw_bytes: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
-pub struct Config {
-    pub utxos: Vec<UtxoSpec>,
+#[serde(untagged)]
+pub enum UtxoSpec {
+    Explicit(ExplicitUtxoSpec),
+    NativeBytes(NativeBytesUtxoSpec),
 }
 
-impl Config {
-    pub fn iter_utxos_values(
-        &self,
-        wallets: &HashMap<String, String>,
-    ) -> impl Iterator<Item = miette::Result<(String, u64)>> {
-        self.utxos.iter().filter_map(|utxo| {
-            match utxo {
-                UtxoSpec::Value(v) => {
-                    let address = v.address.resolve_address(wallets).ok()?;
-                    Some(Ok((address, v.value)))
-                },
-                UtxoSpec::Bytes(_) => None,
-            }
-        })
-    }
-
-    pub fn iter_utxos_bytes(&self) -> miette::Result<Vec<(String, Vec<u8>)>> {
-        self.utxos.iter().filter_map(|utxo| {
-            match utxo {
-                UtxoSpec::Value(_) => None,
-                UtxoSpec::Bytes(b) => Some(Ok((b.r#ref.clone(), hex::decode(&b.raw_bytes).into_diagnostic().ok()?))),
-            }
-        }).collect()
-    }
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Config {
+    pub utxos: Vec<UtxoSpec>,
+    pub actors: Vec<IdentityConfig>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { utxos: vec![] }
+        Self {
+            utxos: vec![],
+            actors: vec![],
+        }
     }
 }
 
@@ -111,6 +98,104 @@ impl Config {
         let config = toml::from_str::<Self>(&data).into_diagnostic()?;
         Ok(config)
     }
+}
+
+fn map_address(
+    address: &AddressSpec,
+    aliases: &HashMap<String, String>,
+) -> miette::Result<pallas::ledger::addresses::Address> {
+    let resolved = address.resolve_address(aliases)?;
+    pallas::ledger::addresses::Address::from_bech32(&resolved).into_diagnostic()
+}
+
+fn dolos_utxo_from_explicit_spec(
+    spec: &ExplicitUtxoSpec,
+    aliases: &HashMap<String, String>,
+) -> miette::Result<dolos_core::config::CustomUtxo> {
+    let utxo = pallas::ledger::primitives::conway::TransactionOutput::PostAlonzo(
+        pallas::codec::utils::KeepRaw::from(
+            pallas::ledger::primitives::conway::PostAlonzoTransactionOutput {
+                address: map_address(&spec.address, aliases)?.to_vec().into(),
+                value: pallas::ledger::primitives::conway::Value::Coin(spec.value),
+                // TODO: support this data from explicit spec
+                datum_option: None,
+                script_ref: None,
+            },
+        ),
+    );
+
+    let cbor = pallas::codec::minicbor::to_vec(&utxo).into_diagnostic()?;
+
+    // TODO: use pallas::crypto::hash::Hasher to create a unique hash from the cbor bytes
+    let hash = pallas::crypto::hash::Hasher::<256>::hash(&cbor);
+
+    Ok(dolos_core::config::CustomUtxo {
+        ref_: dolos_core::TxoRef(hash, 0),
+        era: Some(pallas::ledger::traverse::Era::Conway.into()),
+        cbor,
+    })
+}
+
+fn dolos_utxo_from_spec(
+    utxo: &UtxoSpec,
+    aliases: &HashMap<String, String>,
+) -> miette::Result<dolos_core::config::CustomUtxo> {
+    match utxo {
+        UtxoSpec::Explicit(x) => dolos_utxo_from_explicit_spec(x, aliases),
+        UtxoSpec::NativeBytes(x) => Ok(dolos_core::config::CustomUtxo {
+            ref_: x.r#ref.parse().map_err(|e: String| miette::miette!(e))?,
+            cbor: hex::decode(&x.raw_bytes).into_diagnostic()?,
+            era: Some(pallas::ledger::traverse::Era::Conway.into()),
+        }),
+    }
+}
+
+pub fn build_dolos_utxos(
+    config: &Config,
+    aliases: &HashMap<String, String>,
+) -> miette::Result<Vec<dolos_core::config::CustomUtxo>> {
+    config
+        .utxos
+        .iter()
+        .map(|spec| dolos_utxo_from_spec(spec, aliases))
+        .collect()
+}
+
+fn setup_home(devnet: &Config, ctx: &Context) -> miette::Result<PathBuf> {
+    let hashable_content = serde_json::to_vec(&devnet).into_diagnostic()?;
+
+    let devnet_home = crate::home::consistent_tmp_dir("devnet", &hashable_content)?;
+
+    let initial_utxos = build_dolos_utxos(&devnet, &ctx.aliases)?;
+
+    let _ = crate::spawn::dolos::initialize_config(&devnet_home, initial_utxos)?;
+
+    Ok(devnet_home)
+}
+
+pub struct DevnetDaemon {
+    pub home: PathBuf,
+    pub daemon: Child,
+}
+
+pub struct Context {
+    pub aliases: HashMap<String, String>,
+}
+
+impl Context {
+    pub fn from_wallet(wallet: &WalletProxy) -> Self {
+        Self {
+            aliases: wallet.addresses.clone(),
+        }
+    }
+}
+
+pub fn start_daemon(devnet: &Config, ctx: &Context, silent: bool) -> miette::Result<DevnetDaemon> {
+    let home = setup_home(&devnet, ctx)?;
+
+    let daemon = crate::spawn::dolos::daemon(&home, silent)?;
+
+    Ok(DevnetDaemon { home, daemon })
 }
 
 #[cfg(test)]
@@ -124,29 +209,5 @@ mod tests {
 
         let address = AddressSpec::from_str("addr1abcdef").unwrap();
         assert_eq!(address, AddressSpec::Address("addr1abcdef".to_string()));
-    }
-
-    #[test]
-    fn test_config_serde() {
-        // load test data file ./test_data/devnet.toml
-        let config = Config::load("./src/devnet/test_data/devnet.toml").unwrap();
-
-        let wallets = HashMap::from_iter(vec![
-            ("alice".to_string(), "addr1aaa".to_string()),
-            ("bob".to_string(), "addr1bbb".to_string()),
-            ("charlie".to_string(), "addr1ccc".to_string()),
-        ]);
-
-        let all = config
-            .iter_utxos_values(&wallets)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-
-        let map: HashMap<String, u64> = HashMap::from_iter(all);
-
-        assert_eq!(map.get("addr1aaa").unwrap(), &1000);
-        assert_eq!(map.get("addr1bbb").unwrap(), &2000);
-        assert_eq!(map.get("addr1ccc").unwrap(), &3000);
-        assert_eq!(map.get("addr1ddd").unwrap(), &4000);
     }
 }

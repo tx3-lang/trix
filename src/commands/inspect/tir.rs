@@ -1,7 +1,7 @@
 use clap::Args as ClapArgs;
 use miette::{Context as _, IntoDiagnostic as _};
 
-use crate::config::Config;
+use crate::config::RootConfig;
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -12,7 +12,7 @@ pub struct Args {
     pretty: bool,
 }
 
-pub fn run(args: Args, config: &Config) -> miette::Result<()> {
+pub fn run(args: Args, config: &RootConfig) -> miette::Result<()> {
     let main_path = config.protocol.main.clone();
 
     let content = std::fs::read_to_string(main_path).into_diagnostic()?;
