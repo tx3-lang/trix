@@ -1,4 +1,7 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 use miette::Result;
 
@@ -280,6 +283,17 @@ impl CodegenConfig {
 }
 
 impl RootConfig {
+    pub fn available_networks(&self) -> HashSet<String> {
+        let explicit: Vec<_> = self.networks.keys().cloned().collect();
+
+        let implicit: Vec<_> = KNOWN_NETWORKS
+            .iter()
+            .map(|n| n.as_network_name().to_string())
+            .collect();
+
+        explicit.into_iter().chain(implicit).collect()
+    }
+
     pub fn resolve_network(&self, network: &str) -> Result<NetworkConfig> {
         let explicit = self.networks.get(network);
 
@@ -297,6 +311,17 @@ impl RootConfig {
         }
 
         Err(miette::miette!("Network not found"))
+    }
+
+    pub fn available_profiles(&self) -> HashSet<String> {
+        let explicit: Vec<_> = self.profiles.keys().cloned().collect();
+
+        let implicit: Vec<_> = KNOWN_PROFILES
+            .iter()
+            .map(|p| p.as_profile_name().to_string())
+            .collect();
+
+        explicit.into_iter().chain(implicit).collect()
     }
 
     pub fn resolve_profile(&self, profile: &str) -> Result<ProfileConfig> {

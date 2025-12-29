@@ -19,8 +19,12 @@ pub fn build_tii(source: &Path, output: &Path, config: &RootConfig) -> miette::R
         cmd.args(["--protocol-scope", scope.as_str()]);
     }
 
-    for profile in config.profiles.values() {
-        if let Some(env_file) = &profile.env_file {
+    for profile in config.available_profiles() {
+        let profile = config.resolve_profile(&profile)?;
+
+        let env_file = profile.env_file_path();
+
+        if env_file.is_file() {
             let value = format!("{}:{}", profile.name, env_file.to_str().unwrap());
             cmd.args(["--profile-env-file", value.as_str()]);
         }
