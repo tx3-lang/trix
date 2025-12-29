@@ -13,6 +13,19 @@ pub struct ProtocolConfig {
     pub readme: Option<PathBuf>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+pub enum KnownLedgerFamily {
+    Cardano,
+    Bitcoin,
+    Midnight,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LedgerConfig {
+    pub family: KnownLedgerFamily,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RegistryConfig {
     pub url: String,
@@ -171,6 +184,8 @@ pub struct CodegenConfig {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RootConfig {
     pub protocol: ProtocolConfig,
+
+    pub ledger: LedgerConfig,
 
     #[serde(default)]
     pub registry: Option<RegistryConfig>,

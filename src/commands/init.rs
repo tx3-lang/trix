@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::config::{
-    CodegenConfig, CodegenPlugin, KNOWN_CODEGEN_PLUGINS, ProfileConfig, ProtocolConfig, RootConfig,
-    serde::NamedMap,
+    CodegenConfig, CodegenPlugin, KNOWN_CODEGEN_PLUGINS, KnownLedgerFamily, LedgerConfig,
+    ProfileConfig, ProtocolConfig, RootConfig, serde::NamedMap,
 };
 use clap::Args as ClapArgs;
 use inquire::{MultiSelect, Text};
@@ -104,6 +104,9 @@ fn default_config() -> RootConfig {
             main: "main.tx3".into(),
             readme: None,
         },
+        ledger: LedgerConfig {
+            family: KnownLedgerFamily::Cardano,
+        },
         codegen: Vec::new(),
         profiles: NamedMap::default(),
         networks: NamedMap::default(),
@@ -155,9 +158,6 @@ fn inquire_config(initial: &RootConfig) -> miette::Result<RootConfig> {
                 options: None,
             })
             .collect(),
-        profiles: NamedMap::default(),
-        networks: NamedMap::default(),
-        registry: None,
         ..initial.clone()
     };
 
