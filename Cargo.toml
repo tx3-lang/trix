@@ -7,11 +7,11 @@ repository = "https://github.com/tx3-lang/trix"
 homepage = "https://github.com/tx3-lang/trix"
 
 [dependencies]
-tx3-lang = "0.14.0"
+tx3-lang = "0.14.2"
 # tx3-lang = { path = "../tx3/crates/tx3-lang" }
 # tx3-lang = { git = "https://github.com/tx3-lang/tx3.git" }
 
-tx3-tir = "0.14.0"
+tx3-tir = "0.14.2"
 # tx3-tir = { path = "../tx3/crates/tx3-tir" }
 # tx3-tir = { git = "https://github.com/tx3-lang/tx3.git" }
 

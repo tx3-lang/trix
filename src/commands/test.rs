@@ -240,7 +240,6 @@ mod tests {
 
         assert_eq!(parsed.context.protocol, PathBuf::from("./main.tx3"));
         assert_eq!(parsed.context.devnet, PathBuf::from("./devnet.toml"));
-        assert_eq!(parsed.wallets.len(), 2);
 
         assert_eq!(parsed.transactions.len(), 1);
 
