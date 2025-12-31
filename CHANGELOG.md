@@ -2,12 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.2] - 2025-12-31
+
+### ⚙️ Miscellaneous Tasks
+
+- Update tx3 deps to v0.14.2
+
 ## [0.19.1] - 2025-12-29
 
 ### 🐛 Bug Fixes
 
 - Pass implicit profiles to tx3c
 - Include placeholder for ledger family config
+
+### 💼 Other
+
+- V0.19.1
 
 ## [0.19.0] - 2025-12-29
 
