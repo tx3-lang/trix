@@ -173,15 +173,13 @@ pub fn build_dolos_utxos(
 }
 
 fn setup_home(devnet: &Config, ctx: &Context) -> miette::Result<PathBuf> {
-    let hashable_content = serde_json::to_vec(&devnet).into_diagnostic()?;
-
-    let devnet_home = crate::home::consistent_tmp_dir("devnet", &hashable_content)?;
+    let dolos_dir = crate::dirs::target_dir("dolos")?;
 
     let initial_utxos = build_dolos_utxos(&devnet, &ctx.aliases)?;
 
-    let _ = crate::spawn::dolos::initialize_config(&devnet_home, initial_utxos)?;
+    let _ = crate::spawn::dolos::initialize_config(&dolos_dir, initial_utxos)?;
 
-    Ok(devnet_home)
+    Ok(dolos_dir)
 }
 
 pub struct DevnetDaemon {
