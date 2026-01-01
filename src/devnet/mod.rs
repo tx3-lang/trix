@@ -6,12 +6,26 @@ use std::{
     str::FromStr,
 };
 
-use miette::IntoDiagnostic as _;
+use miette::{Context as _, Diagnostic, IntoDiagnostic as _};
 
+use inquire::Text;
 use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
+use thiserror::Error;
 
 use crate::{config::IdentityConfig, wallet::WalletProxy};
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("devnet error")]
+pub enum Error {
+    #[error("can't open devnet config file")]
+    #[diagnostic(help("Try running `trix devnet new` to create a devnet config file"))]
+    CantOpenConfig(#[source] std::io::Error),
+
+    #[error("invalid devnet config file: {0}")]
+    #[diagnostic(help("Try fixing the devnet config file"))]
+    InvalidConfig(#[source] toml::de::Error),
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum AddressSpec {
@@ -80,24 +94,48 @@ pub enum UtxoSpec {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub utxos: Vec<UtxoSpec>,
-    pub actors: Vec<IdentityConfig>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            utxos: vec![],
-            actors: vec![],
-        }
+        Self { utxos: vec![] }
     }
 }
 
 impl Config {
     pub fn load(path: impl AsRef<Path>) -> miette::Result<Self> {
-        let data = std::fs::read_to_string(path).into_diagnostic()?;
-        let config = toml::from_str::<Self>(&data).into_diagnostic()?;
+        let data = std::fs::read_to_string(&path).map_err(Error::CantOpenConfig)?;
+
+        let config = toml::from_str::<Self>(&data).map_err(Error::InvalidConfig)?;
+
         Ok(config)
     }
+}
+
+const DEFAULT_DEVNET_WALLET_AMOUNT: u64 = 100_000_000_000;
+
+pub fn inquire_config(profile: &crate::config::ProfileConfig) -> miette::Result<Config> {
+    let mut utxos = Vec::new();
+
+    for (identity_name, _identity) in profile.identities.iter() {
+        let balance_str = Text::new(&format!("Initial balance for '{}':", identity_name))
+            .with_default(&DEFAULT_DEVNET_WALLET_AMOUNT.to_string())
+            .prompt()
+            .into_diagnostic()
+            .context(format!("failed to read balance for {}", identity_name))?;
+
+        let balance = balance_str
+            .parse::<u64>()
+            .map_err(|e| miette::miette!("Invalid balance: {}. Must be a valid number.", e))
+            .context("parsing balance")?;
+
+        utxos.push(UtxoSpec::Explicit(ExplicitUtxoSpec {
+            address: AddressSpec::NamedWallet(identity_name.clone()),
+            value: balance,
+        }));
+    }
+
+    Ok(Config { utxos })
 }
 
 fn map_address(

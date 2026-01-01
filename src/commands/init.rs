@@ -53,10 +53,7 @@ fn infer_devnet(profile: &ProfileConfig) -> crate::devnet::Config {
         })
         .collect();
 
-    crate::devnet::Config {
-        utxos,
-        actors: vec![],
-    }
+    crate::devnet::Config { utxos }
 }
 
 fn apply_template_if_not_exists(path: impl Into<PathBuf>, template: &str) -> miette::Result<()> {
