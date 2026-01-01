@@ -6,11 +6,14 @@ use crate::config::{ProfileConfig, RootConfig};
 use crate::devnet::Config as DevnetConfig;
 
 pub mod copy;
+pub mod new;
 
 #[derive(Subcommand)]
 pub enum Command {
     /// Retrieve the UTxO dependencies for one transaction
     Copy(copy::Args),
+    /// Create a new devnet configuration file
+    New(new::Args),
 }
 
 #[derive(ClapArgs)]
@@ -30,6 +33,7 @@ pub struct Args {
 pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
     match args.command {
         Some(Command::Copy(args)) => copy::run(args, config, profile),
+        Some(Command::New(args)) => new::run(args, config, profile),
         None => run_devnet(args, config, profile),
     }
 }
@@ -42,7 +46,7 @@ pub fn run_devnet(args: Args, config: &RootConfig, profile: &ProfileConfig) -> m
 
     let wallet = crate::wallet::setup(config, profile)?;
 
-    let devnet = DevnetConfig::load(&path).context("can't find devnet config")?;
+    let devnet = DevnetConfig::load(&path)?;
 
     let ctx = crate::devnet::Context::from_wallet(&wallet);
 

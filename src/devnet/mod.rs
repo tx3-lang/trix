@@ -6,12 +6,25 @@ use std::{
     str::FromStr,
 };
 
-use miette::IntoDiagnostic as _;
+use miette::{Context as _, Diagnostic, IntoDiagnostic as _};
 
 use serde::{Deserialize, Serialize};
 use serde_with::{DisplayFromStr, serde_as};
+use thiserror::Error;
 
-use crate::{config::IdentityConfig, wallet::WalletProxy};
+use crate::wallet::WalletProxy;
+
+#[derive(Debug, Error, Diagnostic)]
+#[error("devnet error")]
+pub enum Error {
+    #[error("can't open devnet config file")]
+    #[diagnostic(help("Try running `trix devnet new` to create a devnet config file"))]
+    CantOpenConfig(#[source] std::io::Error),
+
+    #[error("invalid devnet config file: {0}")]
+    #[diagnostic(help("Try fixing the devnet config file"))]
+    InvalidConfig(#[source] toml::de::Error),
+}
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub enum AddressSpec {
@@ -80,22 +93,20 @@ pub enum UtxoSpec {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {
     pub utxos: Vec<UtxoSpec>,
-    pub actors: Vec<IdentityConfig>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self {
-            utxos: vec![],
-            actors: vec![],
-        }
+        Self { utxos: vec![] }
     }
 }
 
 impl Config {
     pub fn load(path: impl AsRef<Path>) -> miette::Result<Self> {
-        let data = std::fs::read_to_string(path).into_diagnostic()?;
-        let config = toml::from_str::<Self>(&data).into_diagnostic()?;
+        let data = std::fs::read_to_string(&path).map_err(Error::CantOpenConfig)?;
+
+        let config = toml::from_str::<Self>(&data).map_err(Error::InvalidConfig)?;
+
         Ok(config)
     }
 }
