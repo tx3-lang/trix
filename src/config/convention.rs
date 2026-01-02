@@ -169,7 +169,7 @@ impl From<KnownNetwork> for U5cConfig {
                 )]),
             },
             KnownNetwork::CardanoLocal => Self {
-                url: "http://localhost:3000/u5c".to_string(),
+                url: "http://localhost:5164/u5c".to_string(),
                 headers: HashMap::new(),
             },
         }
