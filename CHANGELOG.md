@@ -2,7 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.3] - 2026-01-02
+
+### 🚀 Features
+
+- *(devnet)* Improve UX when no devnet config is available (#95)
+
+### 🐛 Bug Fixes
+
+- Use correct convention for u5c port
+
+### 🚜 Refactor
+
+- Use target dir for dolos config files
+
 ## [0.19.2] - 2025-12-31
+
+### 💼 Other
+
+- V0.19.2
 
 ### ⚙️ Miscellaneous Tasks
 
