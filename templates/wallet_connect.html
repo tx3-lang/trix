@@ -184,8 +184,7 @@
         <div class="controls">
             <button id="connect">Connect Wallet</button>
             <button id="disconnect">Disconnect</button>
-            <button id="sign" disabled>Sign Transaction</button>
-            <button id="submit">Submit Transaction</button>
+            <button id="sign" disabled>Sign and Submit Transaction</button>
         </div>
 
         <div id="status">Ready to connect</div>
@@ -202,11 +201,11 @@
     </dialog>
 
     <script>
+        const trpHeaders = __TRP_HEADERS_PLACEHOLDER__;
         const cborInput = document.getElementById('cbor');
         const connectBtn = document.getElementById('connect');
         const disconnectBtn = document.getElementById('disconnect');
         const signBtn = document.getElementById('sign');
-        const submitBtn = document.getElementById('submit');
         const statusDiv = document.getElementById('status');
         const walletModal = document.getElementById('walletModal');
         const walletList = document.getElementById('walletList');
@@ -273,7 +272,6 @@
                 connectBtn.style.display = 'inline-block';
                 disconnectBtn.style.display = 'none';
                 signBtn.disabled = true;
-                submitBtn.style.display = 'none';
             }
         }
 
@@ -327,37 +325,45 @@
 
             try {
                 statusDiv.innerText = 'Requesting signature...';
-                // signTx(tx: string, partialSign: boolean = false): Promise<string>
+                // signTx(tx: cbor<transaction>, partialSign: bool = false): Promise<cbor<transaction_witness_set>>
                 lastWitness = await walletApi.signTx(cbor, true);
 
-                statusDiv.innerHTML = `<strong>Signed!</strong><br>Witness Set (CBOR):<br>${lastWitness}`;
-                statusDiv.style.color = 'green';
+                // Call Submit on TRP
+                const response = await fetch('__TRP_URL_PLACEHOLDER__', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...trpHeaders
+                    },
+                    body: JSON.stringify({
+                        "id": crypto.randomUUID(),
+                        "jsonrpc": "2.0",
+                        "method": "trp.submit",
+                        "params": {
+                            "tx": {
+                                "content": cbor,
+                                "encoding": "hex"
+                            },
+                            "witnesses": [lastWitness],
+                        },
+                    })
+                });
 
-                // Show submit button
-                submitBtn.style.display = 'inline-block';
+                if (!response.ok) {
+                    throw new Error(`TRP submit failed: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                if (result.error) {
+                    throw new Error(`TRP Error: ${result.error.message}`);
+                }
+                
+
+                // statusDiv.innerHTML = `<strong>Signed!</strong><br>Witness Set (CBOR):<br>${lastWitness}`;
+                statusDiv.innerHTML = `<strong>Submitted!</strong><br>TX Hash: ${result.result.hash}`;
+                statusDiv.style.color = 'green';
             } catch (err) {
                 statusDiv.innerText = 'Sign Error: ' + (err.info || err.message);
-                statusDiv.style.color = 'red';
-                console.error(err);
-            }
-        });
-
-        submitBtn.addEventListener('click', async () => {
-            if (!lastWitness) return;
-
-            try {
-                statusDiv.innerText = 'Submitting transaction...';
-                /// Solve signedTxCbor tx
-
-                // Should take lastWitness and merge with original tx cbor
-                const txId = await walletApi.submitTx(cborInput.value.trim());
-
-                statusDiv.innerHTML = `<strong>Submitted!</strong><br>Tx ID: ${txId}`;
-                statusDiv.style.color = 'green';
-            } catch (err) {
-                statusDiv.innerHTML = `<strong>Submit Failed</strong><br>
-                Note: Submitting usually requires merging the witness set with the transaction body using a serialization library.<br>
-                Error: ${err.info || err.message}`;
                 statusDiv.style.color = 'red';
                 console.error(err);
             }

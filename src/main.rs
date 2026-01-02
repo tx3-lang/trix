@@ -114,7 +114,7 @@ async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
         Commands::Identities(args) => cmds::identities::run(args, &config, &profile),
         Commands::Publish(args) => cmds::publish::run(args, &config),
         Commands::Telemetry(args) => cmds::telemetry::run(args),
-        Commands::WalletConnect(args) => cmds::wallet_connect::run(args, &config).await,
+        Commands::WalletConnect(args) => cmds::wallet_connect::run(args, &config, &profile).await,
     };
 
     if let Some(handle) = metric {

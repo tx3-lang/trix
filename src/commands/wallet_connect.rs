@@ -1,4 +1,4 @@
-use crate::config::RootConfig;
+use crate::config::{ProfileConfig, RootConfig};
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
 use std::net::SocketAddr;
@@ -18,7 +18,9 @@ pub struct Args {
     cbor: Option<String>,
 }
 
-pub async fn run(args: Args, _config: &RootConfig) -> miette::Result<()> {
+pub async fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
+    let network = config.resolve_profile_network(&profile.name)?;
+
     let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
     let listener = TcpListener::bind(addr).await.into_diagnostic()?;
 
@@ -26,7 +28,13 @@ pub async fn run(args: Args, _config: &RootConfig) -> miette::Result<()> {
     println!("http://localhost:{}", args.port);
 
     let cbor_value = args.cbor.unwrap_or_default();
-    let body = HTML_TEMPLATE.replace("__CBOR_PLACEHOLDER__", &cbor_value);
+    let headers_json = serde_json::to_string(&network.trp.headers).into_diagnostic()?;
+
+    let body = HTML_TEMPLATE
+        .replace("__CBOR_PLACEHOLDER__", &cbor_value)
+        .replace("__TRP_URL_PLACEHOLDER__", &network.trp.url)
+        .replace("__TRP_HEADERS_PLACEHOLDER__", &headers_json);
+
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
         body.len(),
