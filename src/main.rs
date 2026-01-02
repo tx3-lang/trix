@@ -63,7 +63,8 @@ enum Commands {
     /// Manage crypographic identities
     Identities(cmds::identities::Args),
 
-    /// Connect to wallets via Wallet Connect protocol
+    /// Connect to wallets via Wallet Connect protocol (UNSTABLE - This feature is experimental and may change)
+    #[command(hide = true)]
     WalletConnect(cmds::wallet_connect::Args),
 
     /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)

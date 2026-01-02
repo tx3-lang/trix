@@ -19,6 +19,19 @@ pub struct Args {
 }
 
 pub async fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
+    #[cfg(feature = "unstable")]
+    {
+        _run(args, config, profile).await
+    }
+    #[cfg(not(feature = "unstable"))]
+    {
+        Err(miette::miette!(
+            "The wallet-connect command is currently unstable and requires the `unstable` feature to be enabled."
+        ))
+    }
+}
+
+async fn _run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
     let network = config.resolve_profile_network(&profile.name)?;
 
     let addr = SocketAddr::from(([127, 0, 0, 1], args.port));
