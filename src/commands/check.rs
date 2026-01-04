@@ -1,4 +1,4 @@
-use crate::config::RootConfig;
+use crate::config::{ProfileConfig, RootConfig};
 use clap::Args as ClapArgs;
 use miette::Diagnostic;
 use miette::IntoDiagnostic as _;
@@ -11,10 +11,12 @@ struct Error {
     results: Vec<tx3_lang::analyzing::Error>,
 }
 
-#[derive(ClapArgs)]
+#[derive(ClapArgs, Debug)]
 pub struct Args {}
 
-pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
+pub fn run(_args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
+    crate::telemetry::track_command_execution("check");
+
     let main_path = config.protocol.main.clone();
 
     let content = std::fs::read_to_string(main_path).into_diagnostic()?;

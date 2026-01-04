@@ -169,6 +169,8 @@ pub struct Args {
 }
 
 pub fn run(args: Args, config: Option<&RootConfig>) -> miette::Result<()> {
+    crate::telemetry::track_command_execution("init");
+
     let mut config = config.cloned().unwrap_or(default_config());
 
     if !args.yes {

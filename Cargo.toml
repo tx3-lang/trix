@@ -52,6 +52,9 @@ bip39 = "2.1.0"
 octocrab = "0.44"
 serde_with = "3.14.0"
 askama = "0.14.0"
+prost = "0.13"
+tracing = "0.1"
+tokio-util = "0.7"
 
 [features]
 unstable = []

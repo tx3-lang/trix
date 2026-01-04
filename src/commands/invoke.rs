@@ -8,7 +8,7 @@ use crate::{
     config::{ProfileConfig, RootConfig},
 };
 
-#[derive(ClapArgs)]
+#[derive(ClapArgs, Debug)]
 pub struct Args {
     /// Args for the TX3 transaction as a raw JSON string.
     #[arg(long)]
@@ -59,6 +59,8 @@ fn load_args_json(args: &Args) -> miette::Result<serde_json::Value> {
 }
 
 pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
+    crate::telemetry::track_command_execution("invoke");
+
     let wallet = crate::wallet::setup(config, profile)?;
 
     let tii_file = builder::build_tii(config)?;

@@ -8,7 +8,7 @@ use utxorpc::{
 use clap::Args as ClapArgs;
 use miette::{IntoDiagnostic, bail};
 
-#[derive(ClapArgs)]
+#[derive(ClapArgs, Debug)]
 pub struct Args {
     /// Profile for network selection
     #[arg(long)]

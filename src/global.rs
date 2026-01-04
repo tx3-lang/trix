@@ -9,14 +9,20 @@ pub struct Config {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TelemetryConfig {
     pub enabled: bool,
+    pub otlp_endpoint: Option<String>,
+    pub timeout_ms: u64,
 }
 impl Default for TelemetryConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            otlp_endpoint: None,
+            timeout_ms: 2000,
+        }
     }
 }
 
-pub fn ensure_global_config() -> miette::Result<()> {
+pub fn ensure_global_config() -> miette::Result<Config> {
     let mut trix_path = crate::home::tx3_dir()?;
     trix_path.push("trix/config.toml");
 
@@ -26,7 +32,7 @@ pub fn ensure_global_config() -> miette::Result<()> {
         print_telemetry_info();
     }
 
-    Ok(())
+    read_config()
 }
 
 pub fn print_telemetry_info() {

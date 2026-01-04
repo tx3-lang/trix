@@ -8,6 +8,7 @@ mod dirs;
 mod global;
 mod home;
 mod spawn;
+mod telemetry;
 mod updates;
 mod wallet;
 
@@ -98,7 +99,7 @@ async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
         Commands::Devnet(args) => cmds::devnet::run(args, &config, &profile),
         Commands::Explore(args) => cmds::explore::run(args, &config, &profile),
         Commands::Codegen(args) => cmds::codegen::run(args, &config, &profile).await,
-        Commands::Check(args) => cmds::check::run(args, &config),
+        Commands::Check(args) => cmds::check::run(args, &config, &profile),
         Commands::Inspect(args) => cmds::inspect::run(args, &config),
         Commands::Test(args) => cmds::test::run(args, &config, &profile),
         Commands::Build(args) => cmds::build::run(args, &config, &profile),
@@ -117,7 +118,11 @@ async fn main() -> Result<()> {
 
     let config = load_config()?;
 
-    global::ensure_global_config()?;
+    let global_config = global::ensure_global_config()?;
+
+    if global_config.telemetry.enabled {
+        telemetry::initialize_telemetry(&global_config.telemetry)?;
+    }
 
     match config {
         Some(config) => run_scoped_command(cli, config).await,
