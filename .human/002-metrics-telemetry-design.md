@@ -1,13 +1,14 @@
-# OTLP Telemetry Implementation Specification
+# Metrics Telemetry Design
 
 ## Overview
 
-This specification outlines the implementation of a lightweight OTLP (OpenTelemetry Protocol) metrics telemetry system for the Trix CLI. The system is designed to track command invocation counters with immediate HTTP sending and minimal performance impact.
+This design outlines the implementation of a lightweight metrics telemetry system for the Trix CLI. The system is designed to track command invocation counters with immediate HTTP sending and minimal performance impact.
 
 ## Requirements
 
 ### Core Requirements
 - ✅ **Command invocation metrics** - Track basic command invocation counters for relevant commands.
+- ✅ **OTLP format** - Use OTLP specification as the standard for metric submission to a remote collector. 
 - ✅ **Simple counter metric** - Single counter increment per command execution (no duration or outcome tracking)
 - ✅ **Best effort philosophy** - Telemetry is best-effort, any failure should not bubble up to the user.
 - ✅ **Immediate sending** - Direct HTTP calls with no background processing
