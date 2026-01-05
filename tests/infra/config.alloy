@@ -1,0 +1,21 @@
+logging {
+  level = "debug"
+}
+
+otelcol.receiver.otlp "ingest" {
+  http {
+    endpoint = "0.0.0.0:4318"
+  }
+
+  grpc {
+    endpoint = "0.0.0.0:4317"
+  }
+
+  output {
+    metrics = [otelcol.exporter.debug.stdout.input]
+  }
+}
+
+otelcol.exporter.debug "stdout" {
+  verbosity = "detailed"
+}

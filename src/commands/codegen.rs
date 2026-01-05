@@ -471,8 +471,6 @@ async fn execute_bindgen(
 }
 
 pub async fn run(_args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
-    crate::telemetry::track_command_execution("codegen");
-
     let mut ws = Workspace::from_file(&config.protocol.main)?;
 
     ws.parse()?;

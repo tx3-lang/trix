@@ -1,94 +1,130 @@
-use reqwest::Client;
+use reqwest::{
+    Client,
+    header::{HeaderMap, HeaderName, HeaderValue},
+};
 use serde_json::json;
-use std::time::Duration;
+use std::{collections::HashMap, time::Duration};
+use tracing::{debug, warn};
 
-use std::time::SystemTime;
+use crate::{global::TelemetryConfig, telemetry::fingerprint};
 
 #[derive(Debug, Clone)]
-pub struct CommandSpan {
+pub struct CommandMetric {
     pub command_name: String,
-    pub start_time: SystemTime,
-    pub end_time: Option<SystemTime>,
-    pub success: Option<bool>,
-    pub error: Option<String>,
 }
 
-impl CommandSpan {
+impl CommandMetric {
     pub fn new(command_name: &str) -> Self {
         Self {
             command_name: command_name.to_string(),
-            start_time: SystemTime::now(),
-            end_time: None,
-            success: None,
-            error: None,
         }
     }
+}
 
-    pub fn complete(&mut self, success: bool, error: Option<String>) {
-        self.end_time = Some(SystemTime::now());
-        self.success = Some(success);
-        self.error = error;
+// best effort parsing of headers, anything invalid is ignored
+fn parse_headers(headers: HashMap<String, String>) -> HeaderMap {
+    let mut parsed_headers = HeaderMap::new();
+
+    for (key, value) in headers {
+        let Ok(key) = HeaderName::try_from(key) else {
+            continue;
+        };
+
+        let Ok(value) = HeaderValue::try_from(value) else {
+            continue;
+        };
+
+        parsed_headers.insert(key, value);
     }
 
-    pub fn duration_ms(&self) -> Option<u64> {
-        match self.end_time {
-            Some(end_time) => end_time
-                .duration_since(self.start_time)
-                .ok()
-                .map(|d| d.as_millis() as u64),
-            None => None,
-        }
-    }
+    parsed_headers
 }
 
 #[derive(Clone)]
 pub struct OtlpClient {
     client: Client,
     endpoint: String,
+    headers: HeaderMap,
     timeout: Duration,
-    user_fingerprint: String,
+    user: String,
 }
 
 impl OtlpClient {
-    pub fn new(endpoint: String, timeout_ms: u64, user_fingerprint: String) -> Self {
+    pub fn setup(config: &TelemetryConfig) -> Self {
         Self {
             client: Client::new(),
-            endpoint,
-            timeout: Duration::from_millis(timeout_ms),
-            user_fingerprint,
+            endpoint: config.otlp_endpoint.clone(),
+            headers: parse_headers(config.otlp_headers.clone()),
+            timeout: Duration::from_millis(config.timeout_ms),
+            user: fingerprint::get_user_fingerprint(),
         }
     }
 
-    pub async fn send_span(&self, span: CommandSpan) -> Result<(), ()> {
-        let payload = self.encode_span(span);
+    pub async fn send_metric(&self, metric: CommandMetric) -> Result<(), ()> {
+        let payload = self.encode_metric(metric);
 
-        match tokio::time::timeout(
-            self.timeout,
-            self.client.post(&self.endpoint).json(&payload).send(),
-        )
-        .await
-        {
-            Ok(Ok(_)) => Ok(()),
-            Ok(Err(_)) | Err(_) => Err(()), // Silent failure
+        let endpoint = format!("{}/v1/metrics", self.endpoint);
+
+        let request = self
+            .client
+            .post(&endpoint)
+            .json(&payload)
+            .headers(self.headers.clone());
+
+        let result = tokio::time::timeout(self.timeout, request.send()).await;
+
+        match result {
+            Ok(Ok(_)) => {
+                debug!("metric sent successfully");
+                Ok(())
+            }
+            Ok(Err(_)) | Err(_) => {
+                warn!("metric sent failed");
+                Err(())
+            }
         }
     }
 
-    fn encode_span(&self, span: CommandSpan) -> serde_json::Value {
-        // Manual OTLP JSON encoding for single span
+    fn encode_metric(&self, metric: CommandMetric) -> serde_json::Value {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64;
+
+        // Manual OTLP JSON encoding for single metric
         json!({
-            "resource": {
-                "service.name": "trix-cli",
-                "service.version": env!("CARGO_PKG_VERSION"),
-                "user.fingerprint": self.user_fingerprint
-            },
-            "spans": [{
-                "name": span.command_name,
-                "attributes": {
-                    "command.name": span.command_name,
-                    "success": span.success,
-                    "error": span.error,
-                    "duration.ms": span.duration_ms(),
-                }
+            "resourceMetrics": [{
+                "resource": {
+                    "attributes": [{
+                        "key": "service.name",
+                        "value": {"stringValue": "trix-cli"}
+                    }, {
+                        "key": "service.version",
+                        "value": {"stringValue": env!("CARGO_PKG_VERSION")}
+                    }, {
+                        "key": "user.fingerprint",
+                        "value": {"stringValue": self.user}
+                    }]
+                },
+                "scopeMetrics": [{
+                    "scope": {},
+                    "metrics": [{
+                        "name": "trix_command_invocation",
+                        "sum": {
+                            "dataPoints": [{
+                                "attributes": [{
+                                    "key": "command_name",
+                                    "value": {"stringValue": metric.command_name}
+                                }],
+                                "startTimeUnixNano": format!("{}", timestamp),
+                                "timeUnixNano": format!("{}", timestamp),
+                                "asInt": "1"
+                            }],
+                            "aggregationTemporality": 2,
+                            "isMonotonic": true
+                        }
+                    }]
+                }]
             }]
         })
     }

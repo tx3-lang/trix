@@ -15,8 +15,6 @@ struct Error {
 pub struct Args {}
 
 pub fn run(_args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
-    crate::telemetry::track_command_execution("check");
-
     let main_path = config.protocol.main.clone();
 
     let content = std::fs::read_to_string(main_path).into_diagnostic()?;
@@ -33,5 +31,6 @@ pub fn run(_args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette:
     }
 
     println!("check passed, no errors found");
+
     Ok(())
 }

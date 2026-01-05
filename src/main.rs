@@ -26,6 +26,9 @@ struct Cli {
 
     #[arg(long, short, default_value = "local", global = true)]
     profile: String,
+
+    #[arg(long, short, global = true)]
+    verbose: bool,
 }
 
 #[derive(Subcommand)]
@@ -93,7 +96,9 @@ fn run_global_command(cli: Cli) -> Result<()> {
 async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
     let profile = config.resolve_profile(&cli.profile)?;
 
-    match cli.command {
+    let metric = crate::telemetry::track_command_execution(&cli);
+
+    let result = match cli.command {
         Commands::Init(args) => cmds::init::run(args, Some(&config)),
         Commands::Invoke(args) => cmds::invoke::run(args, &config, &profile),
         Commands::Devnet(args) => cmds::devnet::run(args, &config, &profile),
@@ -106,12 +111,24 @@ async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
         Commands::Identities(args) => cmds::identities::run(args, &config, &profile),
         Commands::Publish(args) => cmds::publish::run(args, &config),
         Commands::Telemetry(args) => cmds::telemetry::run(args),
+    };
+
+    if let Some(handle) = metric {
+        handle.await.unwrap();
     }
+
+    result
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if cli.verbose {
+        tracing_subscriber::fmt::fmt()
+            .with_max_level(tracing::Level::DEBUG)
+            .init();
+    }
 
     // Check for updates silently
     let _ = updates::check_for_updates();

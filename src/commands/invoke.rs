@@ -59,8 +59,6 @@ fn load_args_json(args: &Args) -> miette::Result<serde_json::Value> {
 }
 
 pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
-    crate::telemetry::track_command_execution("invoke");
-
     let wallet = crate::wallet::setup(config, profile)?;
 
     let tii_file = builder::build_tii(config)?;

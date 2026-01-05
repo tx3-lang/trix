@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 
@@ -6,18 +8,27 @@ pub struct Config {
     pub telemetry: TelemetryConfig,
 }
 
+fn default_otlp_endpoint() -> String {
+    "https://otlp.txpipe.io".to_string()
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TelemetryConfig {
     pub enabled: bool,
-    pub otlp_endpoint: Option<String>,
     pub timeout_ms: u64,
+    #[serde(default = "default_otlp_endpoint")]
+    pub otlp_endpoint: String,
+    #[serde(default)]
+    pub otlp_headers: HashMap<String, String>,
 }
+
 impl Default for TelemetryConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            otlp_endpoint: None,
-            timeout_ms: 2000,
+            otlp_endpoint: default_otlp_endpoint(),
+            otlp_headers: HashMap::new(),
+            timeout_ms: 500,
         }
     }
 }

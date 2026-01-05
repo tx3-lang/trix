@@ -31,8 +31,6 @@ pub struct Args {
 }
 
 pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
-    crate::telemetry::track_command_execution("devnet");
-
     match args.command {
         Some(Command::Copy(args)) => copy::run(args, config, profile),
         Some(Command::New(args)) => new::run(args, config, profile),

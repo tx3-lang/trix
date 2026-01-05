@@ -1,12 +1,12 @@
-use tokio::sync::OnceCell;
-use tracing::{debug, warn};
+use tokio::{sync::OnceCell, task::JoinHandle};
+use tracing::debug;
 
-use crate::{global::TelemetryConfig, telemetry::fingerprint::get_user_fingerprint};
+use crate::{Cli, Commands, global::TelemetryConfig};
 
 mod client;
 mod fingerprint;
 
-pub use client::{CommandSpan, OtlpClient};
+pub use client::{CommandMetric, OtlpClient};
 
 static TELEMETRY_CLIENT: OnceCell<OtlpClient> = OnceCell::const_new();
 
@@ -16,32 +16,55 @@ pub fn initialize_telemetry(config: &TelemetryConfig) -> miette::Result<()> {
         return Ok(());
     }
 
-    let Some(endpoint) = config.otlp_endpoint.as_ref() else {
-        warn!("no OTLP endpoint configured, skipping telemetry initialization");
-        return Ok(());
-    };
-
-    let user = get_user_fingerprint();
-
-    let client = OtlpClient::new(endpoint.clone(), config.timeout_ms, user);
+    let client = OtlpClient::setup(config);
 
     TELEMETRY_CLIENT
         .set(client)
-        .map_err(|_| miette::miette!("Telemetry already initialized"))
+        .map_err(|_| miette::miette!("Telemetry already initialized"))?;
+
+    debug!("telemetry initialized");
+
+    Ok(())
 }
 
-#[tracing::instrument]
-pub fn track_command_execution(name: &str) {
+impl From<&Cli> for Option<CommandMetric> {
+    fn from(cli: &Cli) -> Self {
+        match cli.command {
+            Commands::Build(_) => Some(CommandMetric::new("build")),
+            Commands::Check(_) => Some(CommandMetric::new("check")),
+            Commands::Codegen(_) => Some(CommandMetric::new("codegen")),
+            Commands::Devnet(_) => Some(CommandMetric::new("devnet")),
+            Commands::Explore(_) => Some(CommandMetric::new("explore")),
+            Commands::Init(_) => Some(CommandMetric::new("init")),
+            Commands::Invoke(_) => Some(CommandMetric::new("invoke")),
+            Commands::Inspect(_) => Some(CommandMetric::new("inspect")),
+            Commands::Test(_) => Some(CommandMetric::new("test")),
+            Commands::Identities(_) => Some(CommandMetric::new("identities")),
+            Commands::Publish(_) => Some(CommandMetric::new("publish")),
+            _ => None,
+        }
+    }
+}
+
+pub fn track_command_execution(call: &Cli) -> Option<JoinHandle<()>> {
     let Some(client) = TELEMETRY_CLIENT.get() else {
         debug!("skipping since not initialized");
-        return;
+        return None;
     };
 
-    let span = CommandSpan::new(name);
+    let metric: Option<CommandMetric> = call.into();
+
+    let Some(metric) = metric else {
+        debug!("skipping since command is not relevant for telemetry");
+        return None;
+    };
+
     debug!("submitting command telemetry");
 
-    tokio::spawn(async move {
-        let _ = client.send_span(span).await; // Silent failure
+    let handle = tokio::spawn(async move {
+        let _ = client.send_metric(metric).await; // Silent failure
         debug!("telemetry sent");
     });
+
+    Some(handle)
 }

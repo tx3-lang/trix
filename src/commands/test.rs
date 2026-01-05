@@ -152,8 +152,6 @@ fn trigger_transaction(
 }
 
 pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> Result<()> {
-    crate::telemetry::track_command_execution("test");
-
     println!("== Starting tests ==\n");
     let test_content = std::fs::read_to_string(args.path).into_diagnostic()?;
     let test = toml::from_str::<Test>(&test_content).into_diagnostic()?;
