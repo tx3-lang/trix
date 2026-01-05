@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use miette::{Context, IntoDiagnostic};
 use serde::{Deserialize, Serialize};
 
@@ -6,17 +8,32 @@ pub struct Config {
     pub telemetry: TelemetryConfig,
 }
 
+fn default_otlp_endpoint() -> String {
+    "https://otlp.txpipe.io".to_string()
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TelemetryConfig {
     pub enabled: bool,
+    pub timeout_ms: u64,
+    #[serde(default = "default_otlp_endpoint")]
+    pub otlp_endpoint: String,
+    #[serde(default)]
+    pub otlp_headers: HashMap<String, String>,
 }
+
 impl Default for TelemetryConfig {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            otlp_endpoint: default_otlp_endpoint(),
+            otlp_headers: HashMap::new(),
+            timeout_ms: 500,
+        }
     }
 }
 
-pub fn ensure_global_config() -> miette::Result<()> {
+pub fn ensure_global_config() -> miette::Result<Config> {
     let mut trix_path = crate::home::tx3_dir()?;
     trix_path.push("trix/config.toml");
 
@@ -26,7 +43,7 @@ pub fn ensure_global_config() -> miette::Result<()> {
         print_telemetry_info();
     }
 
-    Ok(())
+    read_config()
 }
 
 pub fn print_telemetry_info() {

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Args as ClapArgs;
 use miette::{Context, IntoDiagnostic};
 
-#[derive(ClapArgs)]
+#[derive(ClapArgs, Debug)]
 pub struct Args {
     /// Path to save the devnet config file
     #[arg(long)]

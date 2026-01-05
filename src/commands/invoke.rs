@@ -8,7 +8,7 @@ use crate::{
     config::{ProfileConfig, RootConfig},
 };
 
-#[derive(ClapArgs)]
+#[derive(ClapArgs, Debug)]
 pub struct Args {
     /// Args for the TX3 transaction as a raw JSON string.
     #[arg(long)]

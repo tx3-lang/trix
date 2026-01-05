@@ -20,7 +20,7 @@ use crate::{
 const BLOCK_PRODUCTION_INTERVAL_SECONDS: u64 = 5;
 const DOLOS_SPAWN_DELAY_SECONDS: u64 = 2;
 
-#[derive(ClapArgs)]
+#[derive(ClapArgs, Debug)]
 pub struct Args {
     /// Test toml file
     path: PathBuf,
@@ -199,7 +199,7 @@ pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> Result<(
         .context("failed to stop dolos devnet in background")?;
 
     if failed {
-        bail!("Test failed, see the output above for details.");
+        bail!("Test failed, see output above for details.");
     }
 
     Ok(())

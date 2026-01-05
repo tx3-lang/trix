@@ -8,7 +8,7 @@ use crate::devnet::Config as DevnetConfig;
 pub mod copy;
 pub mod new;
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum Command {
     /// Retrieve the UTxO dependencies for one transaction
     Copy(copy::Args),
@@ -16,7 +16,7 @@ pub enum Command {
     New(new::Args),
 }
 
-#[derive(ClapArgs)]
+#[derive(ClapArgs, Debug)]
 pub struct Args {
     #[clap(subcommand)]
     command: Option<Command>,

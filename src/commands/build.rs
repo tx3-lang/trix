@@ -4,7 +4,7 @@ use crate::{
 };
 use clap::Args as ClapArgs;
 
-#[derive(ClapArgs)]
+#[derive(ClapArgs, Debug)]
 pub struct Args {}
 
 pub fn run(_args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {

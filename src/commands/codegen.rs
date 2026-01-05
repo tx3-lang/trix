@@ -15,7 +15,7 @@ use zip::ZipArchive;
 
 use tx3_tir::model::core::Type as TirType;
 
-#[derive(ClapArgs)]
+#[derive(ClapArgs, Debug)]
 pub struct Args {}
 
 /// Structure returned by load_github_templates containing handlebars and optional config
