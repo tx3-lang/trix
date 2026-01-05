@@ -1,4 +1,4 @@
-# Metrics Telemetry Design
+# Lightweight Telemetry Design
 
 ## Overview
 
