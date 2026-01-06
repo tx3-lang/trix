@@ -97,7 +97,7 @@ impl OtlpClient {
                 "resource": {
                     "attributes": [{
                         "key": "service.name",
-                        "value": {"stringValue": "trix-cli"}
+                        "value": {"stringValue": "trix"}
                     }, {
                         "key": "service.version",
                         "value": {"stringValue": env!("CARGO_PKG_VERSION")}
@@ -109,18 +109,17 @@ impl OtlpClient {
                 "scopeMetrics": [{
                     "scope": {},
                     "metrics": [{
-                        "name": "trix_command_invocation",
+                        "name": "command_invocation",
                         "sum": {
                             "dataPoints": [{
                                 "attributes": [{
                                     "key": "command_name",
                                     "value": {"stringValue": metric.command_name}
                                 }],
-                                "startTimeUnixNano": format!("{}", timestamp),
                                 "timeUnixNano": format!("{}", timestamp),
                                 "asInt": "1"
                             }],
-                            "aggregationTemporality": 2,
+                            "aggregationTemporality": 1,
                             "isMonotonic": true
                         }
                     }]
