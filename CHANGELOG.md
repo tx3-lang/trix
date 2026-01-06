@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.4] - 2026-01-06
+
+### 🚀 Features
+
+- Introduce lightweight telemetry (#96)
+
+### 🐛 Bug Fixes
+
+- *(telemetry)* Send metrics using delta aggregation temporality
+
+### ⚙️ Miscellaneous Tasks
+
+- Tidy up design folder
+
 ## [0.19.3] - 2026-01-02
 
 ### 🚀 Features
@@ -11,6 +25,10 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - Use correct convention for u5c port
+
+### 💼 Other
+
+- V0.19.3
 
 ### 🚜 Refactor
 
