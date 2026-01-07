@@ -28,7 +28,7 @@ impl Default for TelemetryConfig {
             enabled: true,
             otlp_endpoint: default_otlp_endpoint(),
             otlp_headers: HashMap::new(),
-            timeout_ms: 500,
+            timeout_ms: 3_000, // 3 seconds
         }
     }
 }
