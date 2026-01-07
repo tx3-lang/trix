@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.5] - 2026-01-07
+
+### 🐛 Bug Fixes
+
+- Increase default timeout for telemetry
+
 ## [0.19.4] - 2026-01-06
 
 ### 🚀 Features
@@ -11,6 +17,10 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - *(telemetry)* Send metrics using delta aggregation temporality
+
+### 💼 Other
+
+- V0.19.4
 
 ### ⚙️ Miscellaneous Tasks
 
