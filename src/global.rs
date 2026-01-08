@@ -12,9 +12,14 @@ fn default_otlp_endpoint() -> String {
     "https://otlp.txpipe.io".to_string()
 }
 
+fn default_timeout_ms() -> u64 {
+    3_000 // 3 seconds
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TelemetryConfig {
     pub enabled: bool,
+    #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
     #[serde(default = "default_otlp_endpoint")]
     pub otlp_endpoint: String,
@@ -28,7 +33,7 @@ impl Default for TelemetryConfig {
             enabled: true,
             otlp_endpoint: default_otlp_endpoint(),
             otlp_headers: HashMap::new(),
-            timeout_ms: 3_000, // 3 seconds
+            timeout_ms: default_timeout_ms(),
         }
     }
 }
