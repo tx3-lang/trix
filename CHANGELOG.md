@@ -2,11 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.6] - 2026-01-08
+
+### 🐛 Bug Fixes
+
+- Use default function for timeout in TelemetryConfig
+
 ## [0.19.5] - 2026-01-07
 
 ### 🐛 Bug Fixes
 
 - Increase default timeout for telemetry
+
+### 💼 Other
+
+- V0.19.5
 
 ## [0.19.4] - 2026-01-06
 
