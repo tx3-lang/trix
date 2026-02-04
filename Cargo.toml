@@ -25,7 +25,7 @@ dolos-core = { git = "https://github.com/txpipe/dolos.git" }
 # dolos-cardano = { path = "../dolos/crates/cardano" }
 # dolos-redb = { path = "../dolos/crates/redb" }
 
-pallas = "1.0.0-alpha.3"
+pallas = "1.0.0-alpha.4"
 
 clap = { version = "4.5.36", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
