@@ -2,7 +2,7 @@
 block_production_interval = 5
 
 [storage]
-version = "v1"
+version = "v3"
 path = "data"
 
 [genesis]
@@ -20,6 +20,7 @@ pull_batch_size = 100
 [serve.grpc]
 listen_address = "[::]:5164"
 permissive_cors = true
+max_dump_history_items = 1000
 
 [serve.minibf]
 listen_address = "[::]:3164"
