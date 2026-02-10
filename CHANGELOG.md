@@ -2,80 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.19.6] - 2026-01-08
-
-### 🐛 Bug Fixes
-
-- Use default function for timeout in TelemetryConfig
-
-## [0.19.5] - 2026-01-07
-
-### 🐛 Bug Fixes
-
-- Increase default timeout for telemetry
-
-### 💼 Other
-
-- V0.19.5
-
-## [0.19.4] - 2026-01-06
-
-### 🚀 Features
-
-- Introduce lightweight telemetry (#96)
-
-### 🐛 Bug Fixes
-
-- *(telemetry)* Send metrics using delta aggregation temporality
-
-### 💼 Other
-
-- V0.19.4
-
-### ⚙️ Miscellaneous Tasks
-
-- Tidy up design folder
-
-## [0.19.3] - 2026-01-02
-
-### 🚀 Features
-
-- *(devnet)* Improve UX when no devnet config is available (#95)
-
-### 🐛 Bug Fixes
-
-- Use correct convention for u5c port
-
-### 💼 Other
-
-- V0.19.3
-
-### 🚜 Refactor
-
-- Use target dir for dolos config files
-
-## [0.19.2] - 2025-12-31
-
-### 💼 Other
-
-- V0.19.2
-
-### ⚙️ Miscellaneous Tasks
-
-- Update tx3 deps to v0.14.2
-
-## [0.19.1] - 2025-12-29
-
-### 🐛 Bug Fixes
-
-- Pass implicit profiles to tx3c
-- Include placeholder for ledger family config
-
-### 💼 Other
-
-- V0.19.1
-
-## [0.19.0] - 2025-12-29
+## [0.19.7] - 2026-02-10
 
 ### 🚀 Features
 
@@ -83,25 +10,44 @@ All notable changes to this project will be documented in this file.
 - Add u5c endpoint headers support
 - Load profile-specific env vars when required (#87)
 - Support custom tool path via env vars (#90)
+- *(devnet)* Improve UX when no devnet config is available (#95)
+- Introduce lightweight telemetry (#96)
 
 ### 🐛 Bug Fixes
 
 - Use correct `signers` args in cshell invoke (#82)
 - Improve compatibility with previous config formats
+- Pass implicit profiles to tx3c
+- Include placeholder for ledger family config
+- Use correct convention for u5c port
+- *(telemetry)* Send metrics using delta aggregation temporality
+- Increase default timeout for telemetry
+- Use default function for timeout in TelemetryConfig
+- Update default Dolos config to match latest schema
 
 ### 💼 Other
 
 - V0.19.0
+- V0.19.1
+- V0.19.2
+- V0.19.3
+- V0.19.4
+- V0.19.5
+- V0.19.6
 
 ### 🚜 Refactor
 
 - Apply alpha learnings to beta version (#94)
+- Use target dir for dolos config files
 
 ### ⚙️ Miscellaneous Tasks
 
 - Update tx3 to v0.12 (#86)
 - Update tx3 and u5c deps
 - Remove x86 apple binary build
+- Update tx3 deps to v0.14.2
+- Tidy up design folder
+- Update dolos to v1.0.0-rc.9 (#100)
 
 ## [0.18.0] - 2025-08-06
 
