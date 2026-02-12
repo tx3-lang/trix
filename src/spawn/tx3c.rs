@@ -1,6 +1,6 @@
 use std::{path::Path, process::Command};
 
-use miette::{Context as _, IntoDiagnostic as _, bail};
+use miette::{bail, Context as _, IntoDiagnostic as _};
 
 use crate::config::RootConfig;
 
@@ -27,6 +27,8 @@ pub fn build_tii(source: &Path, output: &Path, config: &RootConfig) -> miette::R
         if env_file.is_file() {
             let value = format!("{}:{}", profile.name, env_file.to_str().unwrap());
             cmd.args(["--profile-env-file", value.as_str()]);
+        } else {
+            cmd.args(["--profile", profile.name.as_str()]);
         }
     }
 
