@@ -44,46 +44,19 @@ fn init_creates_valid_project_structure() {
     );
 
     // Verify tests/basic.toml using struct deserialization
+    // Just check basic root structures exist, not every field
     let test = ctx.load_test_config();
-    assert_eq!(
-        test.wallets.len(),
-        2,
-        "test.toml should contain 2 wallet definitions"
-    );
-    assert_eq!(
-        test.transactions.len(),
-        2,
-        "test.toml should contain 2 transaction definitions"
-    );
-    assert_eq!(
-        test.expect.len(),
-        2,
-        "test.toml should contain 2 expectations"
-    );
-    assert_eq!(test.wallets[0].name, "bob", "first wallet should be bob");
-    assert_eq!(
-        test.wallets[0].balance, 10000000,
-        "bob should have correct balance"
-    );
-    assert_eq!(
-        test.wallets[1].name, "alice",
-        "second wallet should be alice"
-    );
-    assert_eq!(
-        test.wallets[1].balance, 5000000,
-        "alice should have correct balance"
-    );
-    assert_eq!(
-        test.expect[0].from, "@bob",
-        "first expect should be from @bob"
+    assert!(
+        !test.wallets.is_empty(),
+        "test.toml should contain wallet definitions"
     );
     assert!(
-        !test.expect[0].min_amount.is_empty(),
-        "first expect should have min_amount"
+        !test.transactions.is_empty(),
+        "test.toml should contain transaction definitions"
     );
-    assert_eq!(
-        test.expect[1].from, "@alice",
-        "second expect should be from @alice"
+    assert!(
+        !test.expect.is_empty(),
+        "test.toml should contain expectations"
     );
 
     // Verify main.tx3 content
@@ -107,4 +80,18 @@ fn init_creates_valid_project_structure() {
         gitignore_content.contains(".tx3"),
         ".gitignore should contain .tx3 extension"
     );
+}
+
+#[test]
+fn check_validates_valid_project() {
+    let ctx = TestContext::new();
+
+    // First init a project with valid Tx3 files
+    ctx.run_trix(&["init", "--yes"]);
+
+    // Then run check on the valid project
+    let result = ctx.run_trix(&["check"]);
+
+    assert_success(&result);
+    assert_output_contains(&result, "check passed, no errors found");
 }

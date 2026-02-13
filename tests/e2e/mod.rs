@@ -122,6 +122,16 @@ pub fn assert_success(result: &CommandResult) {
     );
 }
 
+pub fn assert_output_contains(result: &CommandResult, pattern: &str) {
+    assert!(
+        result.stdout.contains(pattern),
+        "Expected stdout to contain '{}', but it didn't.\n\nSTDOUT:\n{}\n\nSTDERR:\n{}",
+        pattern,
+        result.stdout,
+        result.stderr
+    );
+}
+
 pub mod edge_cases;
 pub mod happy_path;
 pub mod smoke;
