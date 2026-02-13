@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::config::{
     CodegenConfig, CodegenPlugin, KNOWN_CODEGEN_PLUGINS, KnownLedgerFamily, LedgerConfig,

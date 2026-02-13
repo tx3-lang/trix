@@ -4,7 +4,7 @@ use termimad::MadSkin;
 use crate::config::RootConfig;
 
 use super::{
-    resolve_network_source, resolve_profile_source, ConfigSource, NetworkListItem, ProfileListItem,
+    resolve_network_source, resolve_profile_source, NetworkListItem, ProfileListItem,
     ProfileListView,
 };
 

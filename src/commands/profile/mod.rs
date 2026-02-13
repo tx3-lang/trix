@@ -1,10 +1,7 @@
 use clap::{Args as ClapArgs, Subcommand};
-use miette::IntoDiagnostic;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::config::convention::{KNOWN_NETWORKS, KNOWN_PROFILES};
-use crate::config::serde::Named;
 use crate::config::RootConfig;
 
 pub mod list;

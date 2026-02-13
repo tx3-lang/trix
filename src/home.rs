@@ -70,6 +70,7 @@ pub fn tool_path(name: &str) -> miette::Result<PathBuf> {
     }
 }
 
+#[allow(dead_code)]
 pub fn tmp_dir() -> miette::Result<PathBuf> {
     let home = tx3_dir()?;
 
@@ -84,6 +85,7 @@ pub fn tmp_dir() -> miette::Result<PathBuf> {
     Ok(tmp)
 }
 
+#[allow(dead_code)]
 pub fn consistent_tmp_dir(prefix: &str, hashable: &[u8]) -> miette::Result<PathBuf> {
     let tmp = tmp_dir()?;
 

@@ -3,7 +3,9 @@ use clap::Args as ClapArgs;
 use miette::IntoDiagnostic as _;
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code)]
 const MARKDOWN_MEDIA_TYPE: &str = "text/markdown";
+#[allow(dead_code)]
 const PROTOCOL_MEDIA_TYPE: &str = "application/tx3";
 
 #[derive(ClapArgs)]
@@ -12,6 +14,7 @@ pub struct Args {}
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
 pub struct ImageMetadata {
     pub name: String,
     pub scope: String,
@@ -20,6 +23,7 @@ pub struct ImageMetadata {
     pub description: Option<String>,
 }
 
+#[allow(dead_code)]
 fn get_oci_client(config: &RootConfig) -> oci_client::Client {
     let registry_url = config.registry.clone().unwrap().url;
     let registry_protocol = registry_url.split("://").next().unwrap();
@@ -33,9 +37,10 @@ fn get_oci_client(config: &RootConfig) -> oci_client::Client {
         ..Default::default()
     };
 
-    return oci_client::Client::new(client_config);
+    oci_client::Client::new(client_config)
 }
 
+#[allow(dead_code)]
 fn get_oci_reference(config: &RootConfig) -> Result<oci_client::Reference, oci_client::ParseError> {
     let registry_url = config.registry.clone().unwrap().url;
     let registry_host = registry_url.split("://").collect::<Vec<_>>().pop().unwrap();
@@ -48,6 +53,7 @@ fn get_oci_reference(config: &RootConfig) -> Result<oci_client::Reference, oci_c
     ))
 }
 
+#[allow(dead_code)]
 fn get_image_url(config: &RootConfig) -> String {
     let registry_url = config.registry.clone().unwrap().url;
     format!(
@@ -59,6 +65,7 @@ fn get_image_url(config: &RootConfig) -> String {
     )
 }
 
+#[allow(unused_variables)]
 pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     #[cfg(feature = "unstable")]
     {
@@ -66,6 +73,7 @@ pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     }
     #[cfg(not(feature = "unstable"))]
     {
+        let _ = config;
         Err(miette::miette!(
             "The publish command is currently unstable and requires the `unstable` feature to be enabled."
         ))

@@ -164,6 +164,7 @@ pub struct CodegenPluginConfig {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(rename_all = "kebab-case")]
+#[allow(clippy::enum_variant_names)]
 pub enum KnownCodegenPlugin {
     TsClient,
     RustClient,

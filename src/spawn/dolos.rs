@@ -1,7 +1,5 @@
 use miette::{Context as _, IntoDiagnostic as _};
-use serde_json::Value;
 use std::{
-    collections::HashMap,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
 };

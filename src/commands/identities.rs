@@ -1,10 +1,7 @@
 use clap::{Args as ClapArgs, Subcommand};
 use miette::IntoDiagnostic;
 
-use crate::{
-    config::{ProfileConfig, RootConfig},
-    spawn,
-};
+use crate::config::{ProfileConfig, RootConfig};
 
 #[derive(ClapArgs)]
 pub struct Args {

@@ -17,7 +17,7 @@ pub fn expect_utxo(expects: &[ExpectUtxo], test_home: &Path) -> Result<bool> {
     for expect in expects.iter() {
         let mut failed = false;
 
-        let utxos = cshell::wallet_utxos(&test_home, &expect.from)?;
+        let utxos = cshell::wallet_utxos(test_home, &expect.from)?;
 
         if expect.datum_equals.is_none() && expect.min_amount.is_empty() {
             if utxos.is_empty() {

@@ -14,7 +14,7 @@ struct Error {
 #[derive(ClapArgs, Debug)]
 pub struct Args {}
 
-pub fn run(_args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
+pub fn run(_args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
     let main_path = config.protocol.main.clone();
 
     let content = std::fs::read_to_string(main_path).into_diagnostic()?;

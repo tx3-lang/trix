@@ -6,10 +6,10 @@ use std::{
     str::FromStr,
 };
 
-use miette::{Context as _, Diagnostic, IntoDiagnostic as _};
+use miette::{Diagnostic, IntoDiagnostic as _};
 
 use serde::{Deserialize, Serialize};
-use serde_with::{DisplayFromStr, serde_as};
+use serde_with::{serde_as, DisplayFromStr};
 use thiserror::Error;
 
 use crate::wallet::WalletProxy;
@@ -60,8 +60,8 @@ impl FromStr for AddressSpec {
     type Err = miette::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.starts_with("@") {
-            Ok(Self::NamedWallet(s[1..].to_string()))
+        if let Some(stripped) = s.strip_prefix("@") {
+            Ok(Self::NamedWallet(stripped.to_string()))
         } else {
             Ok(Self::Address(s.to_string()))
         }
@@ -90,15 +90,9 @@ pub enum UtxoSpec {
     NativeBytes(NativeBytesUtxoSpec),
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 pub struct Config {
     pub utxos: Vec<UtxoSpec>,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self { utxos: vec![] }
-    }
 }
 
 impl Config {
@@ -175,7 +169,7 @@ pub fn build_dolos_utxos(
 fn setup_home(devnet: &Config, ctx: &Context) -> miette::Result<PathBuf> {
     let dolos_dir = crate::dirs::target_dir("dolos")?;
 
-    let initial_utxos = build_dolos_utxos(&devnet, &ctx.aliases)?;
+    let initial_utxos = build_dolos_utxos(devnet, &ctx.aliases)?;
 
     let _ = crate::spawn::dolos::initialize_config(&dolos_dir, initial_utxos)?;
 
@@ -200,7 +194,7 @@ impl Context {
 }
 
 pub fn start_daemon(devnet: &Config, ctx: &Context, silent: bool) -> miette::Result<DevnetDaemon> {
-    let home = setup_home(&devnet, ctx)?;
+    let home = setup_home(devnet, ctx)?;
 
     let daemon = crate::spawn::dolos::daemon(&home, silent)?;
 

@@ -5,8 +5,7 @@ use crate::config::{NetworkConfig, ProfileConfig, RootConfig};
 
 use super::{
     load_and_mask_env_vars, mask_value, resolve_network_source, resolve_profile_source,
-    should_mask_env_var, ConfigSource, EndpointView, EnvFileStatus, EnvFileView, IdentityView,
-    NetworkView, ProfileView,
+    ConfigSource, EndpointView, EnvFileStatus, EnvFileView, IdentityView, NetworkView, ProfileView,
 };
 
 // ============================================================================
@@ -103,8 +102,6 @@ fn build_identities_view(profile: &ProfileConfig) -> Vec<IdentityView> {
 }
 
 fn build_env_file_view(profile: &ProfileConfig) -> EnvFileView {
-    use std::path::Path;
-
     let env_file_path = profile.env_file_path();
     let file_name = env_file_path
         .file_name()

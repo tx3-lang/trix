@@ -6,10 +6,10 @@ use std::{
 use askama::Template as _;
 use bip39::Mnemonic;
 use cryptoxide::{digest::Digest, sha2::Sha256};
-use miette::{Context, IntoDiagnostic as _, Result, bail};
+use miette::{bail, Context, IntoDiagnostic as _, Result};
 
 use crate::{
-    config::{IdentityConfig, NetworkConfig, ProfileConfig, RandomKeyIdentityConfig, RootConfig},
+    config::{IdentityConfig, NetworkConfig, ProfileConfig, RootConfig},
     spawn::cshell::{CshellTomlTemplate, Provider, WalletInfoOutput},
 };
 
@@ -18,7 +18,7 @@ fn generate_deterministic_mnemonic(input: &str) -> miette::Result<Mnemonic> {
     hasher.input(input.as_bytes());
     let hash = hasher.result_str();
 
-    let entropy: [u8; 32] = hash[..32].as_bytes().try_into().unwrap();
+    let entropy: [u8; 32] = hash.as_bytes()[..32].try_into().unwrap();
 
     Mnemonic::from_entropy(&entropy).into_diagnostic()
 }
@@ -83,10 +83,10 @@ impl WalletProxy {
 
         crate::spawn::cshell::tx_invoke_interactive(
             &self.target_dir,
-            &tii_file,
+            tii_file,
             Some(profile),
             None,
-            &args,
+            args,
             vec![],
             true,
             skip_submit,
@@ -108,7 +108,7 @@ impl WalletProxy {
 
         let output = crate::spawn::cshell::tx_invoke_json(
             &self.target_dir,
-            &tii_file,
+            tii_file,
             Some(profile),
             args,
             Some(tx_template),
