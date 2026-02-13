@@ -21,11 +21,13 @@ signers = ["alice"]
 args = { quantity = 2000000, sender = "@alice", receiver = "@bob" }
 
 [[expect]]
-type = "Balance"
-wallet = "bob"
+from = "@bob"
+
+[[expect.min_amount]]
 amount = 9638899
 
 [[expect]]
-type = "Balance"
-wallet = "alice"
-amount = { target = 4638899, threshold = 300000 } 
+from = "@alice"
+
+[[expect.min_amount]]
+amount = 4638899

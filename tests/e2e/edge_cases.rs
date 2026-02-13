@@ -1,0 +1,42 @@
+use super::*;
+
+#[test]
+fn init_preserves_existing_gitignore() {
+    let ctx = TestContext::new();
+    let existing_gitignore = "# My custom gitignore\n*.log\n";
+    ctx.write_file(".gitignore", existing_gitignore);
+
+    let result = ctx.run_trix(&["init", "--yes"]);
+
+    assert_success(&result);
+    ctx.assert_file_contains(".gitignore", "# My custom gitignore");
+    ctx.assert_file_contains(".gitignore", "*.log");
+}
+
+#[test]
+fn init_preserves_existing_main_tx3() {
+    let ctx = TestContext::new();
+    let existing_content = "// This is my existing main.tx3 file\nparty User;\n";
+    ctx.write_file("main.tx3", existing_content);
+
+    let result = ctx.run_trix(&["init", "--yes"]);
+
+    assert_success(&result);
+    ctx.assert_file_contains("main.tx3", "// This is my existing main.tx3 file");
+    ctx.assert_file_contains("main.tx3", "party User");
+}
+
+#[test]
+fn init_preserves_existing_test_file() {
+    let ctx = TestContext::new();
+    ctx.write_file(
+        "tests/basic.toml",
+        "# Custom test file\n[[wallets]]\nname = \"custom\"\n",
+    );
+
+    let result = ctx.run_trix(&["init", "--yes"]);
+
+    assert_success(&result);
+    ctx.assert_file_contains("tests/basic.toml", "# Custom test file");
+    ctx.assert_file_contains("tests/basic.toml", "name = \"custom\"");
+}

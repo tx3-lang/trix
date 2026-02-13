@@ -1,78 +1,13 @@
-use clap::{Parser, Subcommand};
+use clap::Parser;
 
-mod builder;
-mod commands;
-mod config;
-mod devnet;
-mod dirs;
-mod global;
-mod home;
-mod spawn;
-mod telemetry;
-mod updates;
-mod wallet;
-
-use commands as cmds;
-use config::RootConfig;
+use trix::{
+    builder,
+    cli::{Cli, Commands},
+    commands as cmds,
+    config::RootConfig,
+    devnet, dirs, global, home, spawn, telemetry, updates, wallet,
+};
 use miette::{IntoDiagnostic as _, Result};
-
-#[derive(Parser)]
-#[command(name = "trix")]
-#[command(about = "Package manager for the Tx3 language", long_about = None)]
-#[command(version)]
-struct Cli {
-    #[command(subcommand)]
-    command: Commands,
-
-    #[arg(long, short, default_value = "local", global = true)]
-    profile: String,
-
-    #[arg(long, short, global = true)]
-    verbose: bool,
-}
-
-#[derive(Subcommand)]
-enum Commands {
-    /// Initialize a new Tx3 project
-    Init(cmds::init::Args),
-
-    /// Invoke a transaction template
-    Invoke(cmds::invoke::Args),
-
-    /// Start development network (powered by Dolos)
-    Devnet(cmds::devnet::Args),
-
-    /// Explore a network (powered by CShell)
-    Explore(cmds::explore::Args),
-
-    /// Generate bindings for smart contracts
-    Codegen(cmds::codegen::Args),
-
-    /// Check a Tx3 package and all of its dependencies for errors
-    Check(cmds::check::Args),
-
-    /// Inspect a Tx3 file
-    Inspect(cmds::inspect::Args),
-
-    /// Run a Tx3 testing file
-    Test(cmds::test::Args),
-
-    /// Build a Tx3 file
-    Build(cmds::build::Args),
-
-    /// Manage crypographic identities
-    Identities(cmds::identities::Args),
-
-    /// Inspect and manage profiles
-    Profile(cmds::profile::Args),
-
-    /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
-    #[command(hide = true)]
-    Publish(cmds::publish::Args),
-
-    /// Telemetry configuration. Trix collects anonymous usage data to improve the tool.
-    Telemetry(cmds::telemetry::Args),
-}
 
 pub fn load_config() -> Result<Option<RootConfig>> {
     let current_dir = std::env::current_dir().into_diagnostic()?;
@@ -99,7 +34,7 @@ fn run_global_command(cli: Cli) -> Result<()> {
 async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
     let profile = config.resolve_profile(&cli.profile)?;
 
-    let metric = crate::telemetry::track_command_execution(&cli);
+    let metric = telemetry::track_command_execution(&cli);
 
     let result = match cli.command {
         Commands::Init(args) => cmds::init::run(args, Some(&config)),
