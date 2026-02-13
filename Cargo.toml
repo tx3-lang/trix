@@ -59,8 +59,22 @@ tracing-subscriber = "0.3.22"
 dotenv-parser = "0.1.3"
 termimad = "0.31"
 
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+insta = "1.42"
+libc = "0.2"
+
 [features]
 unstable = []
+
+[lib]
+name = "trix"
+path = "src/lib.rs"
+
+[[bin]]
+name = "trix"
+path = "src/main.rs"
 
 # The profile that 'dist' will build with
 [profile.dist]

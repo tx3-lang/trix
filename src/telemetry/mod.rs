@@ -1,7 +1,7 @@
 use tokio::{sync::OnceCell, task::JoinHandle};
 use tracing::debug;
 
-use crate::{Cli, Commands, global::TelemetryConfig};
+use crate::{cli::{Cli, Commands}, global::TelemetryConfig};
 
 mod client;
 mod fingerprint;

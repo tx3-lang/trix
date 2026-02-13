@@ -6,7 +6,7 @@ use std::{
 };
 
 use clap::Args as ClapArgs;
-use miette::{Context as _, IntoDiagnostic, Result, bail};
+use miette::{bail, Context as _, IntoDiagnostic, Result};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -26,9 +26,9 @@ pub struct Args {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Context {
-    protocol: PathBuf,
-    devnet: PathBuf,
+pub struct Context {
+    pub protocol: PathBuf,
+    pub devnet: PathBuf,
 }
 
 impl Default for Context {
@@ -41,46 +41,55 @@ impl Default for Context {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Test {
+pub struct Test {
     #[serde(default)]
-    context: Context,
+    pub context: Context,
 
     #[serde(default)]
-    wallets: Vec<Wallet>,
+    pub wallets: Vec<Wallet>,
 
     #[serde(default)]
-    transactions: Vec<Transaction>,
+    pub transactions: Vec<Transaction>,
 
     #[serde(default)]
-    expect: Vec<ExpectUtxo>,
+    pub expect: Vec<ExpectUtxo>,
+}
+
+impl Test {
+    /// Load a test configuration from a TOML file
+    pub fn load(path: impl AsRef<std::path::Path>) -> miette::Result<Self> {
+        let content = std::fs::read_to_string(&path).into_diagnostic()?;
+        let test: Self = toml::from_str(&content).into_diagnostic()?;
+        Ok(test)
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Wallet {
-    name: String,
-    balance: u64,
+pub struct Wallet {
+    pub name: String,
+    pub balance: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct Transaction {
-    description: String,
-    template: String,
-    args: HashMap<String, serde_json::Value>,
-    signers: Vec<String>,
+pub struct Transaction {
+    pub description: String,
+    pub template: String,
+    pub args: HashMap<String, serde_json::Value>,
+    pub signers: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct ExpectUtxo {
-    pub(crate) from: String,
-    pub(crate) datum_equals: Option<serde_json::Value>,
-    pub(crate) min_amount: Vec<ExpectMinAmount>,
+pub struct ExpectUtxo {
+    pub from: String,
+    pub datum_equals: Option<serde_json::Value>,
+    pub min_amount: Vec<ExpectMinAmount>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct ExpectMinAmount {
-    pub(crate) policy: Option<String>,
-    pub(crate) name: Option<String>,
-    pub(crate) amount: u64,
+pub struct ExpectMinAmount {
+    pub policy: Option<String>,
+    pub name: Option<String>,
+    pub amount: u64,
 }
 
 fn replace_placeholder_args(args: &mut ArgMap, wallet: &WalletProxy) {
