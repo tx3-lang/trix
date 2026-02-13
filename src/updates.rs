@@ -29,7 +29,7 @@ pub fn check_for_updates() -> anyhow::Result<()> {
     };
 
     // If there are updates available, print a message
-    if updates.len() > 0 {
+    if !updates.is_empty() {
         println!("\n⚠️ Updates available! Run 'tx3up' to install them.\n");
     }
 

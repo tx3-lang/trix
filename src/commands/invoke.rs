@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::Args as ClapArgs;
-use miette::{IntoDiagnostic, bail};
+use miette::IntoDiagnostic;
 
 use crate::{
     builder,

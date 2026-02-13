@@ -1,28 +1,30 @@
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::Path,
     process::{Child, Command, Stdio},
 };
 
 use askama::Template;
-use bip39::Mnemonic;
 
-use miette::{Context as _, IntoDiagnostic as _, bail};
-use serde::{Deserialize, Deserializer, Serialize, de};
+use miette::{bail, Context as _, IntoDiagnostic as _};
+use serde::{de, Deserialize, Deserializer, Serialize};
 
-use crate::config::{ProfileConfig, RootConfig, TrpConfig, U5cConfig};
+use crate::config::{TrpConfig, U5cConfig};
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct OutputWallet {
     pub name: String,
     pub addresses: OutputAddress,
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct OutputAddress {
     pub testnet: String,
 }
 
+#[allow(dead_code)]
 fn string_to_u64<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
@@ -32,6 +34,7 @@ where
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct OutputBalance {
     #[serde(deserialize_with = "string_to_u64")]
     pub coin: u64,
@@ -141,7 +144,7 @@ pub fn wallet_create(home: &Path, name: &str, mnemonic: &str) -> miette::Result<
         "--name",
         name,
         "--mnemonic",
-        &mnemonic,
+        mnemonic,
         "--unsafe",
         "--output-format",
         "json",
@@ -165,6 +168,7 @@ pub fn wallet_create(home: &Path, name: &str, mnemonic: &str) -> miette::Result<
     serde_json::from_slice(&output.stdout).into_diagnostic()
 }
 
+#[allow(dead_code)]
 pub fn wallet_list(home: &Path) -> miette::Result<Vec<OutputWallet>> {
     let mut cmd = new_generic_command(home)?;
 
@@ -182,6 +186,7 @@ pub fn wallet_list(home: &Path) -> miette::Result<Vec<OutputWallet>> {
     serde_json::from_slice(&output.stdout).into_diagnostic()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn tx_invoke_cmd(
     home: &Path,
     tii_file: &Path,
@@ -234,6 +239,7 @@ pub fn tx_invoke_cmd(
     Ok(cmd)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn tx_invoke_interactive(
     home: &Path,
     tii_file: &Path,
@@ -267,6 +273,7 @@ pub fn tx_invoke_interactive(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn tx_invoke_json(
     home: &Path,
     tii_file: &Path,
@@ -304,6 +311,7 @@ pub fn tx_invoke_json(
     serde_json::from_slice(&output.stdout).into_diagnostic()
 }
 
+#[allow(dead_code)]
 pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBalance> {
     let mut cmd = new_generic_command(home)?;
 
@@ -344,13 +352,11 @@ pub fn wallet_utxos(home: &Path, wallet_name: &str) -> miette::Result<Vec<UTxO>>
                 let list: Vec<UTxO> =
                     serde_json::from_value(utxos_val.clone()).into_diagnostic()?;
                 Ok(list)
+            } else if v.is_array() {
+                let list: Vec<UTxO> = serde_json::from_value(v).into_diagnostic()?;
+                Ok(list)
             } else {
-                if v.is_array() {
-                    let list: Vec<UTxO> = serde_json::from_value(v).into_diagnostic()?;
-                    Ok(list)
-                } else {
-                    bail!("unexpected CShell wallet balance output shape")
-                }
+                bail!("unexpected CShell wallet balance output shape")
             }
         }
     }

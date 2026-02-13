@@ -63,6 +63,9 @@ enum Commands {
     /// Manage crypographic identities
     Identities(cmds::identities::Args),
 
+    /// Inspect and manage profiles
+    Profile(cmds::profile::Args),
+
     /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
     #[command(hide = true)]
     Publish(cmds::publish::Args),
@@ -109,6 +112,7 @@ async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
         Commands::Test(args) => cmds::test::run(args, &config, &profile),
         Commands::Build(args) => cmds::build::run(args, &config, &profile),
         Commands::Identities(args) => cmds::identities::run(args, &config, &profile),
+        Commands::Profile(args) => cmds::profile::run(args, &config, &profile),
         Commands::Publish(args) => cmds::publish::run(args, &config),
         Commands::Telemetry(args) => cmds::telemetry::run(args),
     };

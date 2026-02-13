@@ -8,6 +8,7 @@ pub mod identities;
 pub mod init;
 pub mod inspect;
 pub mod invoke;
+pub mod profile;
 pub mod publish;
 pub mod telemetry;
 pub mod test;

@@ -17,7 +17,7 @@ const PUBLIC_PREVIEW_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
 const PUBLIC_PREPROD_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
 const PUBLIC_MAINNET_U5C_KEY: &str = "trpjodqbmjblunzpbikpcrl";
 
-const KNOWN_NETWORKS: &[KnownNetwork] = &[
+pub const KNOWN_NETWORKS: &[KnownNetwork] = &[
     KnownNetwork::CardanoMainnet,
     KnownNetwork::CardanoPreview,
     KnownNetwork::CardanoPreprod,
@@ -58,7 +58,7 @@ impl KnownProfile {
     }
 }
 
-const KNOWN_PROFILES: &[KnownProfile] = &[
+pub const KNOWN_PROFILES: &[KnownProfile] = &[
     KnownProfile::Local,
     KnownProfile::Preview,
     KnownProfile::Preprod,

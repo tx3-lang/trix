@@ -21,7 +21,7 @@ pub fn run(args: Args, config: &RootConfig) -> miette::Result<()> {
 
     tx3_lang::analyzing::analyze(&mut ast).ok()?;
 
-    let ir = tx3_lang::lowering::lower(&mut ast, &args.tx)
+    let ir = tx3_lang::lowering::lower(&ast, &args.tx)
         .into_diagnostic()
         .with_context(|| format!("lowering {}", args.tx))?;
 

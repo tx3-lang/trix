@@ -13,7 +13,6 @@ use crate::{
     builder,
     config::{ProfileConfig, RootConfig},
     devnet::Config as DevnetConfig,
-    spawn::cshell::OutputWallet,
     wallet::WalletProxy,
 };
 
@@ -139,7 +138,7 @@ fn trigger_transaction(
     };
 
     let output = wallet.invoke_json(
-        &tii_file,
+        tii_file,
         &transaction.template,
         &args,
         vec![&signer],
@@ -174,7 +173,7 @@ pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> Result<(
     for transaction in &test.transactions {
         println!("--- Running transaction: {} ---", transaction.description);
 
-        let result = trigger_transaction(&wallet, &tii_file, transaction, &profile);
+        let result = trigger_transaction(&wallet, &tii_file, transaction, profile);
 
         if let Err(err) = result {
             eprintln!("Transaction `{}` failed.\n", transaction.description);

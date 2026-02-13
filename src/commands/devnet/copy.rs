@@ -6,7 +6,7 @@ use utxorpc::{
 };
 
 use clap::Args as ClapArgs;
-use miette::{IntoDiagnostic, bail};
+use miette::IntoDiagnostic;
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -64,7 +64,7 @@ async fn fetch_utxo_deps(
     let mut client_builder = ClientBuilder::new().uri(&u5c.url).into_diagnostic()?;
 
     for (key, value) in u5c.headers.iter() {
-        client_builder = client_builder.metadata(&key, &value).into_diagnostic()?;
+        client_builder = client_builder.metadata(key, value).into_diagnostic()?;
     }
 
     let mut client = client_builder.build::<QueryClient<Cardano>>().await;
@@ -76,8 +76,8 @@ async fn fetch_utxo_deps(
         .await
         .into_diagnostic()?;
 
-    if let Some(tx) = tx {
-        if let Some(tx) = tx.parsed {
+    if let Some(tx) = tx
+        && let Some(tx) = tx.parsed {
             let utxos = client
                 .read_utxos(
                     tx.inputs
@@ -93,7 +93,6 @@ async fn fetch_utxo_deps(
 
             return Ok(utxos);
         }
-    }
 
     Ok(vec![])
 }
