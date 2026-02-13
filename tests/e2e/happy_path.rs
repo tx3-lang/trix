@@ -95,3 +95,31 @@ fn check_validates_valid_project() {
     assert_success(&result);
     assert_output_contains(&result, "check passed, no errors found");
 }
+
+#[test]
+fn devnet_starts_in_background() {
+    let ctx = TestContext::new();
+
+    // First init a project
+    let init_result = ctx.run_trix(&["init", "--yes"]);
+    assert_success(&init_result);
+
+    // Start devnet in background
+    let result = ctx.run_trix(&["devnet", "--background"]);
+
+    assert_success(&result);
+    assert_output_contains(&result, "devnet started in background");
+
+    // Wait for gRPC port to be open (Dolos uses port 5164 for gRPC)
+    let port_open = wait_for_port(5164, 30);
+    assert!(
+        port_open,
+        "Devnet gRPC port 5164 should be open within 30 seconds"
+    );
+
+    // Try to find and kill the dolos process
+    // Note: This is best-effort cleanup, the process might already be dead
+    let _ = std::process::Command::new("pkill")
+        .args(["-f", "dolos"])
+        .output();
+}

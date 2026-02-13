@@ -132,6 +132,36 @@ pub fn assert_output_contains(result: &CommandResult, pattern: &str) {
     );
 }
 
+/// Wait for a port to be open with timeout
+pub fn wait_for_port(port: u16, timeout_secs: u64) -> bool {
+    use std::net::TcpStream;
+    use std::time::{Duration, Instant};
+
+    let start = Instant::now();
+    let timeout = Duration::from_secs(timeout_secs);
+
+    while start.elapsed() < timeout {
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+/// Check if a process is running by PID (Unix only)
+#[cfg(unix)]
+pub fn is_process_running(pid: u32) -> bool {
+    unsafe { libc::kill(pid as i32, 0) == 0 }
+}
+
+#[cfg(not(unix))]
+pub fn is_process_running(_pid: u32) -> bool {
+    // On non-Unix systems, we can't easily check if a process is running
+    // This is a simplified check that always returns true
+    true
+}
+
 pub mod edge_cases;
 pub mod happy_path;
 pub mod smoke;
