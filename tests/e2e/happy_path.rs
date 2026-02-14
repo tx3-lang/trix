@@ -97,7 +97,7 @@ fn check_validates_valid_project() {
 }
 
 #[test]
-fn devnet_starts_in_background() {
+fn devnet_starts_and_cshell_connects() {
     let ctx = TestContext::new();
 
     // First init a project
@@ -117,8 +117,29 @@ fn devnet_starts_in_background() {
         "Devnet gRPC port 5164 should be open within 30 seconds"
     );
 
-    // Try to find and kill the dolos process
-    // Note: This is best-effort cleanup, the process might already be dead
+    // Setup cshell environment using the project's wallet setup function
+    // Change to temp directory so wallet::setup can find trix.toml via protocol_root()
+    let original_dir = std::env::current_dir().expect("should get current dir");
+    std::env::set_current_dir(ctx.path()).expect("should change to temp dir");
+
+    let config = ctx.load_trix_config();
+    let profile = config
+        .resolve_profile("local")
+        .expect("should resolve local profile");
+    let wallet = trix::wallet::setup(&config, &profile).expect("should setup cshell environment");
+
+    // Restore original directory
+    std::env::set_current_dir(original_dir).expect("should restore original dir");
+
+    // Run cshell provider test using the spawn mechanism
+    let test_result = trix::spawn::cshell::provider_test(&wallet.target_dir, "trix-local");
+    assert!(
+        test_result.is_ok(),
+        "cshell provider test should succeed: {:?}",
+        test_result.err()
+    );
+
+    // Cleanup: kill dolos process
     let _ = std::process::Command::new("pkill")
         .args(["-f", "dolos"])
         .output();

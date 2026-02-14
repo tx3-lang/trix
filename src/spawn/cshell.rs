@@ -377,3 +377,23 @@ pub fn explorer(home: &Path, provider: &str) -> miette::Result<Child> {
 
     Ok(child)
 }
+
+/// Test connection to a provider
+pub fn provider_test(home: &Path, provider: &str) -> miette::Result<()> {
+    let mut cmd = new_generic_command(home)?;
+
+    cmd.args(["provider", "test", "--name", provider]);
+
+    let output = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .into_diagnostic()
+        .context("running CShell provider test")?;
+
+    if !output.status.success() {
+        bail!("CShell provider test failed");
+    }
+
+    Ok(())
+}
