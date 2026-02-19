@@ -144,3 +144,19 @@ fn devnet_starts_and_cshell_connects() {
         .args(["-f", "dolos"])
         .output();
 }
+
+#[test]
+#[cfg(feature = "unstable")]
+fn aiken_analyze_runs_in_initialized_project() {
+    let ctx = TestContext::new();
+    let init_result = ctx.run_trix(&["init", "--yes"]);
+    assert_success(&init_result);
+
+    let result = ctx.run_trix(&["aiken", "analyze"]);
+
+    assert_success(&result);
+    assert_output_contains(
+        &result,
+        "EXPERIMENTAL",
+    );
+}

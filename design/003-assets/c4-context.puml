@@ -1,0 +1,13 @@
+@startuml C4_Context_AikenVuln
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+Person(dev, "Developer", "Runs Trix in a local project")
+System(trix, "Trix CLI", "Tx3 package manager")
+System_Ext(ai, "External AI Provider", "Optional future provider such as Anthropic")
+System_Ext(fs, "Local File System", "Project source, skills, outputs")
+
+Rel(dev, trix, "Runs `trix aiken`")
+Rel(trix, fs, "Reads code + vulnerability skills; writes JSON state and Markdown report")
+Rel(trix, ai, "Future: sends skill-specific prompts and receives analysis")
+
+@enduml
