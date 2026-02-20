@@ -16,14 +16,14 @@ fn aiken_help_runs_without_error() {
     let result = ctx.run_trix(&["aiken", "--help"]);
 
     assert_success(&result);
-    assert_output_contains(&result, "analyze");
+    assert_output_contains(&result, "audit");
 }
 
 #[test]
 #[cfg(feature = "unstable")]
-fn aiken_analyze_help_runs_without_error() {
+fn aiken_audit_help_runs_without_error() {
     let ctx = TestContext::new();
-    let result = ctx.run_trix(&["aiken", "analyze", "--help"]);
+    let result = ctx.run_trix(&["aiken", "audit", "--help"]);
 
     assert_success(&result);
     assert_output_contains(&result, "vulnerability");

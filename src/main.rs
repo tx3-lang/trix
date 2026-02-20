@@ -1,13 +1,12 @@
 use clap::Parser;
 
+use miette::{IntoDiagnostic as _, Result};
 use trix::{
-    builder,
     cli::{Cli, Commands},
     commands as cmds,
     config::RootConfig,
-    devnet, dirs, global, home, spawn, telemetry, updates, wallet,
+    global, telemetry, updates,
 };
-use miette::{IntoDiagnostic as _, Result};
 
 pub fn load_config() -> Result<Option<RootConfig>> {
     let current_dir = std::env::current_dir().into_diagnostic()?;

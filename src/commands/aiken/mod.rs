@@ -3,15 +3,16 @@ use miette::Result;
 
 use crate::config::{ProfileConfig, RootConfig};
 
-pub mod analyze;
+pub mod audit;
 pub mod model;
+pub mod provider;
 
-pub use analyze::run as run_analyze;
+pub use audit::run as run_audit;
 
 #[derive(Subcommand)]
 pub enum Command {
-    /// Analyze Aiken code for vulnerabilities using AI-assisted detection
-    Analyze(analyze::Args),
+    /// Audit Aiken code for vulnerabilities using AI-assisted detection
+    Audit(audit::Args),
 }
 
 #[derive(ClapArgs)]
@@ -38,6 +39,6 @@ pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> Result<(
 
 fn _run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> Result<()> {
     match args.command {
-        Command::Analyze(args) => run_analyze(args, config, profile),
+        Command::Audit(args) => run_audit(args, config, profile),
     }
 }

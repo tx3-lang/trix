@@ -1,5 +1,7 @@
 use super::*;
 use std::path::PathBuf;
+#[cfg(feature = "unstable")]
+use trix::commands::aiken::model::AnalysisStateJson;
 use trix::config::KnownLedgerFamily;
 
 #[test]
@@ -147,16 +149,27 @@ fn devnet_starts_and_cshell_connects() {
 
 #[test]
 #[cfg(feature = "unstable")]
-fn aiken_analyze_runs_in_initialized_project() {
+fn aiken_audit_runs_in_initialized_project() {
     let ctx = TestContext::new();
     let init_result = ctx.run_trix(&["init", "--yes"]);
     assert_success(&init_result);
 
-    let result = ctx.run_trix(&["aiken", "analyze"]);
+    let result = ctx.run_trix(&["aiken", "audit"]);
 
     assert_success(&result);
-    assert_output_contains(
-        &result,
-        "EXPERIMENTAL",
+    assert_output_contains(&result, "EXPERIMENTAL");
+
+    ctx.assert_file_exists(".tx3/aiken-audit/state.json");
+    ctx.assert_file_exists(".tx3/aiken-audit/vulnerabilities.md");
+
+    let state_content = ctx.read_file(".tx3/aiken-audit/state.json");
+    let state: AnalysisStateJson =
+        serde_json::from_str(&state_content).expect("state.json should be valid AnalysisStateJson");
+
+    assert_eq!(state.version, "1");
+    assert_eq!(
+        state.iterations.len(),
+        2,
+        "expected one iteration per seed skill"
     );
 }

@@ -1,7 +1,7 @@
 @startuml C4_Component_AikenVuln
 !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
 
-Container_Boundary(aiken, "Aiken Command Module") {
+Container_Boundary(aiken, "Aiken Audit Command Module") {
   Component(cmd, "run(args, config, profile)", "mod.rs", "Scoped command entrypoint")
   Component(skill_loader, "Skill Loader", "future module", "Loads one vulnerability skill at a time")
   Component(mini_prompt, "Mini Prompt Builder", "future module", "Builds focused prompt for current skill")
