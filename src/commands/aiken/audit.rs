@@ -1,5 +1,6 @@
 use clap::Args as ClapArgs;
 use miette::{Context, IntoDiagnostic, Result};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 use crate::config::{ProfileConfig, RootConfig};
@@ -91,13 +92,51 @@ fn append_iteration(state: &mut AnalysisStateJson, iteration: SkillIterationResu
 }
 
 fn build_mini_prompt(skill: &VulnerabilitySkill) -> MiniPrompt {
+    let text = compose_skill_prompt(skill);
+
     MiniPrompt {
         skill_id: skill.id.clone(),
-        text: format!(
-            "[{}:{}] {}",
-            skill.severity, skill.title, skill.prompt_fragment
-        ),
+        text,
     }
+}
+
+fn compose_skill_prompt(skill: &VulnerabilitySkill) -> String {
+    let mut sections = vec![
+        format!("Skill ID: {}", skill.id),
+        format!("Name: {}", skill.name),
+        format!("Severity: {}", skill.severity),
+        format!("Description: {}", skill.description),
+        format!("Prompt Fragment: {}", skill.prompt_fragment),
+    ];
+
+    if !skill.tags.is_empty() {
+        sections.push(format!("Tags: {}", skill.tags.join(", ")));
+    }
+
+    if let Some(hint) = &skill.confidence_hint {
+        sections.push(format!("Confidence Hint: {}", hint));
+    }
+
+    if !skill.examples.is_empty() {
+        sections.push(format!("Examples:\n- {}", skill.examples.join("\n- ")));
+    }
+
+    if !skill.false_positives.is_empty() {
+        sections.push(format!(
+            "False Positives To Avoid:\n- {}",
+            skill.false_positives.join("\n- ")
+        ));
+    }
+
+    if !skill.references.is_empty() {
+        sections.push(format!("References:\n- {}", skill.references.join("\n- ")));
+    }
+
+    if !skill.guidance_markdown.trim().is_empty() {
+        sections.push(format!("Guidance:\n{}", skill.guidance_markdown.trim()));
+    }
+
+    sections.join("\n\n")
 }
 
 fn build_permission_prompt_spec() -> PermissionPromptSpec {
@@ -177,6 +216,10 @@ fn load_embedded_seed_skills() -> Result<Vec<VulnerabilitySkill>> {
             Path::new("skills/vulnerabilities/002-authz-boundaries.md"),
             include_str!("../../../skills/vulnerabilities/002-authz-boundaries.md"),
         ),
+        (
+            Path::new("skills/vulnerabilities/003-strict-value-equality.md"),
+            include_str!("../../../skills/vulnerabilities/003-strict-value-equality.md"),
+        ),
     ];
 
     seed_files
@@ -194,66 +237,168 @@ fn load_skill_from_file(path: &Path) -> Result<VulnerabilitySkill> {
 }
 
 fn parse_skill_content(path: &Path, content: &str) -> Result<VulnerabilitySkill> {
-    let mut id = None;
-    let mut title = None;
-    let mut severity = None;
-    let mut description = None;
-    let mut prompt_fragment = None;
+    let (frontmatter, body) = split_frontmatter(content).with_context(|| {
+        format!(
+            "Failed to parse frontmatter from vulnerability skill file {}",
+            path.display()
+        )
+    })?;
 
-    for line in content
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-    {
-        let Some((key, value)) = line.split_once(':') else {
-            continue;
-        };
+    let parsed: SkillFrontmatter = serde_yaml_ng::from_str(&frontmatter)
+        .into_diagnostic()
+        .with_context(|| {
+            format!(
+                "Invalid YAML frontmatter in vulnerability skill file {}",
+                path.display()
+            )
+        })?;
 
-        let key = key.trim();
-        let value = value.trim().to_string();
-
-        match key {
-            "id" => id = Some(value),
-            "title" => title = Some(value),
-            "severity" => severity = Some(value),
-            "description" => description = Some(value),
-            "prompt_fragment" => prompt_fragment = Some(value),
-            _ => {}
-        }
+    let severity = parsed.severity.trim().to_ascii_lowercase();
+    if !matches!(severity.as_str(), "low" | "medium" | "high" | "critical") {
+        return Err(miette::miette!(
+            "Invalid `severity` value '{}' in vulnerability skill file {}. Expected one of: low, medium, high, critical",
+            parsed.severity,
+            path.display()
+        ));
     }
 
     Ok(VulnerabilitySkill {
-        id: id.ok_or_else(|| {
-            miette::miette!(
-                "Missing `id` field in vulnerability skill file {}",
-                path.display()
-            )
-        })?,
-        title: title.ok_or_else(|| {
-            miette::miette!(
-                "Missing `title` field in vulnerability skill file {}",
-                path.display()
-            )
-        })?,
-        severity: severity.ok_or_else(|| {
-            miette::miette!(
-                "Missing `severity` field in vulnerability skill file {}",
-                path.display()
-            )
-        })?,
-        description: description.ok_or_else(|| {
-            miette::miette!(
-                "Missing `description` field in vulnerability skill file {}",
-                path.display()
-            )
-        })?,
-        prompt_fragment: prompt_fragment.ok_or_else(|| {
-            miette::miette!(
-                "Missing `prompt_fragment` field in vulnerability skill file {}",
-                path.display()
-            )
-        })?,
+        id: require_non_empty("id", path, parsed.id)?,
+        name: require_non_empty("name", path, parsed.name)?,
+        severity,
+        description: require_non_empty("description", path, parsed.description)?,
+        prompt_fragment: require_non_empty("prompt_fragment", path, parsed.prompt_fragment)?,
+        examples: parsed.examples,
+        false_positives: parsed.false_positives,
+        references: parsed.references,
+        tags: parsed.tags,
+        confidence_hint: parsed.confidence_hint.filter(|value| !value.trim().is_empty()),
+        guidance_markdown: body.trim().to_string(),
     })
+}
+
+fn split_frontmatter(content: &str) -> Result<(String, String)> {
+    let content = content.trim_start_matches('\u{feff}');
+    let mut lines = content.lines();
+
+    let Some(first_line) = lines.next() else {
+        return Err(miette::miette!("Skill file is empty"));
+    };
+
+    if first_line.trim() != "---" {
+        return Err(miette::miette!(
+            "Missing frontmatter start delimiter `---`"
+        ));
+    }
+
+    let mut frontmatter_lines = Vec::new();
+    let mut found_end = false;
+
+    for line in lines.by_ref() {
+        if line.trim() == "---" {
+            found_end = true;
+            break;
+        }
+        frontmatter_lines.push(line);
+    }
+
+    if !found_end {
+        return Err(miette::miette!(
+            "Missing frontmatter end delimiter `---`"
+        ));
+    }
+
+    let body_lines = lines.collect::<Vec<_>>();
+
+    Ok((frontmatter_lines.join("\n"), body_lines.join("\n")))
+}
+
+fn require_non_empty(field: &str, path: &Path, value: String) -> Result<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(miette::miette!(
+            "Field `{}` must be non-empty in vulnerability skill file {}",
+            field,
+            path.display()
+        ));
+    }
+
+    Ok(trimmed.to_string())
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SkillFrontmatter {
+    id: String,
+    name: String,
+    severity: String,
+    description: String,
+    prompt_fragment: String,
+    #[serde(default)]
+    examples: Vec<String>,
+    #[serde(default)]
+    false_positives: Vec<String>,
+    #[serde(default)]
+    references: Vec<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    confidence_hint: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_skill_content_reads_frontmatter_and_guidance() {
+        let content = r#"---
+id: strict-value-equality-003
+name: Strict value equality
+severity: high
+description: Detect strict equality checks for ADA.
+prompt_fragment: Find strict equality on ADA or full values.
+examples:
+  - output.value == expected
+tags:
+  - plutus-v2
+confidence_hint: medium
+---
+# Instructions
+
+Check validator outputs and avoid false positives for without_lovelace().
+"#;
+
+        let skill = parse_skill_content(Path::new("skill.md"), content).expect("should parse");
+
+        assert_eq!(skill.id, "strict-value-equality-003");
+        assert_eq!(skill.name, "Strict value equality");
+        assert_eq!(skill.severity, "high");
+        assert_eq!(skill.examples.len(), 1);
+        assert!(skill.guidance_markdown.contains("# Instructions"));
+    }
+
+    #[test]
+    fn parse_skill_content_requires_frontmatter() {
+        let content = "id: foo";
+        let error = parse_skill_content(Path::new("skill.md"), content).expect_err("should fail");
+        assert!(error.to_string().contains("frontmatter"));
+    }
+
+    #[test]
+    fn parse_skill_content_rejects_invalid_severity() {
+        let content = r#"---
+id: skill-1
+name: Test skill
+severity: urgent
+description: desc
+prompt_fragment: prompt
+---
+body
+"#;
+
+        let error = parse_skill_content(Path::new("skill.md"), content).expect_err("should fail");
+        assert!(error.to_string().contains("Invalid `severity` value"));
+    }
 }
 
 fn write_state(path: &Path, state: &AnalysisStateJson) -> Result<()> {

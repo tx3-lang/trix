@@ -3,10 +3,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VulnerabilitySkill {
     pub id: String,
-    pub title: String,
+    pub name: String,
     pub severity: String,
     pub description: String,
     pub prompt_fragment: String,
+    pub examples: Vec<String>,
+    pub false_positives: Vec<String>,
+    pub references: Vec<String>,
+    pub tags: Vec<String>,
+    pub confidence_hint: Option<String>,
+    pub guidance_markdown: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
