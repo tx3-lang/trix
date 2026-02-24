@@ -24,6 +24,7 @@ pub struct MiniPrompt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillIterationResult {
     pub skill_id: String,
+    pub target_path: String,
     pub status: String,
     pub findings: Vec<VulnerabilityFinding>,
     pub next_prompt: Option<MiniPrompt>,
@@ -42,6 +43,7 @@ pub struct VulnerabilityFinding {
 pub struct AnalysisStateJson {
     pub version: String,
     pub target_path: String,
+    pub source_files: Vec<String>,
     pub provider: ProviderSpec,
     pub permission_prompt: PermissionPromptSpec,
     pub iterations: Vec<SkillIterationResult>,

@@ -169,7 +169,7 @@ fn aiken_audit_runs_in_initialized_project() {
     assert_eq!(state.version, "1");
     assert_eq!(
         state.iterations.len(),
-        2,
+        3,
         "expected one iteration per seed skill"
     );
 }
