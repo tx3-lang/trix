@@ -1,35 +1,28 @@
 ---
 id: strict-value-equality-001
-name: Strict value equality on ADA or full Value
+name: strict-value-equality
 severity: high
-description: Detect unsatisfiable validator constraints caused by exact equality checks on ADA or complete output values.
+description: Vulnerabilities related to strict value equality in the protocol.
 prompt_fragment: Read validator scripts and flag strict equality checks on ADA or full output values; treat comparisons using without_lovelace() as acceptable and not strict ADA equality.
-examples:
-	- output.value == expected_value
-	- output.value.lovelace == exact_amount
-false_positives:
-	- Comparisons using without_lovelace() to ignore ADA component.
-	- Checks that enforce minimum lovelace instead of exact equality.
-references:
-	- https://plutus.cardano.intersectmbo.org/
-tags:
-	- value
-	- lovelace
-	- constraints
 confidence_hint: medium
 ---
 
-# When to use
+# strict-value-equality
 
-Use this skill whenever validators compare output values or ADA amounts for equality.
+Validators could become unsatisfiable when enforcing exact equality on ADA or full output values.
+Exact value equality is almost always incorrect for ADA in Plutus V2. Validators should enforce minimums, not exact amounts, unless there is a very strong invariant requiring exact equality.
 
-# Detection instructions
+## When to use
 
-1. Find equality checks on full values and lovelace amounts.
-2. Flag exact equality constraints that can become unsatisfiable due to fees/min-ADA variability.
-3. Accept checks using `without_lovelace()` as intentional ADA-agnostic comparisons.
-4. Prefer invariants based on lower bounds for ADA, unless a strict invariant is explicitly justified.
+Every time a search for vulnerabilities related to strict value equality in the protocol is explicitly requested by the user.
 
-# Reporting guidance
+## Instructions
 
-Include the equality expression and explain why it can fail in realistic transaction construction.
+1. Read the validator scripts of the protocol and identify any instances where strict value equality is enforced on ADA or full output values.
+2. Take into account that values compared using `without_lovelace()` are not considered strict equality, as they ignore the ADA component.
+
+## Reporting guidance
+
+- Include the exact equality expression and where it appears.
+- Explain why it can make the validator unsatisfiable in realistic transaction construction.
+- Recommend replacing strict equality on ADA with a minimum-bound check when possible.
