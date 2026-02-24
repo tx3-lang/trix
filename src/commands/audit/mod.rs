@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{ProfileConfig, RootConfig};
 
-mod model;
-mod providers;
+pub mod model;
+pub mod providers;
 
 use self::model::{
     AnalysisStateJson, MiniPrompt, PermissionPromptSpec, SkillIterationResult,
@@ -445,16 +445,8 @@ fn load_skills(skills_dir: &Path, skills_dir_arg: &str) -> Result<Vec<Vulnerabil
 fn load_embedded_seed_skills() -> Result<Vec<VulnerabilitySkill>> {
     let seed_files = [
         (
-            Path::new("skills/vulnerabilities/001-state-transition.md"),
-            include_str!("../../../skills/vulnerabilities/001-state-transition.md"),
-        ),
-        (
-            Path::new("skills/vulnerabilities/002-authz-boundaries.md"),
-            include_str!("../../../skills/vulnerabilities/002-authz-boundaries.md"),
-        ),
-        (
-            Path::new("skills/vulnerabilities/003-strict-value-equality.md"),
-            include_str!("../../../skills/vulnerabilities/003-strict-value-equality.md"),
+            Path::new("skills/vulnerabilities/001-strict-value-equality.md"),
+            include_str!("../../../skills/vulnerabilities/001-strict-value-equality.md"),
         ),
     ];
 
@@ -595,7 +587,7 @@ mod tests {
     #[test]
     fn parse_skill_content_reads_frontmatter_and_guidance() {
         let content = r#"---
-id: strict-value-equality-003
+id: strict-value-equality-001
 name: Strict value equality
 severity: high
 description: Detect strict equality checks for ADA.
@@ -613,7 +605,7 @@ Check validator outputs and avoid false positives for without_lovelace().
 
         let skill = parse_skill_content(Path::new("skill.md"), content).expect("should parse");
 
-        assert_eq!(skill.id, "strict-value-equality-003");
+        assert_eq!(skill.id, "strict-value-equality-001");
         assert_eq!(skill.name, "Strict value equality");
         assert_eq!(skill.severity, "high");
         assert_eq!(skill.examples.len(), 1);

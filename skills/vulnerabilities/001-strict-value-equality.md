@@ -1,5 +1,5 @@
 ---
-id: strict-value-equality-003
+id: strict-value-equality-001
 name: Strict value equality on ADA or full Value
 severity: high
 description: Detect unsatisfiable validator constraints caused by exact equality checks on ADA or complete output values.

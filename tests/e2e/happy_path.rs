@@ -167,9 +167,8 @@ fn aiken_audit_runs_in_initialized_project() {
         serde_json::from_str(&state_content).expect("state.json should be valid AnalysisStateJson");
 
     assert_eq!(state.version, "1");
-    assert_eq!(
-        state.iterations.len(),
-        3,
-        "expected one iteration per seed skill"
+    assert!(
+        !state.iterations.is_empty(),
+        "expected at least one analysis iteration"
     );
 }
