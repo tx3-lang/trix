@@ -1,6 +1,5 @@
 # Aiken Vulnerability Report
 
-- Target: {{ target }}
 - Generated at: {{ generated_at }}
 
 ## Summary

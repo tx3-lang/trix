@@ -24,7 +24,6 @@ pub struct MiniPrompt {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillIterationResult {
     pub skill_id: String,
-    pub target_path: String,
     pub status: String,
     pub findings: Vec<VulnerabilityFinding>,
     pub next_prompt: Option<MiniPrompt>,
@@ -37,12 +36,15 @@ pub struct VulnerabilityFinding {
     pub summary: String,
     pub evidence: Vec<String>,
     pub recommendation: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub line: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisStateJson {
     pub version: String,
-    pub target_path: String,
     pub source_files: Vec<String>,
     pub provider: ProviderSpec,
     pub permission_prompt: PermissionPromptSpec,
@@ -61,12 +63,21 @@ pub struct PermissionPromptSpec {
     pub shell: String,
     pub allowed_commands: Vec<String>,
     pub scope_rules: Vec<String>,
+    #[serde(default = "default_read_scope")]
+    pub read_scope: String,
+    #[serde(default)]
+    pub interactive_permissions: bool,
+    #[serde(default)]
+    pub allowed_paths: Vec<String>,
+}
+
+fn default_read_scope() -> String {
+    "workspace".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VulnerabilityReportSpec {
     pub title: String,
     pub generated_at: String,
-    pub target: String,
     pub findings: Vec<VulnerabilityFinding>,
 }

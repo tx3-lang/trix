@@ -1,4 +1,4 @@
-use clap::Args as ClapArgs;
+use clap::{Args as ClapArgs, ValueEnum};
 use miette::{Context, IntoDiagnostic, Result};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -6,24 +6,30 @@ use std::path::{Path, PathBuf};
 use crate::config::{ProfileConfig, RootConfig};
 
 mod model;
-mod provider;
+mod providers;
 
 use self::model::{
     AnalysisStateJson, MiniPrompt, PermissionPromptSpec, SkillIterationResult,
     VulnerabilityFinding, VulnerabilityReportSpec, VulnerabilitySkill,
 };
-use self::provider::{AnalysisProvider, AnthropicProvider, OpenAiProvider, ScaffoldProvider};
+use self::providers::{build_provider, AnalysisProvider};
 
 const DEFAULT_SKILLS_DIR: &str = "skills/vulnerabilities";
-const DEFAULT_AI_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
-const DEFAULT_AI_MODEL: &str = "gpt-4.1-mini";
-const DEFAULT_AI_API_KEY_ENV: &str = "OPENAI_API_KEY";
-const DEFAULT_ANTHROPIC_ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
-const DEFAULT_ANTHROPIC_MODEL: &str = "claude-3-5-haiku-latest";
-const DEFAULT_ANTHROPIC_API_KEY_ENV: &str = "ANTHROPIC_API_KEY";
-const DEFAULT_ANTHROPIC_VERSION: &str = "2023-06-01";
-const DEFAULT_OLLAMA_ENDPOINT: &str = "http://localhost:11434/v1/chat/completions";
-const DEFAULT_OLLAMA_MODEL: &str = "llama3.1";
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ReadScopeArg {
+    Workspace,
+    Strict,
+}
+
+impl ReadScopeArg {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Workspace => "workspace",
+            Self::Strict => "strict",
+        }
+    }
+}
 
 #[derive(ClapArgs)]
 pub struct Args {
@@ -54,6 +60,18 @@ pub struct Args {
     /// API key environment variable override. Default depends on --provider.
     #[arg(long)]
     pub api_key_env: Option<String>,
+
+    /// Print interactive AI round-trip steps and local tool actions while auditing.
+    #[arg(long, default_value_t = false)]
+    pub ai_logs: bool,
+
+    /// File read scope for AI-assisted local tool requests: workspace | strict.
+    #[arg(long, value_enum, default_value_t = ReadScopeArg::Workspace)]
+    pub read_scope: ReadScopeArg,
+
+    /// Ask confirmation before executing each AI-requested local read action.
+    #[arg(long, default_value_t = false)]
+    pub interactive_permissions: bool,
 }
 
 #[allow(unused_variables)]
@@ -87,7 +105,6 @@ fn run_analysis(
     let skills_dir = PathBuf::from(&args.skills_dir);
     let state_out = PathBuf::from(&args.state_out);
     let report_out = PathBuf::from(&args.report_out);
-    let target_path = config.protocol.main.display().to_string();
     let project_root = std::env::current_dir().into_diagnostic()?;
     let source_files = discover_source_files(&project_root)?;
     let source_files = if source_files.is_empty() {
@@ -96,24 +113,46 @@ fn run_analysis(
         source_files
     };
 
-    let permission_prompt = build_permission_prompt_spec();
+    log_audit_progress(
+        args.ai_logs,
+        format!(
+            "[i] setup provider={} source_files={}",
+            provider.provider_spec().name,
+            source_files.len()
+        ),
+    );
+
+    let permission_prompt = build_permission_prompt_spec(
+        args.read_scope,
+        args.interactive_permissions,
+        &project_root,
+        &source_files,
+    );
     let skills = load_skills(&skills_dir, &args.skills_dir)?;
 
     let mut state = AnalysisStateJson {
         version: "1".to_string(),
-        target_path: target_path.clone(),
         source_files: source_files
             .iter()
             .map(|path| path.display().to_string())
             .collect(),
         provider: provider.provider_spec(),
-        permission_prompt,
+        permission_prompt: permission_prompt.clone(),
         iterations: vec![],
     };
 
     write_state(&state_out, &state)?;
 
-    run_skill_loop(&skills, &source_files, provider, &mut state, &state_out)?;
+    run_skill_loop(
+        &skills,
+        &source_files,
+        &project_root,
+        &permission_prompt,
+        provider,
+        args.ai_logs,
+        &mut state,
+        &state_out,
+    )?;
 
     let report = build_report(&state);
     let report_markdown = render_report_markdown(&report);
@@ -133,25 +172,73 @@ fn run_analysis(
 fn run_skill_loop(
     skills: &[VulnerabilitySkill],
     source_files: &[PathBuf],
+    project_root: &Path,
+    permission_prompt: &PermissionPromptSpec,
     provider: &dyn AnalysisProvider,
+    ai_logs: bool,
     state: &mut AnalysisStateJson,
     state_out: &Path,
 ) -> Result<()> {
-    for source_file in source_files {
-        let source_code = std::fs::read_to_string(source_file)
-            .into_diagnostic()
-            .with_context(|| format!("Failed to read source file {}", source_file.display()))?;
-        let target_path = source_file.display().to_string();
+    let source_references = source_files
+        .iter()
+        .map(|path| display_path_for_prompt(project_root, path))
+        .collect::<Vec<String>>();
 
-        for skill in skills {
-            let prompt = build_mini_prompt(skill);
-            let iteration = provider.analyze_skill(skill, &prompt, &target_path, &source_code)?;
-            append_iteration(state, iteration);
-            write_state(state_out, state)?;
-        }
+    let total_skills = skills.len();
+
+    for (skill_idx, skill) in skills.iter().enumerate() {
+        log_audit_progress(
+            ai_logs,
+            format!(
+                "[ ] skill {}/{} start '{}' ({})",
+                skill_idx + 1,
+                total_skills,
+                skill.id,
+                skill.name
+            ),
+        );
+
+        let prompt = build_mini_prompt(skill);
+        let iteration = provider.analyze_skill(
+            skill,
+            &prompt,
+            &source_references,
+            project_root,
+            permission_prompt,
+        )?;
+
+        let findings_count = iteration.findings.len();
+        let status = iteration.status.clone();
+
+        append_iteration(state, iteration);
+        write_state(state_out, state)?;
+
+        log_audit_progress(
+            ai_logs,
+            format!(
+                "[x] skill {}/{} done '{}' status={} findings={} (state persisted)",
+                skill_idx + 1,
+                total_skills,
+                skill.id,
+                status,
+                findings_count
+            ),
+        );
     }
 
     Ok(())
+}
+
+fn log_audit_progress(enabled: bool, message: impl AsRef<str>) {
+    if enabled {
+        eprintln!("[audit][todo] {}", message.as_ref());
+    }
+}
+
+fn display_path_for_prompt(project_root: &Path, path: &Path) -> String {
+    path.strip_prefix(project_root)
+        .map(|relative| relative.display().to_string())
+        .unwrap_or_else(|_| path.display().to_string())
 }
 
 fn discover_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
@@ -194,84 +281,6 @@ fn discover_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
 
     files.sort();
     Ok(files)
-}
-
-fn build_provider(args: &Args) -> Result<Box<dyn AnalysisProvider>> {
-    match args.provider.to_ascii_lowercase().as_str() {
-        "scaffold" => Ok(Box::new(ScaffoldProvider)),
-        "openai" => {
-            let endpoint = args
-                .endpoint
-                .clone()
-                .unwrap_or_else(|| DEFAULT_AI_ENDPOINT.to_string());
-            let model = args
-                .model
-                .clone()
-                .unwrap_or_else(|| DEFAULT_AI_MODEL.to_string());
-            let api_key_env = args
-                .api_key_env
-                .as_deref()
-                .unwrap_or(DEFAULT_AI_API_KEY_ENV);
-
-            let api_key = std::env::var(api_key_env).into_diagnostic().with_context(|| {
-                format!(
-                    "Missing API key environment variable '{}'. Set it before running with --provider openai.",
-                    api_key_env
-                )
-            })?;
-
-            Ok(Box::new(OpenAiProvider {
-                endpoint,
-                api_key,
-                model,
-            }))
-        }
-        "anthropic" => {
-            let endpoint = args
-                .endpoint
-                .clone()
-                .unwrap_or_else(|| DEFAULT_ANTHROPIC_ENDPOINT.to_string());
-            let model = args
-                .model
-                .clone()
-                .unwrap_or_else(|| DEFAULT_ANTHROPIC_MODEL.to_string());
-            let api_key_env = args
-                .api_key_env
-                .as_deref()
-                .unwrap_or(DEFAULT_ANTHROPIC_API_KEY_ENV);
-
-            let api_key = std::env::var(api_key_env)
-                .into_diagnostic()
-                .with_context(|| {
-                    format!(
-                        "Missing API key environment variable '{}'. Set it before running with --provider anthropic.",
-                        api_key_env
-                    )
-                })?;
-
-            Ok(Box::new(AnthropicProvider {
-                endpoint,
-                api_key,
-                model,
-                version: DEFAULT_ANTHROPIC_VERSION.to_string(),
-            }))
-        }
-        "ollama" => Ok(Box::new(OpenAiProvider {
-            endpoint: args
-                .endpoint
-                .clone()
-                .unwrap_or_else(|| DEFAULT_OLLAMA_ENDPOINT.to_string()),
-            api_key: "ollama".to_string(),
-            model: args
-                .model
-                .clone()
-                .unwrap_or_else(|| DEFAULT_OLLAMA_MODEL.to_string()),
-        })),
-        value => Err(miette::miette!(
-            "Unsupported provider '{}'. Expected one of: scaffold, openai, anthropic, ollama",
-            value
-        )),
-    }
 }
 
 fn append_iteration(state: &mut AnalysisStateJson, iteration: SkillIterationResult) {
@@ -326,7 +335,43 @@ fn compose_skill_prompt(skill: &VulnerabilitySkill) -> String {
     sections.join("\n\n")
 }
 
-fn build_permission_prompt_spec() -> PermissionPromptSpec {
+fn build_permission_prompt_spec(
+    read_scope: ReadScopeArg,
+    interactive_permissions: bool,
+    project_root: &Path,
+    source_files: &[PathBuf],
+) -> PermissionPromptSpec {
+    let allowed_paths = if matches!(read_scope, ReadScopeArg::Strict) {
+        source_files
+            .iter()
+            .map(|path| display_path_for_prompt(project_root, path))
+            .collect::<Vec<String>>()
+    } else {
+        vec![]
+    };
+
+    let mut scope_rules = vec![
+        "Only execute commands within the current project root.".to_string(),
+        "Do not write outside designated output artifacts.".to_string(),
+    ];
+
+    if matches!(read_scope, ReadScopeArg::Strict) {
+        scope_rules.push(
+            "Read scope is strict: only known source files are allowed for reads/searches; directory listing and file discovery requests are denied.".to_string(),
+        );
+    } else {
+        scope_rules.push(
+            "Read scope is workspace: any path under project root can be read/searched.".to_string(),
+        );
+    }
+
+    if interactive_permissions {
+        scope_rules.push(
+            "Interactive permissions are enabled: every local read action requires explicit user confirmation."
+                .to_string(),
+        );
+    }
+
     PermissionPromptSpec {
         shell: "bash".to_string(),
         allowed_commands: vec![
@@ -335,10 +380,10 @@ fn build_permission_prompt_spec() -> PermissionPromptSpec {
             "find".to_string(),
             "ls".to_string(),
         ],
-        scope_rules: vec![
-            "Only execute commands within the current project root.".to_string(),
-            "Do not write outside designated output artifacts.".to_string(),
-        ],
+        scope_rules,
+        read_scope: read_scope.as_str().to_string(),
+        interactive_permissions,
+        allowed_paths,
     }
 }
 
@@ -352,7 +397,6 @@ fn build_report(state: &AnalysisStateJson) -> VulnerabilityReportSpec {
     VulnerabilityReportSpec {
         title: "Vulnerability Report".to_string(),
         generated_at: chrono::Utc::now().to_rfc3339(),
-        target: state.target_path.clone(),
         findings,
     }
 }
@@ -635,6 +679,23 @@ body
         assert_eq!(files.len(), 1);
         assert!(files[0].ends_with("contracts/ok.ak"));
     }
+
+    #[test]
+    fn render_findings_markdown_includes_location_when_available() {
+        let findings = vec![VulnerabilityFinding {
+            title: "Strict equality on value".to_string(),
+            severity: "high".to_string(),
+            summary: "Potential bypass due to strict value equality".to_string(),
+            evidence: vec!["validators/spend.ak:42".to_string()],
+            recommendation: "Compare lovelace and assets separately".to_string(),
+            file: Some("validators/spend.ak".to_string()),
+            line: Some(42),
+        }];
+
+        let markdown = render_findings_markdown(&findings);
+
+        assert!(markdown.contains("Location: validators/spend.ak:42"));
+    }
 }
 
 fn write_state(path: &Path, state: &AnalysisStateJson) -> Result<()> {
@@ -659,7 +720,6 @@ fn render_report_markdown(report: &VulnerabilityReportSpec) -> String {
     let findings_markdown = render_findings_markdown(&report.findings);
 
     template
-        .replace("{{ target }}", &report.target)
         .replace("{{ generated_at }}", &report.generated_at)
         .replace("{{ findings_markdown }}", &findings_markdown)
 }
@@ -672,10 +732,23 @@ fn render_findings_markdown(findings: &[VulnerabilityFinding]) -> String {
     findings
         .iter()
         .map(|finding| {
-            format!(
+            let mut markdown = format!(
                 "- **{}** (`{}`)\n  - Summary: {}\n  - Recommendation: {}",
                 finding.title, finding.severity, finding.summary, finding.recommendation
-            )
+            );
+
+            let location = match (&finding.file, finding.line) {
+                (Some(file), Some(line)) => Some(format!("{}:{}", file, line)),
+                (Some(file), None) => Some(file.clone()),
+                (None, Some(line)) => Some(format!("line {}", line)),
+                (None, None) => None,
+            };
+
+            if let Some(location) = location {
+                markdown.push_str(&format!("\n  - Location: {}", location));
+            }
+
+            markdown
         })
         .collect::<Vec<String>>()
         .join("\n")
