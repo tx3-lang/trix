@@ -43,7 +43,7 @@ impl From<&Cli> for Option<CommandMetric> {
             Commands::Inspect(_) => Some(CommandMetric::new("inspect")),
             Commands::Test(_) => Some(CommandMetric::new("test")),
             Commands::Identities(_) => Some(CommandMetric::new("identities")),
-            Commands::Aiken(_) => Some(CommandMetric::new("aiken")),
+            Commands::Audit(_) => Some(CommandMetric::new("audit")),
             Commands::Publish(_) => Some(CommandMetric::new("publish")),
             _ => None,
         }

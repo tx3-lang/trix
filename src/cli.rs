@@ -54,9 +54,9 @@ pub enum Commands {
     /// Inspect and manage profiles
     Profile(commands::profile::Args),
 
-    /// Run Aiken vulnerability analysis scaffolding (UNSTABLE - This feature is experimental and may change)
+    /// Run vulnerability analysis scaffolding (UNSTABLE - This feature is experimental and may change)
     #[command(hide = true)]
-    Aiken(commands::aiken::Args),
+    Audit(commands::audit::Args),
 
     /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
     #[command(hide = true)]

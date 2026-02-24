@@ -3,7 +3,7 @@
 
 Person(dev, "Developer")
 System_Boundary(trix, "Trix CLI") {
-  Container(cli, "Aiken Audit Command", "Rust + Clap", "CLI command entrypoint and argument handling")
+  Container(cli, "Audit Command", "Rust + Clap", "CLI command entrypoint and argument handling")
   Container(loop, "Skill Loop Engine", "Rust", "Iterates vulnerability skills and updates state")
   Container(prompt, "Prompt Composer", "Rust + Templates", "Builds mini-prompts and permission prompt")
   Container(state, "State Writer", "Rust + JSON", "Persists incremental analysis state")

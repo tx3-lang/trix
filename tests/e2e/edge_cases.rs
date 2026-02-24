@@ -45,11 +45,11 @@ fn init_preserves_existing_test_file() {
 #[cfg(feature = "unstable")]
 fn aiken_audit_fails_without_trix_config() {
     let ctx = TestContext::new();
-    let result = ctx.run_trix(&["aiken", "audit"]);
+    let result = ctx.run_trix(&["audit"]);
 
     assert!(
         !result.success(),
-        "aiken audit should fail outside scoped project"
+        "audit should fail outside scoped project"
     );
     assert!(
         result
@@ -67,14 +67,14 @@ fn aiken_audit_fails_with_missing_skills_dir() {
     let init_result = ctx.run_trix(&["init", "--yes"]);
     assert_success(&init_result);
 
-    let result = ctx.run_trix(&["aiken", "audit", "--skills-dir", "skills/does-not-exist"]);
+    let result = ctx.run_trix(&["audit", "--skills-dir", "skills/does-not-exist"]);
 
     assert!(
         !result.success(),
-        "aiken audit should fail with invalid skills dir"
+        "audit should fail with invalid skills dir"
     );
     assert!(
-        result.stderr.contains("Aiken skills directory not found"),
+        result.stderr.contains("Audit skills directory not found"),
         "Expected missing skills directory error, got stderr: {}",
         result.stderr
     );

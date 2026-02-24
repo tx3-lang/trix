@@ -11,20 +11,20 @@ fn init_runs_without_error() {
 
 #[test]
 #[cfg(feature = "unstable")]
-fn aiken_help_runs_without_error() {
+fn audit_help_runs_without_error() {
     let ctx = TestContext::new();
-    let result = ctx.run_trix(&["aiken", "--help"]);
+    let result = ctx.run_trix(&["audit", "--help"]);
 
     assert_success(&result);
-    assert_output_contains(&result, "audit");
+    assert_output_contains(&result, "vulnerability");
 }
 
 #[test]
 #[cfg(feature = "unstable")]
-fn aiken_audit_help_runs_without_error() {
+fn audit_help_displays_provider_options() {
     let ctx = TestContext::new();
-    let result = ctx.run_trix(&["aiken", "audit", "--help"]);
+    let result = ctx.run_trix(&["audit", "--help"]);
 
     assert_success(&result);
-    assert_output_contains(&result, "vulnerability");
+    assert_output_contains(&result, "provider");
 }

@@ -6,7 +6,7 @@ System(trix, "Trix CLI", "Tx3 package manager")
 System_Ext(ai, "External AI Provider", "Optional future provider such as Anthropic")
 System_Ext(fs, "Local File System", "Project source, skills, outputs")
 
-Rel(dev, trix, "Runs `trix aiken audit`")
+Rel(dev, trix, "Runs `trix audit`")
 Rel(trix, fs, "Reads code + vulnerability skills; writes JSON state and Markdown report")
 Rel(trix, ai, "Future: sends skill-specific prompts and receives analysis")
 

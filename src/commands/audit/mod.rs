@@ -5,11 +5,14 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{ProfileConfig, RootConfig};
 
-use super::model::{
+mod model;
+mod provider;
+
+use self::model::{
     AnalysisStateJson, MiniPrompt, PermissionPromptSpec, SkillIterationResult,
     VulnerabilityFinding, VulnerabilityReportSpec, VulnerabilitySkill,
 };
-use super::provider::{AnalysisProvider, AnthropicProvider, OpenAiProvider, ScaffoldProvider};
+use self::provider::{AnalysisProvider, AnthropicProvider, OpenAiProvider, ScaffoldProvider};
 
 const DEFAULT_SKILLS_DIR: &str = "skills/vulnerabilities";
 const DEFAULT_AI_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
@@ -25,11 +28,11 @@ const DEFAULT_OLLAMA_MODEL: &str = "llama3.1";
 #[derive(ClapArgs)]
 pub struct Args {
     /// Path where the incremental analysis state JSON will be written.
-    #[arg(long, default_value = ".tx3/aiken-audit/state.json")]
+    #[arg(long, default_value = ".tx3/audit/state.json")]
     pub state_out: String,
 
     /// Path where the final vulnerability report markdown will be written.
-    #[arg(long, default_value = ".tx3/aiken-audit/vulnerabilities.md")]
+    #[arg(long, default_value = ".tx3/audit/vulnerabilities.md")]
     pub report_out: String,
 
     /// Path to vulnerability skill definitions.
@@ -53,7 +56,25 @@ pub struct Args {
     pub api_key_env: Option<String>,
 }
 
-pub fn run(args: Args, config: &RootConfig, _profile: &ProfileConfig) -> Result<()> {
+#[allow(unused_variables)]
+pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> Result<()> {
+    #[cfg(feature = "unstable")]
+    {
+        _run(args, config, profile)
+    }
+    #[cfg(not(feature = "unstable"))]
+    {
+        let _ = args;
+        let _ = config;
+        let _ = profile;
+
+        Err(miette::miette!(
+            "The audit command is currently unstable and requires the `unstable` feature to be enabled."
+        ))
+    }
+}
+
+pub fn _run(args: Args, config: &RootConfig, _profile: &ProfileConfig) -> Result<()> {
     let provider = build_provider(&args)?;
     run_analysis(args, config, provider.as_ref())
 }
@@ -68,7 +89,7 @@ fn run_analysis(
     let report_out = PathBuf::from(&args.report_out);
     let target_path = config.protocol.main.display().to_string();
     let project_root = std::env::current_dir().into_diagnostic()?;
-    let source_files = discover_aiken_source_files(&project_root)?;
+    let source_files = discover_source_files(&project_root)?;
     let source_files = if source_files.is_empty() {
         vec![config.protocol.main.clone()]
     } else {
@@ -99,10 +120,10 @@ fn run_analysis(
     write_text_file(&report_out, &report_markdown)?;
 
     println!(
-        "⚠️  EXPERIMENTAL: Aiken audit complete. Iterations processed: {}",
+        "⚠️  EXPERIMENTAL: Audit complete. Iterations processed: {}",
         state.iterations.len()
     );
-    println!("Aiken source files analyzed: {}", state.source_files.len());
+    println!("Source files analyzed: {}", state.source_files.len());
     println!("State written to: {}", state_out.display());
     println!("Report written to: {}", report_out.display());
 
@@ -133,7 +154,7 @@ fn run_skill_loop(
     Ok(())
 }
 
-fn discover_aiken_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
+fn discover_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     let mut to_visit = vec![project_root.to_path_buf()];
 
@@ -159,13 +180,13 @@ fn discover_aiken_source_files(project_root: &Path) -> Result<Vec<PathBuf>> {
                 continue;
             }
 
-            let is_aiken_source = path
+            let is_source_file = path
                 .extension()
                 .and_then(|ext| ext.to_str())
                 .map(|ext| ext.eq_ignore_ascii_case("ak"))
                 .unwrap_or(false);
 
-            if is_aiken_source {
+            if is_source_file {
                 files.push(path);
             }
         }
@@ -329,7 +350,7 @@ fn build_report(state: &AnalysisStateJson) -> VulnerabilityReportSpec {
         .collect::<Vec<VulnerabilityFinding>>();
 
     VulnerabilityReportSpec {
-        title: "Aiken Vulnerability Report".to_string(),
+        title: "Vulnerability Report".to_string(),
         generated_at: chrono::Utc::now().to_rfc3339(),
         target: state.target_path.clone(),
         findings,
@@ -343,7 +364,7 @@ fn load_skills(skills_dir: &Path, skills_dir_arg: &str) -> Result<Vec<Vulnerabil
         }
 
         return Err(miette::miette!(
-            "Aiken skills directory not found: {}",
+            "Audit skills directory not found: {}",
             skills_dir.display()
         ));
     }
@@ -574,7 +595,7 @@ body
     }
 
     #[test]
-    fn discover_aiken_source_files_finds_ak_files_recursively() {
+    fn discover_source_files_finds_ak_files_recursively() {
         let temp = tempfile::tempdir().expect("temp dir");
         let root = temp.path();
         let validators = root.join("onchain/validators");
@@ -583,14 +604,14 @@ body
         fs::write(validators.join("spend.ak"), "validator spend {}").expect("write ak file");
         fs::write(validators.join("readme.md"), "# ignore").expect("write non-ak file");
 
-        let files = discover_aiken_source_files(root).expect("should discover files");
+        let files = discover_source_files(root).expect("should discover files");
 
         assert_eq!(files.len(), 1);
         assert!(files[0].ends_with("onchain/validators/spend.ak"));
     }
 
     #[test]
-    fn discover_aiken_source_files_skips_target_tx3_and_build_dirs() {
+    fn discover_source_files_skips_target_tx3_and_build_dirs() {
         let temp = tempfile::tempdir().expect("temp dir");
         let root = temp.path();
 
@@ -609,7 +630,7 @@ body
         fs::write(tx3_dir.join("skip2.ak"), "validator skip2 {}").expect("write ak in tx3");
         fs::write(build_dir.join("skip3.ak"), "validator skip3 {}").expect("write ak in build");
 
-        let files = discover_aiken_source_files(root).expect("should discover files");
+        let files = discover_source_files(root).expect("should discover files");
 
         assert_eq!(files.len(), 1);
         assert!(files[0].ends_with("contracts/ok.ak"));
