@@ -171,9 +171,7 @@ impl AnalysisProvider for OpenAiProvider {
 
                     log_agent_progress(
                         self.ai_logs,
-                        format!(
-                            "Sending tool output back to model"
-                        ),
+                        "Sending tool output back to model",
                     );
 
                     messages.push(serde_json::json!({

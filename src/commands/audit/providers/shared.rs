@@ -460,7 +460,7 @@ pub(super) fn render_tool_output_for_log(
     match request {
         ReadRequest::ReadFile { path } => {
             format!(
-                "📄 Archivo '{}' leído (contenido oculto en logs, {} chars)",
+                "📄 File '{}' read (content hidden in logs, {} chars)",
                 path,
                 output.chars().count()
             )

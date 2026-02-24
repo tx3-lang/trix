@@ -143,16 +143,16 @@ fn run_analysis(
 
     write_state(&state_out, &state)?;
 
-    run_skill_loop(
-        &skills,
-        &source_files,
-        &project_root,
-        &permission_prompt,
+    let skill_loop_context = SkillLoopContext {
+        source_files: &source_files,
+        project_root: &project_root,
+        permission_prompt: &permission_prompt,
         provider,
-        args.ai_logs,
-        &mut state,
-        &state_out,
-    )?;
+        ai_logs: args.ai_logs,
+        state_out: &state_out,
+    };
+
+    run_skill_loop(&skills, &mut state, skill_loop_context)?;
 
     let report = build_report(&state);
     let report_markdown = render_report_markdown(&report);
@@ -169,26 +169,31 @@ fn run_analysis(
     Ok(())
 }
 
+struct SkillLoopContext<'a> {
+    source_files: &'a [PathBuf],
+    project_root: &'a Path,
+    permission_prompt: &'a PermissionPromptSpec,
+    provider: &'a dyn AnalysisProvider,
+    ai_logs: bool,
+    state_out: &'a Path,
+}
+
 fn run_skill_loop(
     skills: &[VulnerabilitySkill],
-    source_files: &[PathBuf],
-    project_root: &Path,
-    permission_prompt: &PermissionPromptSpec,
-    provider: &dyn AnalysisProvider,
-    ai_logs: bool,
     state: &mut AnalysisStateJson,
-    state_out: &Path,
+    context: SkillLoopContext<'_>,
 ) -> Result<()> {
-    let source_references = source_files
+    let source_references = context
+        .source_files
         .iter()
-        .map(|path| display_path_for_prompt(project_root, path))
+        .map(|path| display_path_for_prompt(context.project_root, path))
         .collect::<Vec<String>>();
 
     let total_skills = skills.len();
 
     for (skill_idx, skill) in skills.iter().enumerate() {
         log_audit_progress(
-            ai_logs,
+            context.ai_logs,
             format!(
                 "Skill {}/{} • analyzing '{}' ({})",
                 skill_idx + 1,
@@ -199,22 +204,22 @@ fn run_skill_loop(
         );
 
         let prompt = build_mini_prompt(skill);
-        let iteration = provider.analyze_skill(
+        let iteration = context.provider.analyze_skill(
             skill,
             &prompt,
             &source_references,
-            project_root,
-            permission_prompt,
+            context.project_root,
+            context.permission_prompt,
         )?;
 
         let findings_count = iteration.findings.len();
         let status = iteration.status.clone();
 
         append_iteration(state, iteration);
-        write_state(state_out, state)?;
+        write_state(context.state_out, state)?;
 
         log_audit_progress(
-            ai_logs,
+            context.ai_logs,
             format!(
                 "Skill {}/{} • completed '{}' • status={} • findings={} • state persisted",
                 skill_idx + 1,
