@@ -4,8 +4,9 @@ use std::path::Path;
 
 use super::shared::{
     block_on_runtime_aware, build_agent_system_prompt, build_initial_user_prompt,
-    describe_read_request, execute_read_request, iteration_from_parsed, log_agent_progress,
-    parse_agent_action, preview_output_for_log, summarize_read_request, AgentAction,
+    describe_read_request_friendly, execute_read_request, iteration_from_parsed, log_agent_progress,
+    parse_agent_action, render_model_output_for_log, render_tool_output_for_log,
+    summarize_read_request, AgentAction,
     MAX_AGENT_STEPS,
 };
 use super::{
@@ -65,10 +66,10 @@ impl AnalysisProvider for OpenAiProvider {
             log_agent_progress(
                 self.ai_logs,
                 format!(
-                    "[ ] skill={} step={}/{} ask model at {}",
-                    skill.id,
+                    "Step {}/{} • requesting next action for skill '{}' ({})",
                     step_idx + 1,
                     MAX_AGENT_STEPS,
+                    skill.id,
                     self.endpoint
                 ),
             );
@@ -107,6 +108,14 @@ impl AnalysisProvider for OpenAiProvider {
                 "content": content,
             }));
 
+            log_agent_progress(
+                self.ai_logs,
+                format!(
+                    "Model output:\n{}",
+                    render_model_output_for_log(content, 2_000)
+                ),
+            );
+
             match parse_agent_action(content)? {
                 AgentAction::Final(parsed) => {
                     let findings = parsed
@@ -122,7 +131,7 @@ impl AnalysisProvider for OpenAiProvider {
                     log_agent_progress(
                         self.ai_logs,
                         format!(
-                            "[x] skill={} step={}/{} final status={} findings={}",
+                            "Model completed skill '{}' at step {}/{} • status={} • findings={}",
                             skill.id,
                             step_idx + 1,
                             MAX_AGENT_STEPS,
@@ -136,21 +145,15 @@ impl AnalysisProvider for OpenAiProvider {
                     log_agent_progress(
                         self.ai_logs,
                         format!(
-                            "[ ] skill={} step={}/{} {}",
-                            skill.id,
-                            step_idx + 1,
-                            MAX_AGENT_STEPS,
-                            describe_read_request(&request)
+                            "Model requested: {}",
+                            describe_read_request_friendly(&request)
                         ),
                     );
 
                     log_agent_progress(
                         self.ai_logs,
                         format!(
-                            "[ ] skill={} step={}/{} run local action: {}",
-                            skill.id,
-                            step_idx + 1,
-                            MAX_AGENT_STEPS,
+                            "Running local action: {}",
                             summarize_read_request(&request)
                         ),
                     );
@@ -161,32 +164,15 @@ impl AnalysisProvider for OpenAiProvider {
                     log_agent_progress(
                         self.ai_logs,
                         format!(
-                            "[x] skill={} step={}/{} local action finished chars={}",
-                            skill.id,
-                            step_idx + 1,
-                            MAX_AGENT_STEPS,
-                            output.chars().count()
+                            "Tool output:\n{}",
+                            render_tool_output_for_log(&request, &output, 2_000)
                         ),
                     );
 
                     log_agent_progress(
                         self.ai_logs,
                         format!(
-                            "[i] skill={} step={}/{} output preview: {}",
-                            skill.id,
-                            step_idx + 1,
-                            MAX_AGENT_STEPS,
-                            preview_output_for_log(&output, 180)
-                        ),
-                    );
-
-                    log_agent_progress(
-                        self.ai_logs,
-                        format!(
-                            "[ ] skill={} step={}/{} send local output back to model",
-                            skill.id,
-                            step_idx + 1,
-                            MAX_AGENT_STEPS
+                            "Sending tool output back to model"
                         ),
                     );
 

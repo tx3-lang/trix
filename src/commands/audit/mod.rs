@@ -61,7 +61,7 @@ pub struct Args {
     #[arg(long)]
     pub api_key_env: Option<String>,
 
-    /// Print interactive AI round-trip steps and local tool actions while auditing.
+    /// Print chat-style progress of model requests and local tool actions while auditing.
     #[arg(long, default_value_t = false)]
     pub ai_logs: bool,
 
@@ -116,7 +116,7 @@ fn run_analysis(
     log_audit_progress(
         args.ai_logs,
         format!(
-            "[i] setup provider={} source_files={}",
+            "Starting audit • provider={} • source files={}",
             provider.provider_spec().name,
             source_files.len()
         ),
@@ -190,7 +190,7 @@ fn run_skill_loop(
         log_audit_progress(
             ai_logs,
             format!(
-                "[ ] skill {}/{} start '{}' ({})",
+                "Skill {}/{} • analyzing '{}' ({})",
                 skill_idx + 1,
                 total_skills,
                 skill.id,
@@ -216,7 +216,7 @@ fn run_skill_loop(
         log_audit_progress(
             ai_logs,
             format!(
-                "[x] skill {}/{} done '{}' status={} findings={} (state persisted)",
+                "Skill {}/{} • completed '{}' • status={} • findings={} • state persisted",
                 skill_idx + 1,
                 total_skills,
                 skill.id,
@@ -231,7 +231,7 @@ fn run_skill_loop(
 
 fn log_audit_progress(enabled: bool, message: impl AsRef<str>) {
     if enabled {
-        eprintln!("[audit][todo] {}", message.as_ref());
+        eprintln!("🧭 {}", message.as_ref());
     }
 }
 

@@ -428,48 +428,64 @@ pub(super) fn summarize_read_request(request: &ReadRequest) -> String {
     }
 }
 
-pub(super) fn describe_read_request(request: &ReadRequest) -> String {
+pub(super) fn describe_read_request_friendly(request: &ReadRequest) -> String {
     match request {
         ReadRequest::ReadFile { path } => {
-            format!("assistant requested: read file '{}'", path)
+            format!("read file '{}'", path)
         }
         ReadRequest::Grep {
             pattern,
             path,
             context_lines,
         } => format!(
-            "assistant requested: search pattern '{}' in '{}' (context {} lines)",
+            "search '{}' in '{}' ({} context lines)",
             pattern, path, context_lines
         ),
         ReadRequest::ListDir { path } => {
-            format!("assistant requested: list directory '{}'", path)
+            format!("list directory '{}'", path)
         }
         ReadRequest::FindFiles { path, glob } => format!(
-            "assistant requested: find files in '{}' with glob '{}'",
+            "find files in '{}' with glob '{}'",
             path,
             glob.as_deref().unwrap_or("*")
         ),
     }
 }
 
-pub(super) fn preview_output_for_log(output: &str, max_chars: usize) -> String {
-    let compact = output
-        .replace("\r\n", "\n")
-        .replace('\n', " ⏎ ")
-        .replace('\t', " ");
+pub(super) fn render_tool_output_for_log(
+    request: &ReadRequest,
+    output: &str,
+    max_chars: usize,
+) -> String {
+    match request {
+        ReadRequest::ReadFile { path } => {
+            format!(
+                "📄 Archivo '{}' leído (contenido oculto en logs, {} chars)",
+                path,
+                output.chars().count()
+            )
+        }
+        _ => truncate_for_log(output, max_chars),
+    }
+}
 
-    let char_count = compact.chars().count();
+pub(super) fn render_model_output_for_log(output: &str, max_chars: usize) -> String {
+    truncate_for_log(output, max_chars)
+}
+
+fn truncate_for_log(output: &str, max_chars: usize) -> String {
+    let char_count = output.chars().count();
     if char_count <= max_chars {
-        return compact;
+        return output.to_string();
     }
 
-    let preview = compact.chars().take(max_chars).collect::<String>();
-    format!("{}… ({} chars total)", preview, char_count)
+    let preview = output.chars().take(max_chars).collect::<String>();
+    format!("{}\n… (truncated, {} chars total)", preview, char_count)
 }
 
 pub(super) fn log_agent_progress(enabled: bool, message: impl AsRef<str>) {
     if enabled {
-        eprintln!("[audit:ai][todo] {}", message.as_ref());
+        eprintln!("🤖 {}", message.as_ref());
     }
 }
 
