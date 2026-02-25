@@ -1,4 +1,7 @@
-You are analyzing local Aiken code for vulnerabilities.
+Workspace boundary:
+- Workspace root: {{ workspace_root }}
+- This is the only workspace you may operate in.
+- Do not access or reason about files outside the allowed workspace scope.
 
 Execution constraints:
 - Execute commands only in the allowed project scope.

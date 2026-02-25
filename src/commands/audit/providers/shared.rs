@@ -17,6 +17,8 @@ const AGENT_SYSTEM_PROMPT: &str =
     include_str!("../../../../templates/aiken/audit_agent_system_prompt.md");
 const INITIAL_USER_PROMPT_TEMPLATE: &str =
     include_str!("../../../../templates/aiken/audit_agent_initial_user_prompt.md");
+const PERMISSION_PROMPT_TEMPLATE: &str =
+    include_str!("../../../../templates/aiken/permission_prompt.md");
 const TOOL_RESULT_PROMPT_TEMPLATE: &str =
     include_str!("../../../../templates/aiken/audit_agent_tool_result_prompt.md");
 
@@ -73,22 +75,32 @@ fn parse_line_number(value: Option<&Value>) -> Option<usize> {
 pub(super) fn build_initial_user_prompt(
     prompt: &MiniPrompt,
     source_references: &[String],
-    workspace_root: &Path,
     permission_prompt: &PermissionPromptSpec,
 ) -> String {
     INITIAL_USER_PROMPT_TEMPLATE
         .replace("{{SKILL}}", &prompt.text)
-        .replace("{{WORKSPACE_ROOT}}", &workspace_root.display().to_string())
         .replace("{{SOURCE_REFERENCES}}", &render_source_references(source_references))
-        .replace("{{ALLOWED_COMMANDS}}", &permission_prompt.allowed_commands.join(", "))
-        .replace("{{SCOPE_RULES}}", &permission_prompt.scope_rules.join("\n- "))
+        .replace(
+            "{{PERMISSION_PROMPT}}",
+            &render_permission_prompt(permission_prompt),
+        )
 }
 
-    pub(super) fn build_tool_result_user_prompt(request: &ReadRequest, output: &str) -> String {
-        TOOL_RESULT_PROMPT_TEMPLATE
+pub(super) fn build_tool_result_user_prompt(request: &ReadRequest, output: &str) -> String {
+    TOOL_RESULT_PROMPT_TEMPLATE
         .replace("{{REQUEST}}", &format!("{:?}", request))
         .replace("{{OUTPUT}}", output)
-    }
+}
+
+fn render_permission_prompt(permission_prompt: &PermissionPromptSpec) -> String {
+    PERMISSION_PROMPT_TEMPLATE
+        .replace("{{ workspace_root }}", &permission_prompt.workspace_root)
+        .replace(
+            "{{ allowed_commands }}",
+            &permission_prompt.allowed_commands.join(", "),
+        )
+        .replace("{{ scope_rules }}", &permission_prompt.scope_rules.join("\n- "))
+}
 
 fn render_source_references(source_references: &[String]) -> String {
     if source_references.is_empty() {
@@ -609,6 +621,7 @@ mod tests {
             shell: "bash".to_string(),
             allowed_commands: vec!["cat".to_string()],
             scope_rules: vec![],
+            workspace_root: root.display().to_string(),
             read_scope: "strict".to_string(),
             interactive_permissions: false,
             allowed_paths: vec!["validators/spend.ak".to_string()],
@@ -635,6 +648,7 @@ mod tests {
             shell: "bash".to_string(),
             allowed_commands: vec!["ls".to_string()],
             scope_rules: vec![],
+            workspace_root: root.display().to_string(),
             read_scope: "strict".to_string(),
             interactive_permissions: false,
             allowed_paths: vec!["validators/spend.ak".to_string()],

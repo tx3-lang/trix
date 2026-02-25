@@ -386,6 +386,7 @@ fn build_permission_prompt_spec(
             "ls".to_string(),
         ],
         scope_rules,
+        workspace_root: project_root.display().to_string(),
         read_scope: read_scope.as_str().to_string(),
         interactive_permissions,
         allowed_paths,

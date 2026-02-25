@@ -63,12 +63,18 @@ pub struct PermissionPromptSpec {
     pub shell: String,
     pub allowed_commands: Vec<String>,
     pub scope_rules: Vec<String>,
+    #[serde(default = "default_workspace_root")]
+    pub workspace_root: String,
     #[serde(default = "default_read_scope")]
     pub read_scope: String,
     #[serde(default)]
     pub interactive_permissions: bool,
     #[serde(default)]
     pub allowed_paths: Vec<String>,
+}
+
+fn default_workspace_root() -> String {
+    ".".to_string()
 }
 
 fn default_read_scope() -> String {

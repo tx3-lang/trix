@@ -51,12 +51,8 @@ impl AnalysisProvider for AnthropicProvider {
         })?;
 
         let system_prompt = build_agent_system_prompt();
-        let initial_user_prompt = build_initial_user_prompt(
-            prompt,
-            source_references,
-            &canonical_root,
-            permission_prompt,
-        );
+        let initial_user_prompt =
+            build_initial_user_prompt(prompt, source_references, permission_prompt);
 
         let mut messages = vec![serde_json::json!({
             "role": "user",
