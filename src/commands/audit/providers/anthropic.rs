@@ -4,6 +4,7 @@ use std::path::Path;
 
 use super::shared::{
     block_on_runtime_aware, build_agent_system_prompt, build_initial_user_prompt,
+    build_tool_result_user_prompt,
     describe_read_request_friendly, execute_read_request, iteration_from_parsed, log_agent_progress,
     parse_agent_action, render_model_output_for_log, render_tool_output_for_log,
     summarize_read_request, AgentAction,
@@ -50,7 +51,12 @@ impl AnalysisProvider for AnthropicProvider {
         })?;
 
         let system_prompt = build_agent_system_prompt();
-        let initial_user_prompt = build_initial_user_prompt(prompt, source_references, permission_prompt);
+        let initial_user_prompt = build_initial_user_prompt(
+            prompt,
+            source_references,
+            &canonical_root,
+            permission_prompt,
+        );
 
         let mut messages = vec![serde_json::json!({
             "role": "user",
@@ -171,11 +177,7 @@ impl AnalysisProvider for AnthropicProvider {
 
                     messages.push(serde_json::json!({
                         "role": "user",
-                        "content": format!(
-                            "Tool result for {:?}:\n{}\n\nContinue and return JSON.",
-                            request,
-                            output
-                        ),
+                        "content": build_tool_result_user_prompt(&request, &output),
                     }));
                 }
             }

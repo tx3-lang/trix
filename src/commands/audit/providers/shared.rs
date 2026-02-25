@@ -13,6 +13,12 @@ use crate::commands::audit::model::{
 
 pub(super) const MAX_AGENT_STEPS: usize = 25;
 const MAX_COMMAND_OUTPUT_CHARS: usize = 30_000;
+const AGENT_SYSTEM_PROMPT: &str =
+    include_str!("../../../../templates/aiken/audit_agent_system_prompt.md");
+const INITIAL_USER_PROMPT_TEMPLATE: &str =
+    include_str!("../../../../templates/aiken/audit_agent_initial_user_prompt.md");
+const TOOL_RESULT_PROMPT_TEMPLATE: &str =
+    include_str!("../../../../templates/aiken/audit_agent_tool_result_prompt.md");
 
 #[derive(Debug)]
 pub(super) enum AgentAction {
@@ -49,7 +55,7 @@ struct RawReadRequest {
 }
 
 pub(super) fn build_agent_system_prompt() -> &'static str {
-    "You are a security auditor specialized in Aiken smart contracts. You must return JSON only. Use an iterative process: request local reads when needed, then finish with findings.\n\nValid JSON actions:\n1) {\"action\":\"read_file\",\"path\":\"relative/path.ak\"}\n2) {\"action\":\"grep\",\"pattern\":\"regex\",\"path\":\"relative/path/or/dir\",\"context_lines\":2}\n3) {\"action\":\"list_dir\",\"path\":\"relative/path\"}\n4) {\"action\":\"find_files\",\"path\":\"relative/path\",\"glob\":\"*.ak\"}\n5) {\"action\":\"final\",\"status\":\"completed|scaffolded\",\"findings\":[{\"title\":string,\"severity\":string,\"summary\":string,\"evidence\":[string],\"recommendation\":string,\"file\":string|null,\"line\":number|null}],\"next_prompt\":string|null}\n\nPrefer returning file and line whenever you can confidently identify where the bug exists or where the recommendation applies.\n\nNever include markdown fences."
+    AGENT_SYSTEM_PROMPT
 }
 
 fn parse_line_number(value: Option<&Value>) -> Option<usize> {
@@ -67,16 +73,22 @@ fn parse_line_number(value: Option<&Value>) -> Option<usize> {
 pub(super) fn build_initial_user_prompt(
     prompt: &MiniPrompt,
     source_references: &[String],
+    workspace_root: &Path,
     permission_prompt: &PermissionPromptSpec,
 ) -> String {
-    format!(
-        "Analyze Aiken code for this single vulnerability skill. You are given file references only (no source code inline).\n\nSkill:\n{}\n\nReferenced Aiken files:\n{}\n\nAllowed read commands: {}\nScope rules:\n- {}\n\nReturn JSON action only.",
-        prompt.text,
-        render_source_references(source_references),
-        permission_prompt.allowed_commands.join(", "),
-        permission_prompt.scope_rules.join("\n- "),
-    )
+    INITIAL_USER_PROMPT_TEMPLATE
+        .replace("{{SKILL}}", &prompt.text)
+        .replace("{{WORKSPACE_ROOT}}", &workspace_root.display().to_string())
+        .replace("{{SOURCE_REFERENCES}}", &render_source_references(source_references))
+        .replace("{{ALLOWED_COMMANDS}}", &permission_prompt.allowed_commands.join(", "))
+        .replace("{{SCOPE_RULES}}", &permission_prompt.scope_rules.join("\n- "))
 }
+
+    pub(super) fn build_tool_result_user_prompt(request: &ReadRequest, output: &str) -> String {
+        TOOL_RESULT_PROMPT_TEMPLATE
+        .replace("{{REQUEST}}", &format!("{:?}", request))
+        .replace("{{OUTPUT}}", output)
+    }
 
 fn render_source_references(source_references: &[String]) -> String {
     if source_references.is_empty() {
