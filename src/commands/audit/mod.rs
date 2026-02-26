@@ -303,19 +303,20 @@ fn build_mini_prompt(skill: &VulnerabilitySkill) -> MiniPrompt {
 
 fn compose_skill_prompt(skill: &VulnerabilitySkill) -> String {
     let mut sections = vec![
-        format!("Skill ID: {}", skill.id),
-        format!("Name: {}", skill.name),
-        format!("Severity: {}", skill.severity),
-        format!("Description: {}", skill.description),
-        format!("Prompt Fragment: {}", skill.prompt_fragment),
+        "Skill Summary (use as source of truth):".to_string(),
+        format!("- Skill ID: {}", skill.id),
+        format!("- Name: {}", skill.name),
+        format!("- Severity: {}", skill.severity),
+        format!("- Description: {}", skill.description),
+        format!("- Primary detection objective: {}", skill.prompt_fragment),
     ];
 
     if !skill.tags.is_empty() {
-        sections.push(format!("Tags: {}", skill.tags.join(", ")));
+        sections.push(format!("- Tags: {}", skill.tags.join(", ")));
     }
 
     if let Some(hint) = &skill.confidence_hint {
-        sections.push(format!("Confidence Hint: {}", hint));
+        sections.push(format!("- Confidence Hint: {}", hint));
     }
 
     if !skill.examples.is_empty() {
@@ -334,7 +335,10 @@ fn compose_skill_prompt(skill: &VulnerabilitySkill) -> String {
     }
 
     if !skill.guidance_markdown.trim().is_empty() {
-        sections.push(format!("Guidance:\n{}", skill.guidance_markdown.trim()));
+        sections.push(format!(
+            "Detailed Guidance (authoritative):\n{}",
+            skill.guidance_markdown.trim()
+        ));
     }
 
     sections.join("\n\n")
