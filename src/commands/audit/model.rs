@@ -48,7 +48,59 @@ pub struct AnalysisStateJson {
     pub source_files: Vec<String>,
     pub provider: ProviderSpec,
     pub permission_prompt: PermissionPromptSpec,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ast: Option<AstMetadata>,
+    #[serde(default)]
+    pub validator_context: ValidatorContextMap,
     pub iterations: Vec<SkillIterationResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AstMetadata {
+    pub path: String,
+    pub fingerprint: String,
+    pub generated_at: String,
+    pub tool: AstToolMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AstToolMetadata {
+    pub name: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ValidatorContextMap {
+    #[serde(default)]
+    pub validators: Vec<ValidatorContextEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorContextEntry {
+    pub id: String,
+    pub module: String,
+    pub source_file: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_span: Option<SourceSpan>,
+    pub handlers: Vec<ValidatorHandlerContext>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceSpan {
+    pub start_line: usize,
+    pub end_line: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorHandlerContext {
+    pub name: String,
+    pub parameters: Vec<ValidatorParameterContext>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidatorParameterContext {
+    pub name: String,
+    pub r#type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

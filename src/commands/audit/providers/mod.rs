@@ -7,7 +7,8 @@ use miette::{Context, IntoDiagnostic, Result};
 use std::path::Path;
 
 use super::model::{
-    MiniPrompt, PermissionPromptSpec, ProviderSpec, SkillIterationResult, VulnerabilitySkill,
+    MiniPrompt, PermissionPromptSpec, ProviderSpec, SkillIterationResult, ValidatorContextMap,
+    VulnerabilitySkill,
 };
 use super::Args;
 
@@ -33,6 +34,7 @@ pub trait AnalysisProvider {
         skill: &VulnerabilitySkill,
         prompt: &MiniPrompt,
         source_references: &[String],
+        validator_context: &ValidatorContextMap,
         project_root: &Path,
         permission_prompt: &PermissionPromptSpec,
     ) -> Result<SkillIterationResult>;

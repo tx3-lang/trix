@@ -12,9 +12,16 @@ Skill (authoritative context):
 Referenced Aiken files:
 {{SOURCE_REFERENCES}}
 
+Validator context map:
+--- CONTEXT MAP START ---
+{{VALIDATOR_CONTEXT_MAP}}
+--- CONTEXT MAP END ---
+
 Use the referenced files as your starting point. You may read additional files only if they are inside the allowed workspace scope and strictly required to validate the finding.
 
 Execution permissions:
+--- PERMISSION PROMPT START ---
 {{PERMISSION_PROMPT}}
+--- PERMISSION PROMPT END ---
 
 Return JSON action only.

@@ -7,7 +7,8 @@ use std::process::Command;
 use tokio::runtime::Handle;
 
 use crate::commands::audit::model::{
-    MiniPrompt, PermissionPromptSpec, SkillIterationResult, VulnerabilityFinding,
+    MiniPrompt, PermissionPromptSpec, SkillIterationResult, ValidatorContextMap,
+    VulnerabilityFinding,
     VulnerabilitySkill,
 };
 
@@ -75,11 +76,16 @@ fn parse_line_number(value: Option<&Value>) -> Option<usize> {
 pub(super) fn build_initial_user_prompt(
     prompt: &MiniPrompt,
     source_references: &[String],
+    validator_context: &ValidatorContextMap,
     permission_prompt: &PermissionPromptSpec,
 ) -> String {
     INITIAL_USER_PROMPT_TEMPLATE
         .replace("{{SKILL}}", &prompt.text)
         .replace("{{SOURCE_REFERENCES}}", &render_source_references(source_references))
+        .replace(
+            "{{VALIDATOR_CONTEXT_MAP}}",
+            &render_validator_context_map(validator_context),
+        )
         .replace(
             "{{PERMISSION_PROMPT}}",
             &render_permission_prompt(permission_prompt),
@@ -110,6 +116,40 @@ fn render_source_references(source_references: &[String]) -> String {
     source_references
         .iter()
         .map(|path| format!("- {}", path))
+        .collect::<Vec<String>>()
+        .join("\n")
+}
+
+fn render_validator_context_map(validator_context: &ValidatorContextMap) -> String {
+    if validator_context.validators.is_empty() {
+        return "- (none)".to_string();
+    }
+
+    validator_context
+        .validators
+        .iter()
+        .map(|validator| {
+            let handlers = validator
+                .handlers
+                .iter()
+                .map(|handler| {
+                    let signature = handler
+                        .parameters
+                        .iter()
+                        .map(|parameter| format!("{}: {}", parameter.name, parameter.r#type))
+                        .collect::<Vec<String>>()
+                        .join(", ");
+
+                    format!("  - `{}({})`", handler.name, signature)
+                })
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            format!(
+                "- `{}`\n  - source: `{}`\n{}",
+                validator.id, validator.source_file, handlers
+            )
+        })
         .collect::<Vec<String>>()
         .join("\n")
 }
@@ -606,7 +646,10 @@ pub(super) fn iteration_from_parsed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::audit::model::PermissionPromptSpec;
+    use crate::commands::audit::model::{
+        MiniPrompt, PermissionPromptSpec, ValidatorContextEntry, ValidatorContextMap,
+        ValidatorHandlerContext, ValidatorParameterContext,
+    };
 
     #[test]
     fn execute_read_request_strict_allows_known_file() {
@@ -664,5 +707,74 @@ mod tests {
         .expect_err("strict scope should reject list_dir");
 
         assert!(err.to_string().contains("strict read scope"));
+    }
+
+    #[test]
+    fn initial_prompt_renders_validator_context_map() {
+        let permission_prompt = PermissionPromptSpec {
+            shell: "bash".to_string(),
+            allowed_commands: vec!["cat".to_string()],
+            scope_rules: vec!["rule".to_string()],
+            workspace_root: ".".to_string(),
+            read_scope: "workspace".to_string(),
+            interactive_permissions: false,
+            allowed_paths: vec![],
+        };
+
+        let validator_context = ValidatorContextMap {
+            validators: vec![ValidatorContextEntry {
+                id: "validators.vesting.hello_world".to_string(),
+                module: "validators/vesting.ak".to_string(),
+                source_file: "validators/vesting.ak".to_string(),
+                source_span: None,
+                handlers: vec![ValidatorHandlerContext {
+                    name: "spend".to_string(),
+                    parameters: vec![ValidatorParameterContext {
+                        name: "datum".to_string(),
+                        r#type: "Option<Datum>".to_string(),
+                    }],
+                }],
+            }],
+        };
+
+        let prompt = build_initial_user_prompt(
+            &MiniPrompt {
+                skill_id: "s1".to_string(),
+                text: "skill".to_string(),
+            },
+            &["validators/vesting.ak".to_string()],
+            &validator_context,
+            &permission_prompt,
+        );
+
+        assert!(prompt.contains("Validator context map:"));
+        assert!(prompt.contains("validators.vesting.hello_world"));
+        assert!(prompt.contains("spend(datum: Option<Datum>)"));
+    }
+
+    #[test]
+    fn initial_prompt_renders_empty_validator_context_map() {
+        let permission_prompt = PermissionPromptSpec {
+            shell: "bash".to_string(),
+            allowed_commands: vec!["cat".to_string()],
+            scope_rules: vec!["rule".to_string()],
+            workspace_root: ".".to_string(),
+            read_scope: "workspace".to_string(),
+            interactive_permissions: false,
+            allowed_paths: vec![],
+        };
+
+        let prompt = build_initial_user_prompt(
+            &MiniPrompt {
+                skill_id: "s1".to_string(),
+                text: "skill".to_string(),
+            },
+            &[],
+            &ValidatorContextMap::default(),
+            &permission_prompt,
+        );
+
+        assert!(prompt.contains("Validator context map:"));
+        assert!(prompt.contains("- (none)"));
     }
 }

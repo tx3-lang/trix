@@ -160,6 +160,7 @@ fn aiken_audit_runs_in_initialized_project() {
     assert_output_contains(&result, "EXPERIMENTAL");
 
     ctx.assert_file_exists(".tx3/audit/state.json");
+    ctx.assert_file_exists(".tx3/audit/aiken-ast.json");
     ctx.assert_file_exists(".tx3/audit/vulnerabilities.md");
 
     let state_content = ctx.read_file(".tx3/audit/state.json");
@@ -167,6 +168,11 @@ fn aiken_audit_runs_in_initialized_project() {
         serde_json::from_str(&state_content).expect("state.json should be valid AnalysisStateJson");
 
     assert_eq!(state.version, "1");
+    assert!(state.ast.is_some(), "expected AST metadata to be present");
+    assert!(
+        state.validator_context.validators.is_empty(),
+        "fresh init project should typically have no Aiken validators"
+    );
     assert!(
         !state.iterations.is_empty(),
         "expected at least one analysis iteration"

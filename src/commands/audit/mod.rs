@@ -5,12 +5,14 @@ use std::path::{Path, PathBuf};
 
 use crate::config::{ProfileConfig, RootConfig};
 
+pub mod ast;
 pub mod model;
 pub mod providers;
 
+use self::ast::generate_ast_and_validator_context;
 use self::model::{
     AnalysisStateJson, MiniPrompt, PermissionPromptSpec, SkillIterationResult,
-    VulnerabilityFinding, VulnerabilityReportSpec, VulnerabilitySkill,
+    ValidatorContextMap, VulnerabilityFinding, VulnerabilityReportSpec, VulnerabilitySkill,
 };
 use self::providers::{build_provider, AnalysisProvider};
 
@@ -65,6 +67,14 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     pub ai_logs: bool,
 
+    /// Path where the Aiken AST snapshot JSON will be written.
+    #[arg(long, default_value = ".tx3/audit/aiken-ast.json")]
+    pub ast_out: String,
+
+    /// Regenerate AST even if an up-to-date snapshot is already available.
+    #[arg(long, default_value_t = false)]
+    pub no_ast_cache: bool,
+
     /// File read scope for AI-assisted local tool requests: workspace | strict.
     #[arg(long, value_enum, default_value_t = ReadScopeArg::Workspace)]
     pub read_scope: ReadScopeArg,
@@ -105,12 +115,13 @@ fn run_analysis(
     let skills_dir = PathBuf::from(&args.skills_dir);
     let state_out = PathBuf::from(&args.state_out);
     let report_out = PathBuf::from(&args.report_out);
+    let ast_out = PathBuf::from(&args.ast_out);
     let project_root = std::env::current_dir().into_diagnostic()?;
-    let source_files = discover_source_files(&project_root)?;
-    let source_files = if source_files.is_empty() {
+    let aiken_source_files = discover_source_files(&project_root)?;
+    let source_files = if aiken_source_files.is_empty() {
         vec![config.protocol.main.clone()]
     } else {
-        source_files
+        aiken_source_files.clone()
     };
 
     log_audit_progress(
@@ -129,6 +140,12 @@ fn run_analysis(
         &source_files,
     );
     let skills = load_skills(&skills_dir, &args.skills_dir)?;
+    let ast_context = generate_ast_and_validator_context(
+        &project_root,
+        &aiken_source_files,
+        &ast_out,
+        args.no_ast_cache,
+    )?;
 
     let mut state = AnalysisStateJson {
         version: "1".to_string(),
@@ -138,6 +155,8 @@ fn run_analysis(
             .collect(),
         provider: provider.provider_spec(),
         permission_prompt: permission_prompt.clone(),
+        ast: Some(ast_context.metadata.clone()),
+        validator_context: ast_context.validator_context.clone(),
         iterations: vec![],
     };
 
@@ -147,6 +166,7 @@ fn run_analysis(
         source_files: &source_files,
         project_root: &project_root,
         permission_prompt: &permission_prompt,
+        validator_context: &ast_context.validator_context,
         provider,
         ai_logs: args.ai_logs,
         state_out: &state_out,
@@ -173,6 +193,7 @@ struct SkillLoopContext<'a> {
     source_files: &'a [PathBuf],
     project_root: &'a Path,
     permission_prompt: &'a PermissionPromptSpec,
+    validator_context: &'a ValidatorContextMap,
     provider: &'a dyn AnalysisProvider,
     ai_logs: bool,
     state_out: &'a Path,
@@ -208,6 +229,7 @@ fn run_skill_loop(
             skill,
             &prompt,
             &source_references,
+            context.validator_context,
             context.project_root,
             context.permission_prompt,
         )?;

@@ -3,7 +3,8 @@ use std::path::Path;
 
 use super::AnalysisProvider;
 use crate::commands::audit::model::{
-    MiniPrompt, PermissionPromptSpec, ProviderSpec, SkillIterationResult, VulnerabilitySkill,
+    MiniPrompt, PermissionPromptSpec, ProviderSpec, SkillIterationResult, ValidatorContextMap,
+    VulnerabilitySkill,
 };
 
 #[derive(Debug, Default)]
@@ -23,6 +24,7 @@ impl AnalysisProvider for ScaffoldProvider {
         skill: &VulnerabilitySkill,
         prompt: &MiniPrompt,
         _source_references: &[String],
+        _validator_context: &ValidatorContextMap,
         _project_root: &Path,
         _permission_prompt: &PermissionPromptSpec,
     ) -> Result<SkillIterationResult> {

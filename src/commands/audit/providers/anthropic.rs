@@ -14,7 +14,8 @@ use super::{
     AnalysisProvider,
 };
 use crate::commands::audit::model::{
-    MiniPrompt, PermissionPromptSpec, ProviderSpec, SkillIterationResult, VulnerabilitySkill,
+    MiniPrompt, PermissionPromptSpec, ProviderSpec, SkillIterationResult, ValidatorContextMap,
+    VulnerabilitySkill,
 };
 
 #[derive(Debug, Clone)]
@@ -40,6 +41,7 @@ impl AnalysisProvider for AnthropicProvider {
         skill: &VulnerabilitySkill,
         prompt: &MiniPrompt,
         source_references: &[String],
+        validator_context: &ValidatorContextMap,
         project_root: &Path,
         permission_prompt: &PermissionPromptSpec,
     ) -> Result<SkillIterationResult> {
@@ -51,8 +53,12 @@ impl AnalysisProvider for AnthropicProvider {
         })?;
 
         let system_prompt = build_agent_system_prompt();
-        let initial_user_prompt =
-            build_initial_user_prompt(prompt, source_references, permission_prompt);
+        let initial_user_prompt = build_initial_user_prompt(
+            prompt,
+            source_references,
+            validator_context,
+            permission_prompt,
+        );
 
         let mut messages = vec![serde_json::json!({
             "role": "user",
