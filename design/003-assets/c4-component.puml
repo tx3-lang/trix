@@ -1,0 +1,23 @@
+@startuml C4_Component_AikenVuln
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Component.puml
+
+Container_Boundary(aiken, "Audit Command Module") {
+  Component(cmd, "run(args, config, profile)", "mod.rs", "Scoped command entrypoint")
+  Component(skill_loader, "Skill Loader", "future module", "Loads one vulnerability skill at a time")
+  Component(mini_prompt, "Mini Prompt Builder", "future module", "Builds focused prompt for current skill")
+  Component(permission_prompt, "Permission Prompt Builder", "template contract", "Builds local command permission prompt")
+  Component(state_model, "State Model", "model.rs", "AnalysisStateJson + iteration contracts")
+  Component(state_store, "State Store", "future module", "Reads/writes incremental JSON state")
+  Component(report_renderer, "Report Renderer", "template contract", "Renders vulnerability markdown")
+  Component(provider_adapter, "Provider Adapter", "future trait", "Anthropic/other provider integration boundary")
+}
+
+Rel(cmd, skill_loader, "requests next skill")
+Rel(cmd, mini_prompt, "builds per-skill prompt")
+Rel(cmd, permission_prompt, "builds bounded execution prompt")
+Rel(cmd, state_model, "uses contracts")
+Rel(cmd, state_store, "persists each loop iteration")
+Rel(cmd, report_renderer, "renders final report")
+Rel(cmd, provider_adapter, "future: execute AI calls")
+
+@enduml

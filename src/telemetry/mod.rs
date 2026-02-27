@@ -1,7 +1,10 @@
 use tokio::{sync::OnceCell, task::JoinHandle};
 use tracing::debug;
 
-use crate::{cli::{Cli, Commands}, global::TelemetryConfig};
+use crate::{
+    cli::{Cli, Commands},
+    global::TelemetryConfig,
+};
 
 mod client;
 mod fingerprint;
@@ -40,6 +43,7 @@ impl From<&Cli> for Option<CommandMetric> {
             Commands::Inspect(_) => Some(CommandMetric::new("inspect")),
             Commands::Test(_) => Some(CommandMetric::new("test")),
             Commands::Identities(_) => Some(CommandMetric::new("identities")),
+            Commands::Audit(_) => Some(CommandMetric::new("audit")),
             Commands::Publish(_) => Some(CommandMetric::new("publish")),
             _ => None,
         }

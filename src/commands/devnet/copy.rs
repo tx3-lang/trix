@@ -77,22 +77,23 @@ async fn fetch_utxo_deps(
         .into_diagnostic()?;
 
     if let Some(tx) = tx
-        && let Some(tx) = tx.parsed {
-            let utxos = client
-                .read_utxos(
-                    tx.inputs
-                        .iter()
-                        .map(|r| TxoRef {
-                            hash: r.tx_hash.clone(),
-                            index: r.output_index,
-                        })
-                        .collect(),
-                )
-                .await
-                .into_diagnostic()?;
+        && let Some(tx) = tx.parsed
+    {
+        let utxos = client
+            .read_utxos(
+                tx.inputs
+                    .iter()
+                    .map(|r| TxoRef {
+                        hash: r.tx_hash.clone(),
+                        index: r.output_index,
+                    })
+                    .collect(),
+            )
+            .await
+            .into_diagnostic()?;
 
-            return Ok(utxos);
-        }
+        return Ok(utxos);
+    }
 
     Ok(vec![])
 }

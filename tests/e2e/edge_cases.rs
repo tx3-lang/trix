@@ -40,3 +40,42 @@ fn init_preserves_existing_test_file() {
     ctx.assert_file_contains("tests/basic.toml", "# Custom test file");
     ctx.assert_file_contains("tests/basic.toml", "name = \"custom\"");
 }
+
+#[test]
+#[cfg(feature = "unstable")]
+fn aiken_audit_fails_without_trix_config() {
+    let ctx = TestContext::new();
+    let result = ctx.run_trix(&["audit"]);
+
+    assert!(
+        !result.success(),
+        "audit should fail outside scoped project"
+    );
+    assert!(
+        result
+            .stderr
+            .contains("No trix.toml found in current directory"),
+        "Expected missing trix.toml error, got stderr: {}",
+        result.stderr
+    );
+}
+
+#[test]
+#[cfg(feature = "unstable")]
+fn aiken_audit_fails_with_missing_skills_dir() {
+    let ctx = TestContext::new();
+    let init_result = ctx.run_trix(&["init", "--yes"]);
+    assert_success(&init_result);
+
+    let result = ctx.run_trix(&["audit", "--skills-dir", "skills/does-not-exist"]);
+
+    assert!(
+        !result.success(),
+        "audit should fail with invalid skills dir"
+    );
+    assert!(
+        result.stderr.contains("Audit skills directory not found"),
+        "Expected missing skills directory error, got stderr: {}",
+        result.stderr
+    );
+}

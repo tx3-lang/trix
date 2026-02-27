@@ -1,5 +1,7 @@
 use super::*;
 use std::path::PathBuf;
+#[cfg(feature = "unstable")]
+use trix::commands::audit::model::AnalysisStateJson;
 use trix::config::KnownLedgerFamily;
 
 #[test]
@@ -143,4 +145,36 @@ fn devnet_starts_and_cshell_connects() {
     let _ = std::process::Command::new("pkill")
         .args(["-f", "dolos"])
         .output();
+}
+
+#[test]
+#[cfg(feature = "unstable")]
+fn aiken_audit_runs_in_initialized_project() {
+    let ctx = TestContext::new();
+    let init_result = ctx.run_trix(&["init", "--yes"]);
+    assert_success(&init_result);
+
+    let result = ctx.run_trix(&["audit"]);
+
+    assert_success(&result);
+    assert_output_contains(&result, "EXPERIMENTAL");
+
+    ctx.assert_file_exists(".tx3/audit/state.json");
+    ctx.assert_file_exists(".tx3/audit/aiken-ast.json");
+    ctx.assert_file_exists(".tx3/audit/vulnerabilities.md");
+
+    let state_content = ctx.read_file(".tx3/audit/state.json");
+    let state: AnalysisStateJson =
+        serde_json::from_str(&state_content).expect("state.json should be valid AnalysisStateJson");
+
+    assert_eq!(state.version, "1");
+    assert!(state.ast.is_some(), "expected AST metadata to be present");
+    assert!(
+        state.validator_context.validators.is_empty(),
+        "fresh init project should typically have no Aiken validators"
+    );
+    assert!(
+        !state.iterations.is_empty(),
+        "expected at least one analysis iteration"
+    );
 }

@@ -6,8 +6,8 @@ use std::{
 
 use askama::Template;
 
-use miette::{bail, Context as _, IntoDiagnostic as _};
-use serde::{de, Deserialize, Deserializer, Serialize};
+use miette::{Context as _, IntoDiagnostic as _, bail};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::config::{TrpConfig, U5cConfig};
 

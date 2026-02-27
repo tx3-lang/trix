@@ -54,6 +54,10 @@ pub enum Commands {
     /// Inspect and manage profiles
     Profile(commands::profile::Args),
 
+    /// Run vulnerability analysis scaffolding (UNSTABLE - This feature is experimental and may change)
+    #[command(hide = true)]
+    Audit(commands::audit::Args),
+
     /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
     #[command(hide = true)]
     Publish(commands::publish::Args),
