@@ -1,9 +1,10 @@
 use miette::{Context, IntoDiagnostic, Result};
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
 use tokio::runtime::Handle;
 
 use crate::commands::audit::model::{
@@ -56,6 +57,100 @@ struct RawReadRequest {
     glob: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct ReasoningStreamState {
+    pub(super) started: bool,
+    pub(super) line_break_emitted: bool,
+    pub(super) last_summary_index: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct ContentStreamState {
+    pub(super) started: bool,
+    pub(super) ends_with_newline: bool,
+}
+
+pub(super) fn stream_reasoning_delta_to_stdout(
+    enabled: bool,
+    state: &mut ReasoningStreamState,
+    delta: &str,
+) {
+    if !enabled || delta.is_empty() {
+        return;
+    }
+
+    let mut stdout = io::stdout().lock();
+
+    if !state.started {
+        let _ = writeln!(stdout, "🤖 🧠 Reasoning summary:");
+        state.started = true;
+    }
+
+    let _ = write!(stdout, "{}", delta);
+    let _ = stdout.flush();
+    state.line_break_emitted = false;
+}
+
+pub(super) fn emit_reasoning_line_break(enabled: bool, state: &mut ReasoningStreamState) {
+    if !enabled || !state.started || state.line_break_emitted {
+        return;
+    }
+
+    let mut stdout = io::stdout().lock();
+    let _ = writeln!(stdout);
+    let _ = stdout.flush();
+    state.line_break_emitted = true;
+}
+
+pub(super) fn emit_reasoning_double_line_break(enabled: bool, state: &mut ReasoningStreamState) {
+    if !enabled || !state.started || state.line_break_emitted {
+        return;
+    }
+
+    let mut stdout = io::stdout().lock();
+    let _ = write!(stdout, "\n\n");
+    let _ = stdout.flush();
+    state.line_break_emitted = true;
+}
+
+pub(super) fn finalize_reasoning_stdout(enabled: bool, state: &mut ReasoningStreamState) {
+    emit_reasoning_line_break(enabled, state);
+}
+
+pub(super) fn stream_content_delta_to_stdout(
+    enabled: bool,
+    state: &mut ContentStreamState,
+    delta: &str,
+) {
+    if !enabled || delta.is_empty() {
+        return;
+    }
+
+    let mut stdout = io::stdout().lock();
+
+    if !state.started {
+        let _ = write!(stdout, "🤖 ↳ Output: ");
+        state.started = true;
+        state.ends_with_newline = false;
+    }
+
+    let _ = write!(stdout, "{}", delta);
+    let _ = stdout.flush();
+
+    state.ends_with_newline = delta.ends_with('\n');
+}
+
+pub(super) fn finalize_content_stdout(enabled: bool, state: &mut ContentStreamState) {
+    if !enabled || !state.started || state.ends_with_newline {
+        return;
+    }
+
+    let mut stdout = io::stdout().lock();
+    let _ = writeln!(stdout);
+    let _ = stdout.flush();
+    state.ends_with_newline = true;
+}
+
 pub(super) fn build_agent_system_prompt() -> &'static str {
     AGENT_SYSTEM_PROMPT
 }
@@ -95,6 +190,144 @@ pub(super) fn build_tool_result_user_prompt(request: &ReadRequest, output: &str)
     TOOL_RESULT_PROMPT_TEMPLATE
         .replace("{{REQUEST}}", &format!("{:?}", request))
         .replace("{{OUTPUT}}", output)
+}
+
+pub(super) fn run_agent_loop<F>(
+    skill: &VulnerabilitySkill,
+    endpoint: &str,
+    ai_logs: bool,
+    project_root: &Path,
+    permission_prompt: &PermissionPromptSpec,
+    messages: &mut Vec<Value>,
+    provider_label: &str,
+    mut request_model: F,
+) -> Result<SkillIterationResult>
+where
+    F: FnMut(&[Value]) -> Result<String>,
+{
+    for step_idx in 0..MAX_AGENT_STEPS {
+        log_agent_progress(
+            ai_logs,
+            format!(
+                "Step {}/{} • requesting next action for skill '{}' ({})",
+                step_idx + 1,
+                MAX_AGENT_STEPS,
+                skill.id,
+                endpoint
+            ),
+        );
+
+        log_agent_progress(
+            ai_logs,
+            format!(
+                "🤔 Thinking… waiting for model response (step {}/{}, skill='{}')",
+                step_idx + 1,
+                MAX_AGENT_STEPS,
+                skill.id
+            ),
+        );
+
+        let request_started_at = Instant::now();
+        let response_content_result = request_model(messages.as_slice());
+        let elapsed = request_started_at.elapsed();
+
+        if let Err(error) = &response_content_result {
+            log_agent_progress(
+                ai_logs,
+                format!(
+                    "❌ Model request failed after {} ms: {}",
+                    elapsed.as_millis(),
+                    error
+                ),
+            );
+        } else {
+            log_agent_progress(
+                ai_logs,
+                format!("✅ Model response received in {} ms", elapsed.as_millis()),
+            );
+        }
+
+        let content = response_content_result?;
+
+        messages.push(json!({
+            "role": "assistant",
+            "content": content,
+        }));
+
+        log_agent_progress(ai_logs, format!("Model output:\n{}", &content));
+
+        match parse_agent_action(&content)? {
+            AgentAction::Final(parsed) => {
+                let findings = parsed
+                    .get("findings")
+                    .and_then(Value::as_array)
+                    .map(|items| items.len())
+                    .unwrap_or(0);
+                let status = parsed
+                    .get("status")
+                    .and_then(Value::as_str)
+                    .unwrap_or("completed");
+                let analysis_summary = parsed
+                    .get("analysis_summary")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.trim().is_empty());
+
+                if let Some(summary) = analysis_summary {
+                    log_agent_progress(ai_logs, format!("Model analysis summary:\n{}", summary));
+                }
+
+                log_agent_progress(
+                    ai_logs,
+                    format!(
+                        "Model completed skill '{}' at step {}/{} • status={} • findings={}",
+                        skill.id,
+                        step_idx + 1,
+                        MAX_AGENT_STEPS,
+                        status,
+                        findings
+                    ),
+                );
+
+                return Ok(iteration_from_parsed(skill, parsed));
+            }
+            AgentAction::ReadRequest(request) => {
+                log_agent_progress(
+                    ai_logs,
+                    format!("Model requested: {}", describe_read_request_friendly(&request)),
+                );
+
+                log_agent_progress(
+                    ai_logs,
+                    format!("Running local action: {}", summarize_read_request(&request)),
+                );
+
+                let output = execute_read_request(&request, project_root, permission_prompt)
+                    .unwrap_or_else(|error| format!("Request failed: {}", error));
+
+                log_agent_progress(
+                    ai_logs,
+                    format!(
+                        "Tool output:\n{}",
+                        render_tool_output_for_log(&request, &output)
+                    ),
+                );
+
+                log_agent_progress(ai_logs, "Sending tool output back to model");
+
+                messages.push(json!({
+                    "role": "user",
+                    "content": build_tool_result_user_prompt(&request, &output),
+                }));
+            }
+        }
+    }
+
+    Err(miette::miette!(
+        "{} exceeded max interactive read steps ({}) for skill '{}' (enable --ai-logs to inspect progress)",
+        provider_label,
+        MAX_AGENT_STEPS,
+        skill.id
+    ))
 }
 
 fn render_permission_prompt(permission_prompt: &PermissionPromptSpec) -> String {

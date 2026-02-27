@@ -1,14 +1,13 @@
 use miette::{Context, IntoDiagnostic, Result};
 use serde_json::{json, Value};
-use std::io::{self, Write};
 use std::path::Path;
-use std::time::Instant;
 
 use super::shared::{
     block_on_runtime_aware, build_agent_system_prompt, build_initial_user_prompt,
-    build_tool_result_user_prompt, describe_read_request_friendly, execute_read_request,
-    iteration_from_parsed, log_agent_progress, parse_agent_action,
-    render_tool_output_for_log, summarize_read_request, AgentAction, MAX_AGENT_STEPS,
+    emit_reasoning_double_line_break, emit_reasoning_line_break, finalize_content_stdout,
+    finalize_reasoning_stdout, log_agent_progress, run_agent_loop,
+    stream_content_delta_to_stdout, stream_reasoning_delta_to_stdout,
+    ContentStreamState, ReasoningStreamState,
 };
 use super::AnalysisProvider;
 use crate::commands::audit::model::{
@@ -212,66 +211,6 @@ fn normalize_responses_input_content(role: &str, content: &Value) -> Value {
     ])
 }
 
-#[derive(Debug, Clone, Copy, Default)]
-struct ReasoningStreamState {
-    started: bool,
-    line_break_emitted: bool,
-    last_summary_index: Option<i64>,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct ContentStreamState {
-    started: bool,
-    ends_with_newline: bool,
-}
-
-fn stream_reasoning_delta_to_stdout(
-    enabled: bool,
-    state: &mut ReasoningStreamState,
-    delta: &str,
-) {
-    if !enabled || delta.is_empty() {
-        return;
-    }
-
-    let mut stdout = io::stdout().lock();
-
-    if !state.started {
-        let _ = writeln!(stdout, "🤖 🧠 Reasoning summary:");
-        state.started = true;
-    }
-
-    let _ = write!(stdout, "{}", delta);
-    let _ = stdout.flush();
-    state.line_break_emitted = false;
-}
-
-fn emit_reasoning_line_break(enabled: bool, state: &mut ReasoningStreamState) {
-    if !enabled || !state.started || state.line_break_emitted {
-        return;
-    }
-
-    let mut stdout = io::stdout().lock();
-    let _ = writeln!(stdout);
-    let _ = stdout.flush();
-    state.line_break_emitted = true;
-}
-
-fn emit_reasoning_double_line_break(enabled: bool, state: &mut ReasoningStreamState) {
-    if !enabled || !state.started || state.line_break_emitted {
-        return;
-    }
-
-    let mut stdout = io::stdout().lock();
-    let _ = write!(stdout, "\n\n");
-    let _ = stdout.flush();
-    state.line_break_emitted = true;
-}
-
-fn finalize_reasoning_stdout(enabled: bool, state: &mut ReasoningStreamState) {
-    emit_reasoning_line_break(enabled, state);
-}
-
 fn extract_summary_index(event: &Value) -> Option<i64> {
     event
         .get("summary_index")
@@ -295,36 +234,6 @@ fn maybe_emit_reasoning_line_break_on_summary_change(
     }
 
     state.last_summary_index = Some(current_index);
-}
-
-fn stream_content_delta_to_stdout(enabled: bool, state: &mut ContentStreamState, delta: &str) {
-    if !enabled || delta.is_empty() {
-        return;
-    }
-
-    let mut stdout = io::stdout().lock();
-
-    if !state.started {
-        let _ = write!(stdout, "🤖 ↳ Output: ");
-        state.started = true;
-        state.ends_with_newline = false;
-    }
-
-    let _ = write!(stdout, "{}", delta);
-    let _ = stdout.flush();
-
-    state.ends_with_newline = delta.ends_with('\n');
-}
-
-fn finalize_content_stdout(enabled: bool, state: &mut ContentStreamState) {
-    if !enabled || !state.started || state.ends_with_newline {
-        return;
-    }
-
-    let mut stdout = io::stdout().lock();
-    let _ = writeln!(stdout);
-    let _ = stdout.flush();
-    state.ends_with_newline = true;
 }
 
 fn extract_chat_reasoning_delta(event: &Value) -> Option<String> {
@@ -521,7 +430,6 @@ async fn stream_chat_attempt(
 
     let mut pending = String::new();
     let mut model_output = String::new();
-    let mut reasoning_output = String::new();
     let mut reasoning_stream_state = ReasoningStreamState::default();
     let mut content_stream_state = ContentStreamState::default();
 
@@ -548,7 +456,6 @@ async fn stream_chat_attempt(
             };
 
             if let Some(reasoning_delta) = extract_chat_reasoning_delta(&event) {
-                reasoning_output.push_str(&reasoning_delta);
                 stream_reasoning_delta_to_stdout(
                     ai_logs,
                     &mut reasoning_stream_state,
@@ -572,8 +479,6 @@ async fn stream_chat_attempt(
             "Streaming response did not include content deltas"
         ));
     }
-
-    let _ = reasoning_output;
 
     Ok(model_output)
 }
@@ -605,7 +510,6 @@ async fn stream_responses_attempt(
 
     let mut pending = String::new();
     let mut model_output = String::new();
-    let mut reasoning_output = String::new();
     let mut reasoning_stream_state = ReasoningStreamState::default();
     let mut content_stream_state = ContentStreamState::default();
 
@@ -637,7 +541,6 @@ async fn stream_responses_attempt(
                     &mut reasoning_stream_state,
                     extract_summary_index(&event),
                 );
-                reasoning_output.push_str(&reasoning_delta);
                 stream_reasoning_delta_to_stdout(
                     ai_logs,
                     &mut reasoning_stream_state,
@@ -661,8 +564,6 @@ async fn stream_responses_attempt(
             "Streaming response did not include output text deltas"
         ));
     }
-
-    let _ = reasoning_output;
 
     Ok(model_output)
 }
@@ -812,83 +713,138 @@ impl AnalysisProvider for OpenAiProvider {
             }),
         ];
 
-        for step_idx in 0..MAX_AGENT_STEPS {
-            log_agent_progress(
-                self.ai_logs,
-                format!(
-                    "Step {}/{} • requesting next action for skill '{}' ({})",
-                    step_idx + 1,
-                    MAX_AGENT_STEPS,
-                    skill.id,
-                    self.endpoint
-                ),
-            );
+        run_agent_loop(
+            skill,
+            &self.endpoint,
+            self.ai_logs,
+            &canonical_root,
+            permission_prompt,
+            &mut messages,
+            "AI provider",
+            |messages| {
+                block_on_runtime_aware(async {
+                    let client = reqwest::Client::new();
+                    let reasoning_effort = self.reasoning_effort.as_deref();
 
-            log_agent_progress(
-                self.ai_logs,
-                format!(
-                    "🤔 Thinking… waiting for model response (step {}/{}, skill='{}')",
-                    step_idx + 1,
-                    MAX_AGENT_STEPS,
-                    skill.id
-                ),
-            );
+                    if self.ai_logs {
+                        let mut last_stream_error: Option<String> = None;
+                        let stream_payloads = match api_family {
+                            ApiFamily::ChatCompletions => build_chat_payload_variants(
+                                &self.model,
+                                messages,
+                                true,
+                                reasoning_effort,
+                                self.ollama_compat,
+                            ),
+                            ApiFamily::Responses => build_responses_payload_variants(
+                                &self.model,
+                                messages,
+                                true,
+                                reasoning_effort,
+                            ),
+                        };
 
-            let request_started_at = Instant::now();
-            let response_content_result = block_on_runtime_aware(async {
-                let client = reqwest::Client::new();
-                let reasoning_effort = self.reasoning_effort.as_deref();
+                        for (attempt_idx, stream_payload) in stream_payloads.iter().enumerate() {
+                            let stream_attempt = match api_family {
+                                ApiFamily::ChatCompletions => {
+                                    stream_chat_attempt(
+                                        &client,
+                                        &self.endpoint,
+                                        &self.api_key,
+                                        stream_payload,
+                                        self.ai_logs,
+                                    )
+                                    .await
+                                }
+                                ApiFamily::Responses => {
+                                    stream_responses_attempt(
+                                        &client,
+                                        &self.endpoint,
+                                        &self.api_key,
+                                        stream_payload,
+                                        self.ai_logs,
+                                    )
+                                    .await
+                                }
+                            };
 
-                if self.ai_logs {
-                    let mut last_stream_error: Option<String> = None;
-                    let stream_payloads = match api_family {
+                            match stream_attempt {
+                                Ok(content) => return Ok(content),
+                                Err(error) => {
+                                    last_stream_error = Some(error.to_string());
+                                    log_agent_progress(
+                                        self.ai_logs,
+                                        format!(
+                                            "⚠️ Streaming attempt {} failed: {}",
+                                            attempt_idx + 1,
+                                            error
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+
+                        if let Some(error) = last_stream_error {
+                            log_agent_progress(
+                                self.ai_logs,
+                                format!(
+                                    "⚠️ Streaming unavailable, falling back to non-stream request: {}",
+                                    error
+                                ),
+                            );
+                        }
+                    }
+
+                    let non_stream_payloads = match api_family {
                         ApiFamily::ChatCompletions => build_chat_payload_variants(
                             &self.model,
-                            &messages,
-                            true,
+                            messages,
+                            false,
                             reasoning_effort,
                             self.ollama_compat,
                         ),
                         ApiFamily::Responses => build_responses_payload_variants(
                             &self.model,
-                            &messages,
-                            true,
+                            messages,
+                            false,
                             reasoning_effort,
                         ),
                     };
 
-                    for (attempt_idx, stream_payload) in stream_payloads.iter().enumerate() {
-                        let stream_attempt = match api_family {
+                    let mut last_non_stream_error: Option<String> = None;
+
+                    for (attempt_idx, payload) in non_stream_payloads.iter().enumerate() {
+                        let request_result = match api_family {
                             ApiFamily::ChatCompletions => {
-                                stream_chat_attempt(
+                                non_stream_chat_attempt(
                                     &client,
                                     &self.endpoint,
                                     &self.api_key,
-                                    stream_payload,
+                                    payload,
                                     self.ai_logs,
                                 )
                                 .await
                             }
                             ApiFamily::Responses => {
-                                stream_responses_attempt(
+                                non_stream_responses_attempt(
                                     &client,
                                     &self.endpoint,
                                     &self.api_key,
-                                    stream_payload,
+                                    payload,
                                     self.ai_logs,
                                 )
                                 .await
                             }
                         };
 
-                        match stream_attempt {
+                        match request_result {
                             Ok(content) => return Ok(content),
                             Err(error) => {
-                                last_stream_error = Some(error.to_string());
+                                last_non_stream_error = Some(error.to_string());
                                 log_agent_progress(
                                     self.ai_logs,
                                     format!(
-                                        "⚠️ Streaming attempt {} failed: {}",
+                                        "⚠️ Non-stream attempt {} failed: {}",
                                         attempt_idx + 1,
                                         error
                                     ),
@@ -897,186 +853,12 @@ impl AnalysisProvider for OpenAiProvider {
                         }
                     }
 
-                    if let Some(error) = last_stream_error {
-                        log_agent_progress(
-                            self.ai_logs,
-                            format!(
-                                "⚠️ Streaming unavailable, falling back to non-stream request: {}",
-                                error
-                            ),
-                        );
-                    }
-                }
-
-                let non_stream_payloads = match api_family {
-                    ApiFamily::ChatCompletions => build_chat_payload_variants(
-                        &self.model,
-                        &messages,
-                        false,
-                        reasoning_effort,
-                        self.ollama_compat,
-                    ),
-                    ApiFamily::Responses => {
-                        build_responses_payload_variants(&self.model, &messages, false, reasoning_effort)
-                    }
-                };
-
-                let mut last_non_stream_error: Option<String> = None;
-
-                for (attempt_idx, payload) in non_stream_payloads.iter().enumerate() {
-                    let request_result = match api_family {
-                        ApiFamily::ChatCompletions => {
-                            non_stream_chat_attempt(
-                                &client,
-                                &self.endpoint,
-                                &self.api_key,
-                                payload,
-                                self.ai_logs,
-                            )
-                            .await
-                        }
-                        ApiFamily::Responses => {
-                            non_stream_responses_attempt(
-                                &client,
-                                &self.endpoint,
-                                &self.api_key,
-                                payload,
-                                self.ai_logs,
-                            )
-                            .await
-                        }
-                    };
-
-                    match request_result {
-                        Ok(content) => return Ok(content),
-                        Err(error) => {
-                            last_non_stream_error = Some(error.to_string());
-                            log_agent_progress(
-                                self.ai_logs,
-                                format!(
-                                    "⚠️ Non-stream attempt {} failed: {}",
-                                    attempt_idx + 1,
-                                    error
-                                ),
-                            );
-                        }
-                    }
-                }
-
-                Err(miette::miette!(
-                    "All non-stream model request attempts failed: {}",
-                    last_non_stream_error.unwrap_or_else(|| "unknown error".to_string())
-                ))
-            });
-
-            let elapsed = request_started_at.elapsed();
-
-            if let Err(error) = &response_content_result {
-                log_agent_progress(
-                    self.ai_logs,
-                    format!(
-                        "❌ Model request failed after {} ms: {}",
-                        elapsed.as_millis(),
-                        error
-                    ),
-                );
-            } else {
-                log_agent_progress(
-                    self.ai_logs,
-                    format!("✅ Model response received in {} ms", elapsed.as_millis()),
-                );
-            }
-
-            let content = response_content_result?;
-
-            messages.push(json!({
-                "role": "assistant",
-                "content": content,
-            }));
-
-            log_agent_progress(
-                self.ai_logs,
-                format!("Model output:\n{}", &content),
-            );
-
-            match parse_agent_action(&content)? {
-                AgentAction::Final(parsed) => {
-                    let findings = parsed
-                        .get("findings")
-                        .and_then(Value::as_array)
-                        .map(|items| items.len())
-                        .unwrap_or(0);
-                    let status = parsed
-                        .get("status")
-                        .and_then(Value::as_str)
-                        .unwrap_or("completed");
-                    let analysis_summary = parsed
-                        .get("analysis_summary")
-                        .and_then(Value::as_str)
-                        .filter(|value| !value.trim().is_empty());
-
-                    if let Some(summary) = analysis_summary {
-                        log_agent_progress(
-                            self.ai_logs,
-                            format!(
-                                "Model analysis summary:\n{}",
-                                summary
-                            ),
-                        );
-                    }
-
-                    log_agent_progress(
-                        self.ai_logs,
-                        format!(
-                            "Model completed skill '{}' at step {}/{} • status={} • findings={}",
-                            skill.id,
-                            step_idx + 1,
-                            MAX_AGENT_STEPS,
-                            status,
-                            findings
-                        ),
-                    );
-                    return Ok(iteration_from_parsed(skill, parsed));
-                }
-                AgentAction::ReadRequest(request) => {
-                    log_agent_progress(
-                        self.ai_logs,
-                        format!(
-                            "Model requested: {}",
-                            describe_read_request_friendly(&request)
-                        ),
-                    );
-
-                    log_agent_progress(
-                        self.ai_logs,
-                        format!("Running local action: {}", summarize_read_request(&request)),
-                    );
-
-                    let output = execute_read_request(&request, &canonical_root, permission_prompt)
-                        .unwrap_or_else(|error| format!("Request failed: {}", error));
-
-                    log_agent_progress(
-                        self.ai_logs,
-                        format!(
-                            "Tool output:\n{}",
-                            render_tool_output_for_log(&request, &output)
-                        ),
-                    );
-
-                    log_agent_progress(self.ai_logs, "Sending tool output back to model");
-
-                    messages.push(json!({
-                        "role": "user",
-                        "content": build_tool_result_user_prompt(&request, &output),
-                    }));
-                }
-            }
-        }
-
-        Err(miette::miette!(
-            "AI provider exceeded max interactive read steps ({}) for skill '{}' (enable --ai-logs to inspect progress)",
-            MAX_AGENT_STEPS,
-            skill.id
-        ))
+                    Err(miette::miette!(
+                        "All non-stream model request attempts failed: {}",
+                        last_non_stream_error.unwrap_or_else(|| "unknown error".to_string())
+                    ))
+                })
+            },
+        )
     }
 }
