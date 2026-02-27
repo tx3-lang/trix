@@ -13,7 +13,6 @@ use crate::commands::audit::model::{
 };
 
 pub(super) const MAX_AGENT_STEPS: usize = 25;
-const MAX_COMMAND_OUTPUT_CHARS: usize = 30_000;
 const AGENT_SYSTEM_PROMPT: &str =
     include_str!("../../../../templates/aiken/audit_agent_system_prompt.md");
 const INITIAL_USER_PROMPT_TEMPLATE: &str =
@@ -424,17 +423,6 @@ fn run_command_capture(command: &str, args: &[String], cwd: &Path) -> Result<Str
         ));
     }
 
-    if combined.chars().count() > MAX_COMMAND_OUTPUT_CHARS {
-        let truncated = combined
-            .chars()
-            .take(MAX_COMMAND_OUTPUT_CHARS)
-            .collect::<String>();
-        return Ok(format!(
-            "{}\n...(truncated to {} chars)",
-            truncated, MAX_COMMAND_OUTPUT_CHARS
-        ));
-    }
-
     Ok(combined)
 }
 
@@ -519,7 +507,6 @@ pub(super) fn describe_read_request_friendly(request: &ReadRequest) -> String {
 pub(super) fn render_tool_output_for_log(
     request: &ReadRequest,
     output: &str,
-    max_chars: usize,
 ) -> String {
     match request {
         ReadRequest::ReadFile { path } => {
@@ -529,22 +516,8 @@ pub(super) fn render_tool_output_for_log(
                 output.chars().count()
             )
         }
-        _ => truncate_for_log(output, max_chars),
+        _ => output.to_string(),
     }
-}
-
-pub(super) fn render_model_output_for_log(output: &str, max_chars: usize) -> String {
-    truncate_for_log(output, max_chars)
-}
-
-fn truncate_for_log(output: &str, max_chars: usize) -> String {
-    let char_count = output.chars().count();
-    if char_count <= max_chars {
-        return output.to_string();
-    }
-
-    let preview = output.chars().take(max_chars).collect::<String>();
-    format!("{}\n… (truncated, {} chars total)", preview, char_count)
 }
 
 pub(super) fn log_agent_progress(enabled: bool, message: impl AsRef<str>) {

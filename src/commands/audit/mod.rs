@@ -67,6 +67,10 @@ pub struct Args {
     #[arg(long, default_value_t = false)]
     pub ai_logs: bool,
 
+    /// Optional reasoning effort hint for OpenAI-compatible providers (e.g. low|medium|high).
+    #[arg(long)]
+    pub reasoning_effort: Option<String>,
+
     /// Path where the Aiken AST snapshot JSON will be written.
     #[arg(long, default_value = ".tx3/audit/aiken-ast.json")]
     pub ast_out: String,

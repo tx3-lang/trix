@@ -16,7 +16,7 @@ use self::anthropic::AnthropicProvider;
 use self::openai::OpenAiProvider;
 use self::scaffold::ScaffoldProvider;
 
-const DEFAULT_AI_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_AI_ENDPOINT: &str = "https://api.openai.com/v1/responses";
 const DEFAULT_AI_MODEL: &str = "gpt-4.1-mini";
 const DEFAULT_AI_API_KEY_ENV: &str = "OPENAI_API_KEY";
 const DEFAULT_ANTHROPIC_ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
@@ -69,6 +69,8 @@ pub fn build_provider(args: &Args) -> Result<Box<dyn AnalysisProvider>> {
                 api_key,
                 model,
                 ai_logs: args.ai_logs,
+                reasoning_effort: args.reasoning_effort.clone(),
+                ollama_compat: false,
             }))
         }
         "anthropic" => {
@@ -113,6 +115,8 @@ pub fn build_provider(args: &Args) -> Result<Box<dyn AnalysisProvider>> {
                 .clone()
                 .unwrap_or_else(|| DEFAULT_OLLAMA_MODEL.to_string()),
             ai_logs: args.ai_logs,
+            reasoning_effort: args.reasoning_effort.clone(),
+            ollama_compat: true,
         })),
         value => Err(miette::miette!(
             "Unsupported provider '{}'. Expected one of: scaffold, openai, anthropic, ollama",

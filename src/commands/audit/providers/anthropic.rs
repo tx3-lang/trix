@@ -6,7 +6,7 @@ use super::shared::{
     block_on_runtime_aware, build_agent_system_prompt, build_initial_user_prompt,
     build_tool_result_user_prompt,
     describe_read_request_friendly, execute_read_request, iteration_from_parsed, log_agent_progress,
-    parse_agent_action, render_model_output_for_log, render_tool_output_for_log,
+    parse_agent_action, render_tool_output_for_log,
     summarize_read_request, AgentAction,
     MAX_AGENT_STEPS,
 };
@@ -115,7 +115,7 @@ impl AnalysisProvider for AnthropicProvider {
                 self.ai_logs,
                 format!(
                     "Model output:\n{}",
-                    render_model_output_for_log(content, 2_000)
+                    &content
                 ),
             );
 
@@ -168,7 +168,7 @@ impl AnalysisProvider for AnthropicProvider {
                         self.ai_logs,
                         format!(
                             "Tool output:\n{}",
-                            render_tool_output_for_log(&request, &output, 2_000)
+                            render_tool_output_for_log(&request, &output)
                         ),
                     );
 
