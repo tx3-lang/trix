@@ -43,3 +43,24 @@ pub fn build_tii(source: &Path, output: &Path, config: &RootConfig) -> miette::R
 
     Ok(())
 }
+
+pub fn codegen(tii_path: &Path, templates: &Path, output: &Path) -> miette::Result<()> {
+    let tool_path = crate::home::tool_path("tx3c")?;
+
+    let mut cmd = Command::new(tool_path.to_str().unwrap_or_default());
+
+    cmd.args(["codegen", "--tii", tii_path.to_str().unwrap()]);
+    cmd.args(["--templates", templates.to_str().unwrap()]);
+    cmd.args(["--output", output.to_str().unwrap()]);
+
+    let output = cmd
+        .status()
+        .into_diagnostic()
+        .context("running tx3c codegen")?;
+
+    if !output.success() {
+        bail!("tx3c failed to run codegen");
+    }
+
+    Ok(())
+}
