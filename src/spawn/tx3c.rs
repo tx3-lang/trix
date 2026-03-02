@@ -50,7 +50,7 @@ pub fn codegen(tii_path: &Path, templates: &Path, output: &Path) -> miette::Resu
     let mut cmd = Command::new(tool_path.to_str().unwrap_or_default());
 
     cmd.args(["codegen", "--tii", tii_path.to_str().unwrap()]);
-    cmd.args(["--templates", templates.to_str().unwrap()]);
+    cmd.args(["--template", templates.to_str().unwrap()]);
     cmd.args(["--output", output.to_str().unwrap()]);
 
     let output = cmd
