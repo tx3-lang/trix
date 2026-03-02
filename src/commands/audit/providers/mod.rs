@@ -1,4 +1,5 @@
 mod anthropic;
+mod heuristic;
 mod openai;
 mod scaffold;
 mod shared;
@@ -6,13 +7,14 @@ mod shared;
 use miette::{Context, IntoDiagnostic, Result};
 use std::path::Path;
 
+use super::Args;
 use super::model::{
     MiniPrompt, PermissionPromptSpec, ProviderSpec, SkillIterationResult, ValidatorContextMap,
     VulnerabilitySkill,
 };
-use super::Args;
 
 use self::anthropic::AnthropicProvider;
+use self::heuristic::HeuristicProvider;
 use self::openai::OpenAiProvider;
 use self::scaffold::ScaffoldProvider;
 
@@ -52,6 +54,7 @@ fn load_api_key(api_key_env: &str, provider_name: &str) -> Result<String> {
 pub fn build_provider(args: &Args) -> Result<Box<dyn AnalysisProvider>> {
     match args.provider.to_ascii_lowercase().as_str() {
         "scaffold" => Ok(Box::new(ScaffoldProvider)),
+        "heuristic" => Ok(Box::new(HeuristicProvider)),
         "openai" => {
             let endpoint = args
                 .endpoint
@@ -114,7 +117,7 @@ pub fn build_provider(args: &Args) -> Result<Box<dyn AnalysisProvider>> {
             ollama_compat: true,
         })),
         value => Err(miette::miette!(
-            "Unsupported provider '{}'. Expected one of: scaffold, openai, anthropic, ollama",
+            "Unsupported provider '{}'. Expected one of: scaffold, heuristic, openai, anthropic, ollama",
             value
         )),
     }

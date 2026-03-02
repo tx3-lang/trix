@@ -1,15 +1,14 @@
 use miette::{Context, IntoDiagnostic, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::Path;
 
-use super::shared::{
-    block_on_runtime_aware, build_agent_system_prompt, build_initial_user_prompt,
-    emit_reasoning_double_line_break, emit_reasoning_line_break, finalize_content_stdout,
-    finalize_reasoning_stdout, log_agent_progress, run_agent_loop,
-    stream_content_delta_to_stdout, stream_reasoning_delta_to_stdout,
-    ContentStreamState, ReasoningStreamState,
-};
 use super::AnalysisProvider;
+use super::shared::{
+    ContentStreamState, ReasoningStreamState, block_on_runtime_aware, build_agent_system_prompt,
+    build_initial_user_prompt, emit_reasoning_double_line_break, emit_reasoning_line_break,
+    finalize_content_stdout, finalize_reasoning_stdout, log_agent_progress, run_agent_loop,
+    stream_content_delta_to_stdout, stream_reasoning_delta_to_stdout,
+};
 use crate::commands::audit::model::{
     MiniPrompt, PermissionPromptSpec, ProviderSpec, SkillIterationResult, ValidatorContextMap,
     VulnerabilitySkill,
@@ -227,10 +226,10 @@ fn maybe_emit_reasoning_line_break_on_summary_change(
         return;
     };
 
-    if let Some(previous_index) = state.last_summary_index {
-        if previous_index != current_index {
-            emit_reasoning_double_line_break(enabled, state);
-        }
+    if let Some(previous_index) = state.last_summary_index
+        && previous_index != current_index
+    {
+        emit_reasoning_double_line_break(enabled, state);
     }
 
     state.last_summary_index = Some(current_index);
@@ -310,28 +309,25 @@ fn extract_responses_content_delta(event: &Value) -> Option<String> {
 }
 
 fn extract_responses_output_text(response_json: &Value) -> Option<String> {
-    if let Some(output_text) = response_json.get("output_text").and_then(Value::as_str) {
-        if !output_text.trim().is_empty() {
-            return Some(output_text.to_string());
-        }
+    if let Some(output_text) = response_json.get("output_text").and_then(Value::as_str)
+        && !output_text.trim().is_empty()
+    {
+        return Some(output_text.to_string());
     }
 
     let mut chunks = Vec::new();
 
     if let Some(outputs) = response_json.get("output").and_then(Value::as_array) {
         for item in outputs {
-            let item_type = item
-                .get("type")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
+            let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
 
             if (item_type == "output_text" || item_type == "text")
                 && item.get("text").and_then(Value::as_str).is_some()
             {
-                if let Some(text) = item.get("text").and_then(Value::as_str) {
-                    if !text.trim().is_empty() {
-                        chunks.push(text.to_string());
-                    }
+                if let Some(text) = item.get("text").and_then(Value::as_str)
+                    && !text.trim().is_empty()
+                {
+                    chunks.push(text.to_string());
                 }
 
                 continue;
@@ -345,12 +341,10 @@ fn extract_responses_output_text(response_json: &Value) -> Option<String> {
                         .unwrap_or_default();
                     if (block_type == "output_text" || block_type == "text")
                         && block.get("text").and_then(Value::as_str).is_some()
+                        && let Some(text) = block.get("text").and_then(Value::as_str)
+                        && !text.trim().is_empty()
                     {
-                        if let Some(text) = block.get("text").and_then(Value::as_str) {
-                            if !text.trim().is_empty() {
-                                chunks.push(text.to_string());
-                            }
-                        }
+                        chunks.push(text.to_string());
                     }
                 }
             }
@@ -369,27 +363,24 @@ fn extract_responses_reasoning_summary(response_json: &Value) -> Option<String> 
 
     if let Some(outputs) = response_json.get("output").and_then(Value::as_array) {
         for item in outputs {
-            let item_type = item
-                .get("type")
-                .and_then(Value::as_str)
-                .unwrap_or_default();
+            let item_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
 
             if item_type != "reasoning" {
                 continue;
             }
 
-            if let Some(summary_text) = item.get("summary").and_then(Value::as_str) {
-                if !summary_text.trim().is_empty() {
-                    chunks.push(summary_text.to_string());
-                }
+            if let Some(summary_text) = item.get("summary").and_then(Value::as_str)
+                && !summary_text.trim().is_empty()
+            {
+                chunks.push(summary_text.to_string());
             }
 
             if let Some(summary_items) = item.get("summary").and_then(Value::as_array) {
                 for entry in summary_items {
-                    if let Some(text) = entry.get("text").and_then(Value::as_str) {
-                        if !text.trim().is_empty() {
-                            chunks.push(text.to_string());
-                        }
+                    if let Some(text) = entry.get("text").and_then(Value::as_str)
+                        && !text.trim().is_empty()
+                    {
+                        chunks.push(text.to_string());
                     }
                 }
             }
@@ -607,10 +598,7 @@ async fn non_stream_chat_attempt(
     {
         log_agent_progress(
             ai_logs,
-            format!(
-                "🧠 Model reasoning output:\n{}",
-                &reasoning_text
-            ),
+            format!("🧠 Model reasoning output:\n{}", &reasoning_text),
         );
     }
 
@@ -641,10 +629,7 @@ async fn non_stream_responses_attempt(
     if let Some(reasoning_summary) = extract_responses_reasoning_summary(&response_json) {
         log_agent_progress(
             ai_logs,
-            format!(
-                "🧠 Model reasoning summary:\n{}",
-                &reasoning_summary
-            ),
+            format!("🧠 Model reasoning summary:\n{}", &reasoning_summary),
         );
     }
 
@@ -685,12 +670,15 @@ impl AnalysisProvider for OpenAiProvider {
         project_root: &Path,
         permission_prompt: &PermissionPromptSpec,
     ) -> Result<SkillIterationResult> {
-        let canonical_root = project_root.canonicalize().into_diagnostic().with_context(|| {
-            format!(
-                "Failed to canonicalize project root {}",
-                project_root.display()
-            )
-        })?;
+        let canonical_root = project_root
+            .canonicalize()
+            .into_diagnostic()
+            .with_context(|| {
+                format!(
+                    "Failed to canonicalize project root {}",
+                    project_root.display()
+                )
+            })?;
 
         let api_family = detect_api_family(&self.endpoint, self.ollama_compat);
 
@@ -715,12 +703,14 @@ impl AnalysisProvider for OpenAiProvider {
 
         run_agent_loop(
             skill,
-            &self.endpoint,
-            self.ai_logs,
-            &canonical_root,
-            permission_prompt,
+            super::shared::AgentLoopContext {
+                endpoint: &self.endpoint,
+                ai_logs: self.ai_logs,
+                project_root: &canonical_root,
+                permission_prompt,
+                provider_label: "AI provider",
+            },
             &mut messages,
-            "AI provider",
             |messages| {
                 block_on_runtime_aware(async {
                     let client = reqwest::Client::new();

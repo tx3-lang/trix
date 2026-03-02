@@ -1,6 +1,6 @@
 use miette::{Context, IntoDiagnostic, Result};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -9,8 +9,7 @@ use tokio::runtime::Handle;
 
 use crate::commands::audit::model::{
     MiniPrompt, PermissionPromptSpec, SkillIterationResult, ValidatorContextMap,
-    VulnerabilityFinding,
-    VulnerabilitySkill,
+    VulnerabilityFinding, VulnerabilitySkill,
 };
 
 pub(super) const MAX_AGENT_STEPS: usize = 25;
@@ -175,7 +174,10 @@ pub(super) fn build_initial_user_prompt(
 ) -> String {
     INITIAL_USER_PROMPT_TEMPLATE
         .replace("{{SKILL}}", &prompt.text)
-        .replace("{{SOURCE_REFERENCES}}", &render_source_references(source_references))
+        .replace(
+            "{{SOURCE_REFERENCES}}",
+            &render_source_references(source_references),
+        )
         .replace(
             "{{VALIDATOR_CONTEXT_MAP}}",
             &render_validator_context_map(validator_context),
@@ -192,19 +194,31 @@ pub(super) fn build_tool_result_user_prompt(request: &ReadRequest, output: &str)
         .replace("{{OUTPUT}}", output)
 }
 
+pub(super) struct AgentLoopContext<'a> {
+    pub(super) endpoint: &'a str,
+    pub(super) ai_logs: bool,
+    pub(super) project_root: &'a Path,
+    pub(super) permission_prompt: &'a PermissionPromptSpec,
+    pub(super) provider_label: &'a str,
+}
+
 pub(super) fn run_agent_loop<F>(
     skill: &VulnerabilitySkill,
-    endpoint: &str,
-    ai_logs: bool,
-    project_root: &Path,
-    permission_prompt: &PermissionPromptSpec,
+    context: AgentLoopContext<'_>,
     messages: &mut Vec<Value>,
-    provider_label: &str,
     mut request_model: F,
 ) -> Result<SkillIterationResult>
 where
     F: FnMut(&[Value]) -> Result<String>,
 {
+    let AgentLoopContext {
+        endpoint,
+        ai_logs,
+        project_root,
+        permission_prompt,
+        provider_label,
+    } = context;
+
     for step_idx in 0..MAX_AGENT_STEPS {
         log_agent_progress(
             ai_logs,
@@ -293,7 +307,10 @@ where
             AgentAction::ReadRequest(request) => {
                 log_agent_progress(
                     ai_logs,
-                    format!("Model requested: {}", describe_read_request_friendly(&request)),
+                    format!(
+                        "Model requested: {}",
+                        describe_read_request_friendly(&request)
+                    ),
                 );
 
                 log_agent_progress(
@@ -337,7 +354,10 @@ fn render_permission_prompt(permission_prompt: &PermissionPromptSpec) -> String 
             "{{ allowed_commands }}",
             &permission_prompt.allowed_commands.join(", "),
         )
-        .replace("{{ scope_rules }}", &permission_prompt.scope_rules.join("\n- "))
+        .replace(
+            "{{ scope_rules }}",
+            &permission_prompt.scope_rules.join("\n- "),
+        )
 }
 
 fn render_source_references(source_references: &[String]) -> String {
@@ -500,7 +520,10 @@ fn enforce_read_scope(
         return Ok(());
     }
 
-    if matches!(request, ReadRequest::ListDir { .. } | ReadRequest::FindFiles { .. }) {
+    if matches!(
+        request,
+        ReadRequest::ListDir { .. } | ReadRequest::FindFiles { .. }
+    ) {
         return Err(miette::miette!(
             "Request denied by strict read scope: directory listing and file discovery are not allowed"
         ));
@@ -708,7 +731,11 @@ pub(super) fn summarize_read_request(request: &ReadRequest) -> String {
         ),
         ReadRequest::ListDir { path } => format!("list_dir {}", path),
         ReadRequest::FindFiles { path, glob } => {
-            format!("find_files path={} glob={}", path, glob.as_deref().unwrap_or("*"))
+            format!(
+                "find_files path={} glob={}",
+                path,
+                glob.as_deref().unwrap_or("*")
+            )
         }
     }
 }
@@ -737,10 +764,7 @@ pub(super) fn describe_read_request_friendly(request: &ReadRequest) -> String {
     }
 }
 
-pub(super) fn render_tool_output_for_log(
-    request: &ReadRequest,
-    output: &str,
-) -> String {
+pub(super) fn render_tool_output_for_log(request: &ReadRequest, output: &str) -> String {
     match request {
         ReadRequest::ReadFile { path } => {
             format!(

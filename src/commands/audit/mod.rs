@@ -11,10 +11,10 @@ pub mod providers;
 
 use self::ast::generate_ast_and_validator_context;
 use self::model::{
-    AnalysisStateJson, MiniPrompt, PermissionPromptSpec, SkillIterationResult,
-    ValidatorContextMap, VulnerabilityFinding, VulnerabilityReportSpec, VulnerabilitySkill,
+    AnalysisStateJson, MiniPrompt, PermissionPromptSpec, SkillIterationResult, ValidatorContextMap,
+    VulnerabilityFinding, VulnerabilityReportSpec, VulnerabilitySkill,
 };
-use self::providers::{build_provider, AnalysisProvider};
+use self::providers::{AnalysisProvider, build_provider};
 
 const DEFAULT_SKILLS_DIR: &str = "skills/vulnerabilities";
 
@@ -47,7 +47,7 @@ pub struct Args {
     #[arg(long, default_value = "skills/vulnerabilities")]
     pub skills_dir: String,
 
-    /// Analysis provider: scaffold | openai | anthropic | ollama
+    /// Analysis provider: scaffold | heuristic | openai | anthropic | ollama
     #[arg(long, default_value = "scaffold")]
     pub provider: String,
 
@@ -111,11 +111,7 @@ pub fn _run(args: Args, config: &RootConfig, _profile: &ProfileConfig) -> Result
     run_analysis(args, config, provider.as_ref())
 }
 
-fn run_analysis(
-    args: Args,
-    config: &RootConfig,
-    provider: &dyn AnalysisProvider,
-) -> Result<()> {
+fn run_analysis(args: Args, config: &RootConfig, provider: &dyn AnalysisProvider) -> Result<()> {
     let skills_dir = PathBuf::from(&args.skills_dir);
     let state_out = PathBuf::from(&args.state_out);
     let report_out = PathBuf::from(&args.report_out);
@@ -396,7 +392,8 @@ fn build_permission_prompt_spec(
         );
     } else {
         scope_rules.push(
-            "Read scope is workspace: any path under project root can be read/searched.".to_string(),
+            "Read scope is workspace: any path under project root can be read/searched."
+                .to_string(),
         );
     }
 
@@ -541,7 +538,9 @@ fn parse_skill_content(path: &Path, content: &str) -> Result<VulnerabilitySkill>
         false_positives: parsed.false_positives,
         references: parsed.references,
         tags: parsed.tags,
-        confidence_hint: parsed.confidence_hint.filter(|value| !value.trim().is_empty()),
+        confidence_hint: parsed
+            .confidence_hint
+            .filter(|value| !value.trim().is_empty()),
         guidance_markdown: body.trim().to_string(),
     })
 }
@@ -559,9 +558,7 @@ fn split_frontmatter(content: &str) -> Result<(String, String)> {
     };
 
     if first_line.trim() != "---" {
-        return Err(miette::miette!(
-            "Missing frontmatter start delimiter `---`"
-        ));
+        return Err(miette::miette!("Missing frontmatter start delimiter `---`"));
     }
 
     let mut frontmatter_lines = Vec::new();
@@ -576,9 +573,7 @@ fn split_frontmatter(content: &str) -> Result<(String, String)> {
     }
 
     if !found_end {
-        return Err(miette::miette!(
-            "Missing frontmatter end delimiter `---`"
-        ));
+        return Err(miette::miette!("Missing frontmatter end delimiter `---`"));
     }
 
     let body_lines = lines.collect::<Vec<_>>();

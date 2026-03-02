@@ -1,14 +1,14 @@
 use miette::{Context, IntoDiagnostic, Result};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::Path;
 
-use super::shared::{
-    block_on_runtime_aware, build_agent_system_prompt, build_initial_user_prompt,
-    emit_reasoning_double_line_break, emit_reasoning_line_break, finalize_content_stdout,
-    finalize_reasoning_stdout, log_agent_progress, run_agent_loop, stream_content_delta_to_stdout,
-    stream_reasoning_delta_to_stdout, ContentStreamState, ReasoningStreamState,
-};
 use super::AnalysisProvider;
+use super::shared::{
+    ContentStreamState, ReasoningStreamState, block_on_runtime_aware, build_agent_system_prompt,
+    build_initial_user_prompt, emit_reasoning_double_line_break, emit_reasoning_line_break,
+    finalize_content_stdout, finalize_reasoning_stdout, log_agent_progress, run_agent_loop,
+    stream_content_delta_to_stdout, stream_reasoning_delta_to_stdout,
+};
 use crate::commands::audit::model::{
     MiniPrompt, PermissionPromptSpec, ProviderSpec, SkillIterationResult, ValidatorContextMap,
     VulnerabilitySkill,
@@ -142,10 +142,10 @@ fn maybe_emit_reasoning_line_break_on_summary_change(
         return;
     };
 
-    if let Some(previous_index) = state.last_summary_index {
-        if previous_index != current_index {
-            emit_reasoning_double_line_break(enabled, state);
-        }
+    if let Some(previous_index) = state.last_summary_index
+        && previous_index != current_index
+    {
+        emit_reasoning_double_line_break(enabled, state);
     }
 
     state.last_summary_index = Some(current_index);
@@ -265,12 +265,11 @@ fn extract_anthropic_non_stream_content(response_json: &Value) -> Option<String>
                 .and_then(Value::as_str)
                 .unwrap_or_default();
 
-            if block_type == "text" {
-                if let Some(text) = block.get("text").and_then(Value::as_str) {
-                    if !text.trim().is_empty() {
-                        text_chunks.push(text.to_string());
-                    }
-                }
+            if block_type == "text"
+                && let Some(text) = block.get("text").and_then(Value::as_str)
+                && !text.trim().is_empty()
+            {
+                text_chunks.push(text.to_string());
             }
         }
     }
@@ -297,16 +296,14 @@ fn extract_anthropic_non_stream_reasoning(response_json: &Value) -> Option<Strin
                 .unwrap_or_default()
                 .to_ascii_lowercase();
 
-            if block_type.contains("thinking") || block_type.contains("reasoning") {
-                if let Some(text) = block
+            if (block_type.contains("thinking") || block_type.contains("reasoning"))
+                && let Some(text) = block
                     .get("thinking")
                     .and_then(Value::as_str)
                     .or_else(|| block.get("text").and_then(Value::as_str))
-                {
-                    if !text.trim().is_empty() {
-                        reasoning_chunks.push(text.to_string());
-                    }
-                }
+                && !text.trim().is_empty()
+            {
+                reasoning_chunks.push(text.to_string());
             }
         }
     }
@@ -466,12 +463,15 @@ impl AnalysisProvider for AnthropicProvider {
         project_root: &Path,
         permission_prompt: &PermissionPromptSpec,
     ) -> Result<SkillIterationResult> {
-        let canonical_root = project_root.canonicalize().into_diagnostic().with_context(|| {
-            format!(
-                "Failed to canonicalize project root {}",
-                project_root.display()
-            )
-        })?;
+        let canonical_root = project_root
+            .canonicalize()
+            .into_diagnostic()
+            .with_context(|| {
+                format!(
+                    "Failed to canonicalize project root {}",
+                    project_root.display()
+                )
+            })?;
 
         let system_prompt = build_agent_system_prompt();
         let initial_user_prompt = build_initial_user_prompt(
@@ -488,12 +488,14 @@ impl AnalysisProvider for AnthropicProvider {
 
         run_agent_loop(
             skill,
-            &self.endpoint,
-            self.ai_logs,
-            &canonical_root,
-            permission_prompt,
+            super::shared::AgentLoopContext {
+                endpoint: &self.endpoint,
+                ai_logs: self.ai_logs,
+                project_root: &canonical_root,
+                permission_prompt,
+                provider_label: "Anthropic provider",
+            },
             &mut messages,
-            "Anthropic provider",
             |messages| {
                 block_on_runtime_aware(async {
                     let client = reqwest::Client::new();
@@ -545,8 +547,12 @@ impl AnalysisProvider for AnthropicProvider {
                         }
                     }
 
-                    let non_stream_payloads =
-                        build_anthropic_payload_variants(&self.model, system_prompt, messages, false);
+                    let non_stream_payloads = build_anthropic_payload_variants(
+                        &self.model,
+                        system_prompt,
+                        messages,
+                        false,
+                    );
                     let mut last_non_stream_error: Option<String> = None;
 
                     for (attempt_idx, payload) in non_stream_payloads.iter().enumerate() {

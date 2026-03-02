@@ -3,8 +3,7 @@ use aiken_lang::{
         self, Annotation, ArgBy, ModuleKind, UntypedArg, UntypedDefinition, UntypedFunction,
         UntypedModule,
     },
-    parser,
-    version,
+    parser, version,
 };
 use chrono::Utc;
 use cryptoxide::{digest::Digest as _, sha2::Sha256};
@@ -57,7 +56,12 @@ pub fn generate_ast_and_validator_context(
     if ast_out_path.exists() && !no_ast_cache {
         let cached_text = std::fs::read_to_string(ast_out_path)
             .into_diagnostic()
-            .with_context(|| format!("Failed to read cached AST JSON at {}", ast_out_path.display()))?;
+            .with_context(|| {
+                format!(
+                    "Failed to read cached AST JSON at {}",
+                    ast_out_path.display()
+                )
+            })?;
 
         let cached_snapshot: AstSnapshot = serde_json::from_str(&cached_text)
             .into_diagnostic()
@@ -117,7 +121,7 @@ pub fn generate_ast_and_validator_context(
     })
 }
 
-    fn parse_module_snapshot(project_root: &Path, source_file: &Path) -> Result<ParsedModule> {
+fn parse_module_snapshot(project_root: &Path, source_file: &Path) -> Result<ParsedModule> {
     let src = std::fs::read_to_string(source_file)
         .into_diagnostic()
         .with_context(|| format!("Failed to read source file {}", source_file.display()))?;
@@ -170,7 +174,10 @@ fn build_validator_context_from_modules(modules: &[ParsedModule]) -> ValidatorCo
                         id,
                         module: module_snapshot.source_file.clone(),
                         source_file: module_snapshot.source_file.clone(),
-                        source_span: resolve_source_span(&module_snapshot.module, validator.location),
+                        source_span: resolve_source_span(
+                            &module_snapshot.module,
+                            validator.location,
+                        ),
                         handlers,
                     })
                 })
@@ -261,7 +268,11 @@ fn annotation_to_string(annotation: &Annotation) -> String {
                 .join(", ")
         ),
         Annotation::Pair { fst, snd, .. } => {
-            format!("Pair<{}, {}>", annotation_to_string(fst), annotation_to_string(snd))
+            format!(
+                "Pair<{}, {}>",
+                annotation_to_string(fst),
+                annotation_to_string(snd)
+            )
         }
     }
 }
@@ -427,7 +438,10 @@ validator alpha {
         let err = generate_ast_and_validator_context(root, &[source], &ast_out, false)
             .expect_err("expected invalid cached ast json failure");
 
-        assert!(err.to_string().contains("AST output unreadable/invalid JSON"));
+        assert!(
+            err.to_string()
+                .contains("AST output unreadable/invalid JSON")
+        );
     }
 
     #[test]
