@@ -479,6 +479,14 @@ fn load_embedded_seed_skills() -> Result<Vec<VulnerabilitySkill>> {
             Path::new("skills/vulnerabilities/001-strict-value-equality.md"),
             include_str!("../../../skills/vulnerabilities/001-strict-value-equality.md"),
         ),
+        (
+            Path::new("skills/vulnerabilities/002-missing-address-validation.md"),
+            include_str!("../../../skills/vulnerabilities/002-missing-address-validation.md"),
+        ),
+        (
+            Path::new("skills/vulnerabilities/003-unvalidated-datum.md"),
+            include_str!("../../../skills/vulnerabilities/003-unvalidated-datum.md"),
+        ),
     ];
 
     seed_files
