@@ -103,10 +103,7 @@ async fn extract_github_templates(
 }
 
 pub async fn run(_args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
-    let tii_temp = TempDir::new().into_diagnostic()?;
-    let tii_path = tii_temp.path().join("protocol.tii");
-
-    crate::spawn::tx3c::build_tii(&config.protocol.main, &tii_path, config)?;
+    let tii_path = crate::builder::build_tii(config)?;
 
     for codegen in config.codegen.iter() {
         let output_dir = codegen.output_dir()?;
