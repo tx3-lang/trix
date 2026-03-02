@@ -144,3 +144,39 @@ fn devnet_starts_and_cshell_connects() {
         .args(["-f", "dolos"])
         .output();
 }
+
+#[test]
+fn codegen_generates_bindings_from_fixture() {
+    let ctx = TestContext::new();
+
+    let init_result = ctx.run_trix(&["init", "--yes"]);
+    assert_success(&init_result);
+
+    let tx3c_path = ctx
+        .tx3c_path()
+        .expect("tx3c should be available in PATH or TX3_TX3C_PATH");
+    assert!(tx3c_path.is_file(), "tx3c path should exist");
+
+    let fixture_dir =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/e2e/fixtures/codegen-template");
+    let fixture_dir = fixture_dir
+        .to_str()
+        .expect("fixture path should be valid UTF-8");
+
+    let mut trix_toml = ctx.read_file("trix.toml");
+    trix_toml.push_str(&format!(
+        "\n[[codegen]]\noutput_dir = \"gen\"\nplugin = {{ repo = \"{}\", path = \".\" }}\n",
+        fixture_dir
+    ));
+    ctx.write_file("trix.toml", &trix_toml);
+
+    let result = ctx.run_trix(&["codegen"]);
+    assert_success(&result);
+
+    ctx.assert_file_exists("gen/bindings.txt");
+    ctx.assert_file_contains("gen/bindings.txt", "Protocol:");
+    ctx.assert_file_contains("gen/bindings.txt", "Transactions:");
+    ctx.assert_file_contains("gen/bindings.txt", "transfer");
+    ctx.assert_file_contains("gen/bindings.txt", "Profiles:");
+    ctx.assert_file_contains("gen/bindings.txt", "local");
+}

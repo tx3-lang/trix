@@ -222,22 +222,22 @@ impl From<KnownCodegenPlugin> for CodegenPluginConfig {
                 repo: "tx3-lang/web-sdk".to_string(),
                 // When web-sdk get updated, we need to change this path to bindgen/client-lib when we update the ref
                 path: ".trix/client-lib".to_string(),
-                r#ref: Some("bindgen-v1alpha2".to_string()),
+                r#ref: Some("codegen-v1beta0".to_string()),
             },
             KnownCodegenPlugin::RustClient => CodegenPluginConfig {
                 repo: "tx3-lang/rust-sdk".to_string(),
                 path: ".trix/client-lib".to_string(),
-                r#ref: Some("bindgen-v1alpha2".to_string()),
+                r#ref: Some("codegen-v1beta0".to_string()),
             },
             KnownCodegenPlugin::PythonClient => CodegenPluginConfig {
                 repo: "tx3-lang/python-sdk".to_string(),
                 path: ".trix/client-lib".to_string(),
-                r#ref: Some("bindgen-v1alpha2".to_string()),
+                r#ref: Some("codegen-v1beta0".to_string()),
             },
             KnownCodegenPlugin::GoClient => CodegenPluginConfig {
                 repo: "tx3-lang/go-sdk".to_string(),
                 path: ".trix/client-lib".to_string(),
-                r#ref: Some("bindgen-v1alpha2".to_string()),
+                r#ref: Some("codegen-v1beta0".to_string()),
             },
         }
     }
