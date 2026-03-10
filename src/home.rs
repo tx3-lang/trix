@@ -64,10 +64,15 @@ pub fn custom_tool_path(name: &str) -> miette::Result<Option<PathBuf>> {
 }
 
 pub fn tool_path(name: &str) -> miette::Result<PathBuf> {
-    match custom_tool_path(name)? {
-        Some(path) => Ok(path),
-        None => default_tool_path(name),
+    if let Some(path) = custom_tool_path(name)? {
+        return Ok(path);
     }
+
+    if let Ok(path) = which::which(name) {
+        return Ok(path);
+    }
+
+    default_tool_path(name)
 }
 
 #[allow(dead_code)]

@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.20.1] - UNRELEASED
+
+- Look on PATH for tools (e.g. tx3c)
+
 ## [0.20.0] - 2026-02-14
 
 ### 🚀 Features
