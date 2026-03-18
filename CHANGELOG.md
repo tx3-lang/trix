@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.0] - 2026-03-18
+
+### 🚜 Refactor
+
+- *(codegen)* Delegate rendering to tx3c (#104)
+
+### ⚙️ Miscellaneous Tasks
+
+- Update dolos to v1 and adjust config template (#106)
+
 ## [0.20.0] - 2026-02-14
 
 ### 🚀 Features
@@ -18,6 +28,7 @@ All notable changes to this project will be documented in this file.
 
 - V0.19.6
 - V0.19.7
+- V0.20.0
 
 ### 🧪 Testing
 
