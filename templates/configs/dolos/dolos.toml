@@ -5,6 +5,21 @@ block_production_interval = 5
 version = "v3"
 path = "data"
 
+[storage.wal]
+backend = "in_memory"
+
+[storage.state]
+backend = "in_memory"
+
+[storage.archive]
+backend = "in_memory"
+
+[storage.index]
+backend = "in_memory"
+
+[storage.mempool]
+backend = "in_memory"
+
 [genesis]
 force_protocol = 9
 byron_path = "./byron.json"
