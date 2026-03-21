@@ -219,7 +219,7 @@ impl std::fmt::Display for KnownCodegenPlugin {
 const CURRENT_CODEGEN_VERSION: &str = "bindgen-v1alpha2";
 
 #[cfg(feature = "unstable")]
-const CURRENT_CODEGEN_VERSION: &str = "bindgen-v1alpha2";
+const CURRENT_CODEGEN_VERSION: &str = "codegen-v1beta0";
 
 impl From<KnownCodegenPlugin> for CodegenPluginConfig {
     fn from(plugin: KnownCodegenPlugin) -> Self {
