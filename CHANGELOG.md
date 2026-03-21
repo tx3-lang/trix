@@ -2,7 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.21.1] - 2026-03-21
+
+### 🚀 Features
+
+- Add TII support in publish command (#107)
+
+### 🐛 Bug Fixes
+
+- *(codegen)* Bring back legacy codegen while we update sdks (#108)
+
 ## [0.21.0] - 2026-03-18
+
+### 💼 Other
+
+- V0.21.0
 
 ### 🚜 Refactor
 
