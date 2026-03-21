@@ -215,6 +215,12 @@ impl std::fmt::Display for KnownCodegenPlugin {
     }
 }
 
+#[cfg(not(feature = "unstable"))]
+const CURRENT_CODEGEN_VERSION: &str = "bindgen-v1alpha2";
+
+#[cfg(feature = "unstable")]
+const CURRENT_CODEGEN_VERSION: &str = "codegen-v1beta0";
+
 impl From<KnownCodegenPlugin> for CodegenPluginConfig {
     fn from(plugin: KnownCodegenPlugin) -> Self {
         match plugin {
@@ -222,22 +228,22 @@ impl From<KnownCodegenPlugin> for CodegenPluginConfig {
                 repo: "tx3-lang/web-sdk".to_string(),
                 // When web-sdk get updated, we need to change this path to bindgen/client-lib when we update the ref
                 path: ".trix/client-lib".to_string(),
-                r#ref: Some("codegen-v1beta0".to_string()),
+                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
             },
             KnownCodegenPlugin::RustClient => CodegenPluginConfig {
                 repo: "tx3-lang/rust-sdk".to_string(),
                 path: ".trix/client-lib".to_string(),
-                r#ref: Some("codegen-v1beta0".to_string()),
+                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
             },
             KnownCodegenPlugin::PythonClient => CodegenPluginConfig {
                 repo: "tx3-lang/python-sdk".to_string(),
                 path: ".trix/client-lib".to_string(),
-                r#ref: Some("codegen-v1beta0".to_string()),
+                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
             },
             KnownCodegenPlugin::GoClient => CodegenPluginConfig {
                 repo: "tx3-lang/go-sdk".to_string(),
                 path: ".trix/client-lib".to_string(),
-                r#ref: Some("codegen-v1beta0".to_string()),
+                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
             },
         }
     }
