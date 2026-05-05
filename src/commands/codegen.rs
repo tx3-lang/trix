@@ -121,7 +121,8 @@ pub async fn run(_args: Args, config: &RootConfig, _profile: &ProfileConfig) -> 
         };
 
         let template_temp = TempDir::new().into_diagnostic()?;
-        let templates_dir = extract_github_templates(&github_url, &template_temp, &plugin.path).await?;
+        let templates_dir =
+            extract_github_templates(&github_url, &template_temp, &plugin.path).await?;
 
         crate::spawn::tx3c::codegen(&tii_path, &templates_dir, &output_dir)?;
         println!("Bindgen successful");

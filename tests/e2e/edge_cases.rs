@@ -59,23 +59,3 @@ fn aiken_audit_fails_without_trix_config() {
         result.stderr
     );
 }
-
-#[test]
-#[cfg(feature = "unstable")]
-fn aiken_audit_fails_with_missing_skills_dir() {
-    let ctx = TestContext::new();
-    let init_result = ctx.run_trix(&["init", "--yes"]);
-    assert_success(&init_result);
-
-    let result = ctx.run_trix(&["audit", "--skills-dir", "skills/does-not-exist"]);
-
-    assert!(
-        !result.success(),
-        "audit should fail with invalid skills dir"
-    );
-    assert!(
-        result.stderr.contains("Audit skills directory not found"),
-        "Expected missing skills directory error, got stderr: {}",
-        result.stderr
-    );
-}

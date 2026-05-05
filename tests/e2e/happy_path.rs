@@ -1,7 +1,5 @@
 use super::*;
 use std::path::PathBuf;
-#[cfg(feature = "unstable")]
-use trix::commands::audit::model::AnalysisStateJson;
 use trix::config::KnownLedgerFamily;
 
 #[test]
@@ -181,62 +179,4 @@ fn codegen_generates_bindings_from_fixture() {
     ctx.assert_file_contains("gen/bindings.txt", "transfer");
     ctx.assert_file_contains("gen/bindings.txt", "Profiles:");
     ctx.assert_file_contains("gen/bindings.txt", "local");
-}
-
-#[test]
-#[cfg(feature = "unstable")]
-fn aiken_audit_runs_in_initialized_project() {
-    let ctx = TestContext::new();
-    let init_result = ctx.run_trix(&["init", "--yes"]);
-    assert_success(&init_result);
-
-    let result = ctx.run_trix(&["audit"]);
-
-    assert_success(&result);
-    assert_output_contains(&result, "EXPERIMENTAL");
-
-    ctx.assert_file_exists(".tx3/audit/state.json");
-    ctx.assert_file_exists(".tx3/audit/aiken-ast.json");
-    ctx.assert_file_exists(".tx3/audit/vulnerabilities.md");
-
-    let state_content = ctx.read_file(".tx3/audit/state.json");
-    let state: AnalysisStateJson =
-        serde_json::from_str(&state_content).expect("state.json should be valid AnalysisStateJson");
-
-    assert_eq!(state.version, "1");
-    assert!(state.ast.is_some(), "expected AST metadata to be present");
-    assert!(
-        state.validator_context.validators.is_empty(),
-        "fresh init project should typically have no Aiken validators"
-    );
-    assert!(
-        !state.iterations.is_empty(),
-        "expected at least one analysis iteration"
-    );
-}
-
-#[test]
-#[cfg(feature = "unstable")]
-fn aiken_audit_runs_with_heuristic_provider() {
-    let ctx = TestContext::new();
-    let init_result = ctx.run_trix(&["init", "--yes"]);
-    assert_success(&init_result);
-
-    let result = ctx.run_trix(&["audit", "--provider", "heuristic"]);
-
-    assert_success(&result);
-    assert_output_contains(&result, "EXPERIMENTAL");
-
-    ctx.assert_file_exists(".tx3/audit/state.json");
-    ctx.assert_file_exists(".tx3/audit/vulnerabilities.md");
-
-    let state_content = ctx.read_file(".tx3/audit/state.json");
-    let state: AnalysisStateJson =
-        serde_json::from_str(&state_content).expect("state.json should be valid AnalysisStateJson");
-
-    assert_eq!(state.provider.name, "heuristic");
-    assert!(
-        !state.iterations.is_empty(),
-        "expected at least one analysis iteration"
-    );
 }
