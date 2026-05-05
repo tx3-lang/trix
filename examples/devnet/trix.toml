@@ -29,7 +29,7 @@ output_dir = "./gen/typescript"
 [bindings.template]
 repo = "tx3-lang/web-sdk"
 path = ".trix/client-lib"
-ref = "bindgen-v1alpha2"
+ref = "codegen-v1beta0"
 
 [[wallets]]
 name = "alice"

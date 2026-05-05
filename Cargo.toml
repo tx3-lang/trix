@@ -1,7 +1,7 @@
 [package]
 name = "trix"
 description = "The Tx3 package manager"
-version = "0.20.0"
+version = "0.21.1"
 edition = "2024"
 repository = "https://github.com/tx3-lang/trix"
 homepage = "https://github.com/tx3-lang/trix"
@@ -19,7 +19,7 @@ utxorpc = "0.12.0"
 # utxorpc = { git = "https://github.com/utxorpc/rust-sdk.git" }
 # utxorpc = { path = "../../utxorpc/rust-sdk" }
 
-dolos-core = { git = "https://github.com/txpipe/dolos.git", tag = "v1.0.0-rc.9" }
+dolos-core = { git = "https://github.com/txpipe/dolos.git", tag = "v1.0.0" }
 
 # dolos-core = { path = "../dolos/crates/core" }
 # dolos-cardano = { path = "../dolos/crates/cardano" }

@@ -29,6 +29,10 @@ impl TestContext {
         cmd.args(args);
         cmd.current_dir(self.path());
 
+        for (key, value) in self.tool_envs() {
+            cmd.env(key, value);
+        }
+
         let output = cmd.output().expect("Failed to execute trix command");
 
         CommandResult {
@@ -36,6 +40,46 @@ impl TestContext {
             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
             status: output.status,
         }
+    }
+
+    /// Run trix command with environment overrides
+    pub fn run_trix_with_env(&self, args: &[&str], envs: &[(&str, &str)]) -> CommandResult {
+        let mut cmd = Command::cargo_bin("trix").expect("Failed to find trix binary");
+        cmd.args(args);
+        cmd.current_dir(self.path());
+
+        for (key, value) in self.tool_envs() {
+            cmd.env(key, value);
+        }
+
+        for (key, value) in envs {
+            cmd.env(key, value);
+        }
+
+        let output = cmd.output().expect("Failed to execute trix command");
+
+        CommandResult {
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            status: output.status,
+        }
+    }
+
+    pub fn tx3c_path(&self) -> Option<PathBuf> {
+        resolve_tool_path("tx3c")
+    }
+
+    fn tool_envs(&self) -> Vec<(String, String)> {
+        let mut envs = Vec::new();
+
+        if let Some(path) = resolve_tool_path("tx3c") {
+            envs.push((
+                "TX3_TX3C_PATH".to_string(),
+                path.to_string_lossy().to_string(),
+            ));
+        }
+
+        envs
     }
 
     /// Get full path to a file in the temp directory
@@ -165,3 +209,41 @@ pub fn is_process_running(_pid: u32) -> bool {
 pub mod edge_cases;
 pub mod happy_path;
 pub mod smoke;
+
+fn resolve_tool_path(tool: &str) -> Option<PathBuf> {
+    let env_var = format!("TX3_{}_PATH", tool.to_uppercase());
+    if let Ok(path) = std::env::var(&env_var) {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    let cargo_bin_var = format!("CARGO_BIN_EXE_{tool}");
+    if let Ok(path) = std::env::var(&cargo_bin_var) {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+
+    let cargo_home = std::env::var("CARGO_HOME")
+        .map(PathBuf::from)
+        .or_else(|_| {
+            std::env::var("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join(".cargo"))
+        })
+        .ok()?;
+
+    let mut path = cargo_home.join("bin").join(tool);
+    if cfg!(target_os = "windows") {
+        path.set_extension("exe");
+    }
+
+    if path.is_file() {
+        return Some(path);
+    }
+
+    None
+}

@@ -1,7 +1,6 @@
 pub mod audit;
 pub mod build;
 pub mod check;
-pub mod codegen;
 pub mod devnet;
 pub mod expect;
 pub mod explore;
@@ -13,3 +12,12 @@ pub mod profile;
 pub mod publish;
 pub mod telemetry;
 pub mod test;
+
+#[cfg(feature = "unstable")]
+pub mod codegen;
+
+#[cfg(not(feature = "unstable"))]
+pub mod codegen_legacy;
+
+#[cfg(not(feature = "unstable"))]
+pub use codegen_legacy as codegen;

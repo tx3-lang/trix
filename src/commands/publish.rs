@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 const MARKDOWN_MEDIA_TYPE: &str = "text/markdown";
 #[allow(dead_code)]
 const PROTOCOL_MEDIA_TYPE: &str = "application/tx3";
+#[allow(dead_code)]
+const TII_MEDIA_TYPE: &str = "application/tii+json";
 
 #[derive(ClapArgs)]
 /// Arguments for the publish command (UNSTABLE - experimental feature)
@@ -94,11 +96,20 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
 
     let protocol = std::fs::read_to_string(config.protocol.main.clone()).into_diagnostic()?;
 
+    let tii_path = crate::builder::build_tii(config)?;
+    let tii_content = std::fs::read_to_string(&tii_path).into_diagnostic()?;
+
     let mut image_layers = vec![oci_client::client::ImageLayer::new(
         protocol.as_bytes().to_vec(),
         PROTOCOL_MEDIA_TYPE.to_string(),
         None,
     )];
+
+    image_layers.push(oci_client::client::ImageLayer::new(
+        tii_content.as_bytes().to_vec(),
+        TII_MEDIA_TYPE.to_string(),
+        None,
+    ));
 
     if config.protocol.readme.is_some() {
         let readme =
