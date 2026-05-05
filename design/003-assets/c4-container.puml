@@ -1,0 +1,28 @@
+@startuml C4_Container_AikenVuln
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+Person(dev, "Developer")
+System_Boundary(trix, "Trix CLI") {
+  Container(cli, "Audit Command", "Rust + Clap", "CLI command entrypoint and argument handling")
+  Container(loop, "Skill Loop Engine", "Rust", "Iterates vulnerability skills and updates state")
+  Container(prompt, "Prompt Composer", "Rust + Templates", "Builds mini-prompts and permission prompt")
+  Container(state, "State Writer", "Rust + JSON", "Persists incremental analysis state")
+  Container(report, "Report Writer", "Rust + Markdown Templates", "Produces final vulnerability report")
+  Container(provider, "Provider Adapter (Future)", "Rust trait boundary", "Abstracts external AI service")
+}
+
+System_Ext(fs, "Local File System")
+System_Ext(ai, "External AI Provider (Future)")
+
+Rel(dev, cli, "Invokes")
+Rel(cli, loop, "Starts audit")
+Rel(loop, prompt, "Requests skill mini-prompts")
+Rel(loop, state, "Stores iteration results")
+Rel(loop, report, "Builds final findings report")
+Rel(loop, provider, "Future: asks for analysis")
+Rel(state, fs, "Writes state JSON")
+Rel(report, fs, "Writes markdown report")
+Rel(prompt, fs, "Reads skill files and templates")
+Rel(provider, ai, "Future network calls")
+
+@enduml

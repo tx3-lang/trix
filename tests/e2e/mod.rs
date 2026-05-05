@@ -206,6 +206,7 @@ pub fn is_process_running(_pid: u32) -> bool {
     true
 }
 
+pub mod audit_wrapper;
 pub mod edge_cases;
 pub mod happy_path;
 pub mod smoke;

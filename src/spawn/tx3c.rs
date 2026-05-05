@@ -1,6 +1,6 @@
 use std::{path::Path, process::Command};
 
-use miette::{bail, Context as _, IntoDiagnostic as _};
+use miette::{Context as _, IntoDiagnostic as _, bail};
 
 use crate::config::RootConfig;
 

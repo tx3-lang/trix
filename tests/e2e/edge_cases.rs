@@ -40,3 +40,22 @@ fn init_preserves_existing_test_file() {
     ctx.assert_file_contains("tests/basic.toml", "# Custom test file");
     ctx.assert_file_contains("tests/basic.toml", "name = \"custom\"");
 }
+
+#[test]
+#[cfg(feature = "unstable")]
+fn aiken_audit_fails_without_trix_config() {
+    let ctx = TestContext::new();
+    let result = ctx.run_trix(&["audit"]);
+
+    assert!(
+        !result.success(),
+        "audit should fail outside scoped project"
+    );
+    assert!(
+        result
+            .stderr
+            .contains("No trix.toml found in current directory"),
+        "Expected missing trix.toml error, got stderr: {}",
+        result.stderr
+    );
+}

@@ -4,8 +4,8 @@ use termimad::MadSkin;
 use crate::config::{NetworkConfig, ProfileConfig, RootConfig};
 
 use super::{
-    load_and_mask_env_vars, mask_value, resolve_network_source, resolve_profile_source,
     ConfigSource, EndpointView, EnvFileStatus, EnvFileView, IdentityView, NetworkView, ProfileView,
+    load_and_mask_env_vars, mask_value, resolve_network_source, resolve_profile_source,
 };
 
 // ============================================================================

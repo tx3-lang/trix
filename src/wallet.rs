@@ -6,7 +6,7 @@ use std::{
 use askama::Template as _;
 use bip39::Mnemonic;
 use cryptoxide::{digest::Digest, sha2::Sha256};
-use miette::{bail, Context, IntoDiagnostic as _, Result};
+use miette::{Context, IntoDiagnostic as _, Result, bail};
 
 use crate::{
     config::{IdentityConfig, NetworkConfig, ProfileConfig, RootConfig},

@@ -1,13 +1,12 @@
 use clap::Parser;
 
+use miette::{IntoDiagnostic as _, Result};
 use trix::{
-    builder,
     cli::{Cli, Commands},
     commands as cmds,
     config::RootConfig,
-    devnet, dirs, global, home, spawn, telemetry, updates, wallet,
+    global, telemetry, updates,
 };
-use miette::{IntoDiagnostic as _, Result};
 
 pub fn load_config() -> Result<Option<RootConfig>> {
     let current_dir = std::env::current_dir().into_diagnostic()?;
@@ -48,6 +47,7 @@ async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
         Commands::Build(args) => cmds::build::run(args, &config, &profile),
         Commands::Identities(args) => cmds::identities::run(args, &config, &profile),
         Commands::Profile(args) => cmds::profile::run(args, &config, &profile),
+        Commands::Audit(args) => cmds::audit::run(args, &config, &profile),
         Commands::Publish(args) => cmds::publish::run(args, &config),
         Commands::Telemetry(args) => cmds::telemetry::run(args),
     };
