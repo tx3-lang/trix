@@ -7,17 +7,17 @@ use crate::{
     builder,
     config::{ProfileConfig, RootConfig},
     dependencies,
-    refs::{ResolvedProtocol, Resolver, TxRef},
+    refs::{ProtocolRef, ResolvedProtocol, Resolver},
 };
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
-    /// Transaction reference. Bare names target the project's own protocol;
-    /// `<alias>::<tx>` or `<scope>/<name>:<version>::<tx>` target a
-    /// dependency. The tx portion may be omitted to keep the wallet's
-    /// interactive picker.
-    #[arg(long, value_parser = parse_tx)]
-    tx: Option<TxRef>,
+    /// Protocol to invoke against. Omit to use the project's own protocol;
+    /// pass a dependency alias (e.g. `widget`) or a full registry reference
+    /// (e.g. `acme/widget:0.1.0`) to invoke one of its transactions. The
+    /// specific transaction is always chosen interactively by the wallet.
+    #[arg(long, value_parser = parse_protocol)]
+    from: Option<ProtocolRef>,
 
     /// Args for the TX3 transaction as a raw JSON string.
     #[arg(long)]
@@ -32,8 +32,8 @@ pub struct Args {
     skip_submit: bool,
 }
 
-fn parse_tx(s: &str) -> Result<TxRef, String> {
-    TxRef::parse(s).map_err(|e| e.to_string())
+fn parse_protocol(s: &str) -> Result<ProtocolRef, String> {
+    ProtocolRef::parse(s).map_err(|e| e.to_string())
 }
 
 pub type ArgMap = serde_json::Map<String, serde_json::Value>;
@@ -87,13 +87,12 @@ pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::
 }
 
 fn resolve_tii_path(args: &Args, config: &RootConfig) -> miette::Result<PathBuf> {
-    let Some(tx) = &args.tx else {
+    let Some(from) = &args.from else {
         return builder::build_tii(config);
     };
 
     let resolver = Resolver::new(config);
-    let (resolved, _) = resolver.resolve_tx(tx)?;
-    match resolved {
+    match resolver.resolve_protocol(from)? {
         ResolvedProtocol::Project => builder::build_tii(config),
         ResolvedProtocol::Dependency(entry) => {
             let paths = dependencies::cache_paths(entry)?;
