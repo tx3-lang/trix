@@ -20,21 +20,26 @@ fn use_rejects_alias_only_reference() {
     );
 }
 
-/// Without a `[registry]` section, `trix use` refuses to talk to any
-/// registry (no silent default).
+/// A cloned/freshly-initialized project with no `[registry]` section can
+/// still consume an already-cached dependency — the registry URL falls back
+/// to the hardcoded default and is only contacted on a cache miss.
 #[test]
-fn use_fails_without_registry_configured() {
+fn check_works_without_registry_when_dep_cached() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
-    let result = ctx.run_trix(&["use", "acme/widget:0.1.0"]);
-    assert!(!result.success());
-    let combined = format!("{}{}", result.stdout, result.stderr);
+    // Sanity: fresh init has no [registry].
     assert!(
-        combined.contains("registry"),
-        "stderr should mention the missing [registry]:\n{}",
-        combined
+        ctx.load_trix_config().registry.is_none(),
+        "fresh init should not write a [registry] section"
     );
+
+    let digest = ctx.prime_dep_cache("acme", "widget", "0.1.0");
+    ctx.declare_dep("widget", "acme", "widget", "0.1.0", &digest);
+
+    let result = ctx.run_trix(&["check"]);
+    assert_success(&result);
+    assert_output_contains(&result, "check passed");
 }
 
 /// `trix check` succeeds when a dependency is present in the cache and

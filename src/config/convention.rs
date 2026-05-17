@@ -104,11 +104,29 @@ impl From<KnownProfile> for ProfileConfig {
     }
 }
 
+/// Default OCI registry used when `trix.toml` has no `[registry]` section.
+/// Keep this as the single source of truth — all call-sites resolve through
+/// [`RootConfig::registry_url`] rather than reading `config.registry` directly.
+pub const DEFAULT_REGISTRY_URL: &str = "https://oci.tx3.land";
+
 impl Default for RegistryConfig {
     fn default() -> Self {
         Self {
-            url: "https://tx3.land".to_string(),
+            url: DEFAULT_REGISTRY_URL.to_string(),
         }
+    }
+}
+
+impl RootConfig {
+    /// The registry URL to use: the explicit `[registry].url` from
+    /// `trix.toml` if present, otherwise [`DEFAULT_REGISTRY_URL`]. This makes
+    /// `trix use` / restore / publish work out of the box on a freshly
+    /// `init`ed or cloned project.
+    pub fn registry_url(&self) -> String {
+        self.registry
+            .as_ref()
+            .map(|r| r.url.clone())
+            .unwrap_or_else(|| DEFAULT_REGISTRY_URL.to_string())
     }
 }
 
@@ -426,4 +444,43 @@ fn is_valid_alias(s: &str) -> bool {
         return false;
     }
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_url_falls_back_to_default() {
+        let toml = r#"
+            [protocol]
+            name = "demo"
+            version = "0.0.0"
+            main = "main.tx3"
+
+            [ledger]
+            family = "cardano"
+        "#;
+        let config: RootConfig = toml::from_str(toml).unwrap();
+        assert!(config.registry.is_none());
+        assert_eq!(config.registry_url(), DEFAULT_REGISTRY_URL);
+    }
+
+    #[test]
+    fn registry_url_prefers_explicit() {
+        let toml = r#"
+            [protocol]
+            name = "demo"
+            version = "0.0.0"
+            main = "main.tx3"
+
+            [ledger]
+            family = "cardano"
+
+            [registry]
+            url = "https://example.test"
+        "#;
+        let config: RootConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.registry_url(), "https://example.test");
+    }
 }

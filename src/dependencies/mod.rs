@@ -123,12 +123,7 @@ pub fn verify_cached(entry: &DependencyEntry) -> Result<()> {
 
 /// Re-download and overwrite the cache for one dep.
 pub fn fetch(entry: &DependencyEntry, config: &RootConfig) -> Result<()> {
-    let registry_url = config
-        .registry
-        .as_ref()
-        .ok_or_else(|| miette::miette!("no [registry] configured in trix.toml"))?
-        .url
-        .clone();
+    let registry_url = config.registry_url();
 
     let oci_reference = crate::oci::reference_for(&registry_url, &entry.reference)?;
     let client = crate::oci::client_for(&registry_url);

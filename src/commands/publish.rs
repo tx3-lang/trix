@@ -12,7 +12,7 @@ pub struct Args {}
 
 #[allow(dead_code)]
 fn get_image_url(config: &RootConfig) -> String {
-    let registry_url = config.registry.clone().unwrap().url;
+    let registry_url = config.registry_url();
     format!(
         "{}/image/{}%2F{}/tag/{}",
         registry_url,
@@ -115,12 +115,7 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
         ])),
     );
 
-    let registry_url = config
-        .registry
-        .as_ref()
-        .ok_or_else(|| miette::miette!("No [registry] configured in trix.toml"))?
-        .url
-        .clone();
+    let registry_url = config.registry_url();
 
     let protocol_ref = ProtocolRef::Registry {
         scope: scope.clone(),

@@ -32,16 +32,7 @@ pub fn run(
     config: &RootConfig,
     _profile: &ProfileConfig,
 ) -> miette::Result<()> {
-    let registry_url = config
-        .registry
-        .as_ref()
-        .ok_or_else(|| {
-            miette::miette!(
-                "registry is not configured in trix.toml; add `[registry]` with `url = \"https://oci.tx3.land\"`"
-            )
-        })?
-        .url
-        .clone();
+    let registry_url = config.registry_url();
 
     // Default missing version to "latest" so the OCI client can resolve a tag.
     let request_ref = match args.reference.clone() {
