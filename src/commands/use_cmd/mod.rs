@@ -57,7 +57,7 @@ pub fn run(
     // Pin the concrete version. Prefer the publisher-recorded version from
     // the image config; fall back to the OCI tag if it was concrete; if both
     // are missing/`latest`, fall back to a short digest with a warning.
-    let pinned_version = pin_version(&request_ref, &pulled.metadata, &pulled.digest);
+    let pinned_version = pin_version(&request_ref, &pulled.metadata)?;
     let pinned_ref = match request_ref {
         ProtocolRef::Registry { scope, name, .. } => ProtocolRef::Registry {
             scope,
@@ -120,14 +120,19 @@ pub fn run(
     Ok(())
 }
 
+/// Resolves the concrete version to pin in `trix.toml` (and to use as the
+/// cache directory name). Prefers the publisher-recorded version from the
+/// image config, then a concrete request tag. We deliberately do NOT fall
+/// back to a digest-based pseudo-version: that would leak an opaque
+/// `sha256-…` string into trix.toml and the cache layout. A protocol with no
+/// concrete version is a publishing error the consumer can't paper over.
 fn pin_version(
     request: &ProtocolRef,
     metadata: &crate::oci::ImageMetadata,
-    digest: &str,
-) -> String {
+) -> miette::Result<String> {
     if let Some(v) = metadata.version.as_deref() {
         if !v.is_empty() && v != "latest" {
-            return v.to_string();
+            return Ok(v.to_string());
         }
     }
     if let ProtocolRef::Registry {
@@ -135,17 +140,13 @@ fn pin_version(
     } = request
     {
         if tag != "latest" {
-            return tag.clone();
+            return Ok(tag.clone());
         }
     }
-    eprintln!(
-        "warning: published image did not carry a concrete version; pinning by digest"
-    );
-    let short = digest
-        .strip_prefix("sha256:")
-        .map(|h| &h[..h.len().min(12)])
-        .unwrap_or(digest);
-    format!("sha256-{}", short)
+    Err(miette::miette!(
+        "the published image does not carry a concrete version and was requested by a mutable tag; \
+         ask the publisher to `trix publish` a concretely-versioned release, then `trix use <scope>/<name>:<version>`"
+    ))
 }
 
 fn scope_and_name(r: &ProtocolRef) -> (String, String) {
