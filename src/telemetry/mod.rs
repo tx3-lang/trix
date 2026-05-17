@@ -41,6 +41,7 @@ impl From<&Cli> for Option<CommandMetric> {
             Commands::Test(_) => Some(CommandMetric::new("test")),
             Commands::Identities(_) => Some(CommandMetric::new("identities")),
             Commands::Publish(_) => Some(CommandMetric::new("publish")),
+            Commands::Use(_) => Some(CommandMetric::new("use")),
             _ => None,
         }
     }

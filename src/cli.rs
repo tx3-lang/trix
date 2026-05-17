@@ -58,6 +58,10 @@ pub enum Commands {
     #[command(hide = true)]
     Publish(commands::publish::Args),
 
+    /// Add a published protocol as a dependency
+    #[command(name = "use")]
+    Use(commands::use_cmd::Args),
+
     /// Telemetry configuration. Trix collects anonymous usage data to improve the tool.
     Telemetry(commands::telemetry::Args),
 }

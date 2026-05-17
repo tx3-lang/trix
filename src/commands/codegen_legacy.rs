@@ -470,36 +470,88 @@ async fn execute_bindgen(
     Ok(())
 }
 
-pub async fn run(_args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
-    let mut ws = Workspace::from_file(&config.protocol.main)?;
+struct ProtocolBuild {
+    name: String,
+    version: String,
+    workspace: Workspace,
+    subdir: Option<String>,
+}
 
+fn build_workspace(source: &std::path::Path) -> miette::Result<Workspace> {
+    let mut ws = Workspace::from_file(source)?;
     ws.parse()?;
     ws.analyze()?;
     ws.lower()?;
+    Ok(ws)
+}
+
+fn collect_protocols(config: &RootConfig) -> miette::Result<Vec<ProtocolBuild>> {
+    let with_deps = !config.dependencies.is_empty();
+    let mut out = Vec::with_capacity(1 + config.dependencies.len());
+
+    out.push(ProtocolBuild {
+        name: config.protocol.name.clone(),
+        version: config.protocol.version.clone(),
+        workspace: build_workspace(&config.protocol.main)?,
+        subdir: if with_deps {
+            Some(config.protocol.name.clone())
+        } else {
+            None
+        },
+    });
+
+    for entry in config.dependencies.values() {
+        let paths = crate::dependencies::cache_paths(entry)?;
+        let version = match &entry.reference {
+            crate::refs::ProtocolRef::Registry {
+                version: Some(v), ..
+            } => v.clone(),
+            _ => "unknown".to_string(),
+        };
+        out.push(ProtocolBuild {
+            name: entry.alias.clone(),
+            version,
+            workspace: build_workspace(&paths.source)?,
+            subdir: Some(entry.alias.clone()),
+        });
+    }
+
+    Ok(out)
+}
+
+pub async fn run(_args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
+    config.validate_dependencies()?;
+    crate::dependencies::restore_all(config)?;
+
+    let protocols = collect_protocols(config)?;
 
     for codegen in config.codegen.iter() {
-        let output_dir = codegen.output_dir()?;
-
-        std::fs::create_dir_all(&output_dir).into_diagnostic()?;
+        let base_output_dir = codegen.output_dir()?;
+        std::fs::create_dir_all(&base_output_dir).into_diagnostic()?;
 
         let plugin = CodegenPluginConfig::from(codegen.plugin.clone());
-
         let network = config.resolve_profile_network(profile.name.as_str())?;
-
         let trp_config = &network.trp;
 
-        let job = Job {
-            name: config.protocol.name.clone(),
-            workspace: &ws,
-            dest_path: output_dir,
-            trp_endpoint: trp_config.url.clone(),
-            trp_headers: trp_config.headers.clone(),
-            env_args: HashMap::new(),
-            options: codegen.options.clone().unwrap_or_default(),
-        };
+        for protocol in &protocols {
+            let dest_path = match &protocol.subdir {
+                Some(sub) => base_output_dir.join(sub),
+                None => base_output_dir.clone(),
+            };
+            std::fs::create_dir_all(&dest_path).into_diagnostic()?;
 
-        execute_bindgen(&job, &plugin, &config.protocol.version).await?;
-        println!("Bindgen successful");
+            let job = Job {
+                name: protocol.name.clone(),
+                workspace: &protocol.workspace,
+                dest_path,
+                trp_endpoint: trp_config.url.clone(),
+                trp_headers: trp_config.headers.clone(),
+                env_args: HashMap::new(),
+                options: codegen.options.clone().unwrap_or_default(),
+            };
+            execute_bindgen(&job, &plugin, &protocol.version).await?;
+            println!("Bindgen successful for '{}'", protocol.name);
+        }
     }
 
     Ok(())

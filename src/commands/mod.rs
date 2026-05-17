@@ -11,6 +11,7 @@ pub mod profile;
 pub mod publish;
 pub mod telemetry;
 pub mod test;
+pub mod use_cmd;
 
 #[cfg(feature = "unstable")]
 pub mod codegen;

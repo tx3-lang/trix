@@ -1,0 +1,12 @@
+{
+  "tii": { "version": "v1alpha1" },
+  "protocol": { "scope": "acme", "name": "widget", "version": "0.1.0" },
+  "transactions": {
+    "widget_transfer": { "name": "widget_transfer" }
+  },
+  "parties": {
+    "Alice": {},
+    "Bob": {}
+  },
+  "profiles": {}
+}

@@ -1,59 +1,14 @@
 use crate::config::RootConfig;
+use crate::oci::{
+    self, ImageMetadata, MARKDOWN_MEDIA_TYPE, PROTOCOL_MEDIA_TYPE, TII_MEDIA_TYPE,
+};
+use crate::refs::ProtocolRef;
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic as _;
-use serde::{Deserialize, Serialize};
-
-#[allow(dead_code)]
-const MARKDOWN_MEDIA_TYPE: &str = "text/markdown";
-#[allow(dead_code)]
-const PROTOCOL_MEDIA_TYPE: &str = "application/tx3";
-#[allow(dead_code)]
-const TII_MEDIA_TYPE: &str = "application/tii+json";
 
 #[derive(ClapArgs)]
 /// Arguments for the publish command (UNSTABLE - experimental feature)
 pub struct Args {}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[allow(dead_code)]
-pub struct ImageMetadata {
-    pub name: String,
-    pub scope: String,
-    pub published_date: i64,
-    pub repository_url: Option<String>,
-    pub description: Option<String>,
-}
-
-#[allow(dead_code)]
-fn get_oci_client(config: &RootConfig) -> oci_client::Client {
-    let registry_url = config.registry.clone().unwrap().url;
-    let registry_protocol = registry_url.split("://").next().unwrap();
-
-    let client_config = oci_client::client::ClientConfig {
-        protocol: if registry_protocol == "http" {
-            oci_client::client::ClientProtocol::Http
-        } else {
-            oci_client::client::ClientProtocol::Https
-        },
-        ..Default::default()
-    };
-
-    oci_client::Client::new(client_config)
-}
-
-#[allow(dead_code)]
-fn get_oci_reference(config: &RootConfig) -> Result<oci_client::Reference, oci_client::ParseError> {
-    let registry_url = config.registry.clone().unwrap().url;
-    let registry_host = registry_url.split("://").collect::<Vec<_>>().pop().unwrap();
-    oci_client::Reference::try_from(format!(
-        "{}/{}/{}:{}",
-        registry_host,
-        config.protocol.scope.clone().unwrap(),
-        config.protocol.name.clone(),
-        config.protocol.version.clone()
-    ))
-}
 
 #[allow(dead_code)]
 fn get_image_url(config: &RootConfig) -> String {
@@ -82,6 +37,7 @@ pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     }
 }
 
+#[allow(dead_code)]
 pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     if config.protocol.scope.is_none() {
         return Err(miette::miette!("No scope found in trix.toml"));
@@ -89,6 +45,7 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
 
     let scope = config.protocol.scope.clone().unwrap();
     let name = config.protocol.name.clone();
+    let version = config.protocol.version.clone();
     let published_date = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -128,6 +85,7 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
             published_date,
             repository_url: None,
             description: config.protocol.description.clone(),
+            version: Some(version.clone()),
         })
         .into_diagnostic()?,
         media_type: oci_client::manifest::IMAGE_CONFIG_MEDIA_TYPE.to_string(),
@@ -148,7 +106,7 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
             ("org.opencontainers.image.title".to_string(), name.clone()),
             (
                 "org.opencontainers.image.version".to_string(),
-                config.protocol.version.to_string(),
+                version.clone(),
             ),
             (
                 "org.opencontainers.image.description".to_string(),
@@ -157,8 +115,21 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
         ])),
     );
 
-    let image_reference = get_oci_reference(config).into_diagnostic()?;
-    let oci_client = get_oci_client(config);
+    let registry_url = config
+        .registry
+        .as_ref()
+        .ok_or_else(|| miette::miette!("No [registry] configured in trix.toml"))?
+        .url
+        .clone();
+
+    let protocol_ref = ProtocolRef::Registry {
+        scope: scope.clone(),
+        name: name.clone(),
+        version: Some(version.clone()),
+    };
+    let image_reference = oci::reference_for(&registry_url, &protocol_ref)?;
+    let oci_client = oci::client_for(&registry_url);
+
     let digest = futures::executor::block_on(oci_client.push(
         &image_reference,
         &image_layers,

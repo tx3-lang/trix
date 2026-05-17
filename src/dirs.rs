@@ -46,3 +46,24 @@ pub fn target_dir(artifact_kind: &str) -> miette::Result<PathBuf> {
 
     Ok(target)
 }
+
+/// Root of the local dependency cache: `.tx3/protocols/`.
+pub fn protocols_cache_dir() -> miette::Result<PathBuf> {
+    target_dir("protocols")
+}
+
+/// Cache directory for a single protocol artifact:
+/// `.tx3/protocols/<scope>/<name>/<version>/`.
+/// Creates the directory tree if missing.
+pub fn protocol_cache_dir(scope: &str, name: &str, version: &str) -> miette::Result<PathBuf> {
+    let mut p = protocols_cache_dir()?;
+    p.push(scope);
+    p.push(name);
+    p.push(version);
+    if !p.exists() {
+        std::fs::create_dir_all(&p)
+            .into_diagnostic()
+            .context("creating protocol cache directory")?;
+    }
+    Ok(p)
+}
