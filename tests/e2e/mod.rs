@@ -268,6 +268,8 @@ pub fn is_process_running(_pid: u32) -> bool {
     true
 }
 
+#[cfg(feature = "unstable")]
+pub mod codegen_deps;
 pub mod edge_cases;
 pub mod happy_path;
 pub mod smoke;
