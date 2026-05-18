@@ -130,15 +130,18 @@ pub fn verify_cached(entry: &DependencyEntry) -> Result<CacheStatus> {
     Ok(CacheStatus::Valid)
 }
 
-/// Re-download and overwrite the cache for one dep.
-pub fn fetch(entry: &DependencyEntry, config: &RootConfig) -> Result<()> {
+/// Resolve + anonymously pull an OCI artifact for `reference` against the
+/// configured (or default) registry. Shared by `fetch` and `add`.
+fn pull_ref(config: &RootConfig, reference: &ProtocolRef) -> Result<oci::PulledArtifact> {
     let registry_url = config.registry_url();
+    let oci_reference = oci::reference_for(&registry_url, reference)?;
+    let client = oci::client_for(&registry_url);
+    futures::executor::block_on(oci::pull(&client, &oci_reference))
+}
 
-    let oci_reference = crate::oci::reference_for(&registry_url, &entry.reference)?;
-    let client = crate::oci::client_for(&registry_url);
-
-    let pulled =
-        futures::executor::block_on(crate::oci::pull(&client, &oci_reference))?;
+/// Re-download and overwrite the cache for one already-pinned dep.
+pub fn fetch(entry: &DependencyEntry, config: &RootConfig) -> Result<()> {
+    let pulled = pull_ref(config, &entry.reference)?;
 
     if pulled.digest != entry.digest {
         return Err(miette::miette!(
@@ -156,7 +159,7 @@ pub fn fetch(entry: &DependencyEntry, config: &RootConfig) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn write_cache(
+fn write_cache(
     paths: &CachePaths,
     pulled: &oci::PulledArtifact,
     entry: &DependencyEntry,
@@ -186,6 +189,153 @@ pub(crate) fn write_cache(
     let manifest_bytes = serde_json::to_vec_pretty(&manifest).into_diagnostic()?;
     std::fs::write(&paths.manifest, manifest_bytes).into_diagnostic()?;
     Ok(())
+}
+
+/// A request to add a dependency, mapped straight from the CLI.
+pub struct AddRequest {
+    /// As provided by the user; version is optional (defaults to `latest`).
+    pub reference: ProtocolRef,
+    /// `None` → derived from the reference's name.
+    pub alias: Option<String>,
+    /// Replace an existing entry with the same alias.
+    pub force: bool,
+    /// Pull + cache but do not modify `trix.toml`.
+    pub dry_run: bool,
+}
+
+/// Everything the command/view layer needs to report a completed `add`.
+pub struct AddOutcome {
+    pub alias: String,
+    pub reference: ProtocolRef,
+    pub digest: String,
+    pub cache_root: PathBuf,
+    pub transactions: Vec<String>,
+    pub replaced: bool,
+}
+
+/// Pull a protocol, pin it to a concrete version, cache it, and (unless
+/// `dry_run`) record it in `trix.toml`. This is the whole `trix use`
+/// operation; the command layer only maps CLI args in and a view out.
+pub fn add(config: &RootConfig, req: AddRequest) -> Result<AddOutcome> {
+    let request_ref = default_to_latest(req.reference);
+    let pulled = pull_ref(config, &request_ref)?;
+    let pinned_ref = pin_reference(&request_ref, &pulled.metadata)?;
+
+    let alias = req
+        .alias
+        .unwrap_or_else(|| pinned_ref.short_name().to_string());
+
+    let replaced = config.dependencies.contains_key(&alias);
+    if replaced && !req.force {
+        return Err(miette::miette!(
+            "alias '{}' already exists. Pass --force to replace, or --alias <name> to use a different one.",
+            alias
+        ));
+    }
+
+    let entry = DependencyEntry {
+        alias: alias.clone(),
+        reference: pinned_ref.clone(),
+        digest: pulled.digest.clone(),
+    };
+
+    // Validate the prospective config so a bad alias/ref is rejected with the
+    // same diagnostics as on-load validation, before we touch disk.
+    let mut next_config = config.clone();
+    next_config.dependencies.insert(alias.clone(), entry.clone());
+    next_config.validate_dependencies()?;
+
+    let paths = cache_paths(&entry)?;
+    write_cache(&paths, &pulled, &entry)?;
+
+    if !req.dry_run {
+        let trix_toml = crate::dirs::protocol_root()?.join("trix.toml");
+        next_config.save(&trix_toml)?;
+    }
+
+    Ok(AddOutcome {
+        alias,
+        transactions: discover_transactions(&pulled.tii),
+        reference: pinned_ref,
+        digest: pulled.digest,
+        cache_root: paths.root,
+        replaced,
+    })
+}
+
+fn default_to_latest(reference: ProtocolRef) -> ProtocolRef {
+    match reference {
+        ProtocolRef::Registry {
+            scope,
+            name,
+            version: None,
+        } => ProtocolRef::Registry {
+            scope,
+            name,
+            version: Some("latest".to_string()),
+        },
+        other => other,
+    }
+}
+
+/// Pin `request` to a concrete-version `ProtocolRef::Registry`.
+fn pin_reference(
+    request: &ProtocolRef,
+    metadata: &oci::ImageMetadata,
+) -> Result<ProtocolRef> {
+    let (scope, name) = match request {
+        ProtocolRef::Registry { scope, name, .. } => (scope.clone(), name.clone()),
+        ProtocolRef::Alias(a) => {
+            return Err(miette::miette!(
+                "'trix use' requires a registry reference (e.g. acme/widget:0.1.0), got alias '{}'",
+                a
+            ));
+        }
+    };
+    Ok(ProtocolRef::Registry {
+        scope,
+        name,
+        version: Some(pin_version(request, metadata)?),
+    })
+}
+
+/// Resolve the concrete version to pin (and to use as the cache directory
+/// name). Prefer the publisher-recorded version, then a concrete request
+/// tag. We deliberately do NOT fall back to a digest-based pseudo-version:
+/// that would leak an opaque `sha256-…` string into trix.toml and the cache
+/// layout. A protocol with no concrete version is a publishing error the
+/// consumer can't paper over.
+fn pin_version(request: &ProtocolRef, metadata: &oci::ImageMetadata) -> Result<String> {
+    if let Some(v) = metadata
+        .version
+        .as_deref()
+        .filter(|v| !v.is_empty() && *v != "latest")
+    {
+        return Ok(v.to_string());
+    }
+    if let ProtocolRef::Registry {
+        version: Some(tag), ..
+    } = request
+        && tag != "latest"
+    {
+        return Ok(tag.clone());
+    }
+    Err(miette::miette!(
+        "the published image does not carry a concrete version and was requested by a mutable tag; \
+         ask the publisher to `trix publish` a concretely-versioned release, then `trix use <scope>/<name>:<version>`"
+    ))
+}
+
+fn discover_transactions(tii_bytes: &[u8]) -> Vec<String> {
+    let Ok(json) = serde_json::from_slice::<serde_json::Value>(tii_bytes) else {
+        return Vec::new();
+    };
+    let Some(map) = json.get("transactions").and_then(|v| v.as_object()) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = map.keys().cloned().collect();
+    names.sort();
+    names
 }
 
 /// For every entry in `config.dependencies`, verify the cache. If a dep is

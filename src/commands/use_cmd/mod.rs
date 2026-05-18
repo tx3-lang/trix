@@ -1,7 +1,7 @@
 use clap::Args as ClapArgs;
 
-use crate::config::{DependencyEntry, ProfileConfig, RootConfig};
-use crate::dependencies;
+use crate::config::{ProfileConfig, RootConfig};
+use crate::dependencies::{self, AddRequest};
 use crate::refs::ProtocolRef;
 
 mod view;
@@ -27,135 +27,28 @@ pub struct Args {
     pub dry_run: bool,
 }
 
-pub fn run(
-    args: Args,
-    config: &RootConfig,
-    _profile: &ProfileConfig,
-) -> miette::Result<()> {
-    let registry_url = config.registry_url();
+pub fn run(args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
+    let dry_run = args.dry_run;
 
-    // Default missing version to "latest" so the OCI client can resolve a tag.
-    let request_ref = match args.reference.clone() {
-        ProtocolRef::Registry {
-            scope,
-            name,
-            version: None,
-        } => ProtocolRef::Registry {
-            scope,
-            name,
-            version: Some("latest".to_string()),
+    let outcome = dependencies::add(
+        config,
+        AddRequest {
+            reference: args.reference,
+            alias: args.alias,
+            force: args.force,
+            dry_run,
         },
-        other => other,
-    };
-
-    let oci_reference = crate::oci::reference_for(&registry_url, &request_ref)?;
-    let client = crate::oci::client_for(&registry_url);
-
-    let pulled =
-        futures::executor::block_on(crate::oci::pull(&client, &oci_reference))?;
-
-    // Pin the concrete version: prefer the publisher-recorded version from
-    // the image config, then a concrete request tag. A mutable-only tag is a
-    // hard error (see `pin_version`).
-    let pinned_version = pin_version(&request_ref, &pulled.metadata)?;
-    let pinned_ref = match request_ref {
-        ProtocolRef::Registry { scope, name, .. } => ProtocolRef::Registry {
-            scope,
-            name,
-            version: Some(pinned_version.clone()),
-        },
-        _ => unreachable!("parse_registry rejects aliases"),
-    };
-
-    let alias = args
-        .alias
-        .clone()
-        .unwrap_or_else(|| pinned_ref.short_name().to_string());
-
-    // Trial-validate against a hypothetical config to surface alias-conflict
-    // errors with the same diagnostics that load-time validation uses.
-    let mut next_config = config.clone();
-    let existing = next_config.dependencies.contains_key(&alias);
-    if existing && !args.force {
-        return Err(miette::miette!(
-            "alias '{}' already exists. Pass --force to replace, or --alias <name> to use a different one.",
-            alias
-        ));
-    }
-    next_config.dependencies.insert(
-        alias.clone(),
-        DependencyEntry {
-            alias: alias.clone(),
-            reference: pinned_ref.clone(),
-            digest: pulled.digest.clone(),
-        },
-    );
-    next_config.validate_dependencies()?;
-
-    let entry = next_config.dependencies.get(&alias).unwrap().clone();
-    let paths = dependencies::cache_paths(&entry)?;
-    dependencies::write_cache(&paths, &pulled, &entry)?;
-
-    if !args.dry_run {
-        let trix_toml = crate::dirs::protocol_root()?.join("trix.toml");
-        next_config.save(&trix_toml)?;
-    }
-
-    let transactions = discover_transactions(&pulled.tii);
+    )?;
 
     view::render(&view::UseView {
-        alias,
-        reference: pinned_ref.to_string(),
-        digest: pulled.digest,
-        cache_path: paths.root.display().to_string(),
-        transactions,
-        replaced: existing,
-        dry_run: args.dry_run,
+        alias: outcome.alias,
+        reference: outcome.reference.to_string(),
+        digest: outcome.digest,
+        cache_path: outcome.cache_root.display().to_string(),
+        transactions: outcome.transactions,
+        replaced: outcome.replaced,
+        dry_run,
     });
 
     Ok(())
 }
-
-/// Resolves the concrete version to pin in `trix.toml` (and to use as the
-/// cache directory name). Prefers the publisher-recorded version from the
-/// image config, then a concrete request tag. We deliberately do NOT fall
-/// back to a digest-based pseudo-version: that would leak an opaque
-/// `sha256-…` string into trix.toml and the cache layout. A protocol with no
-/// concrete version is a publishing error the consumer can't paper over.
-fn pin_version(
-    request: &ProtocolRef,
-    metadata: &crate::oci::ImageMetadata,
-) -> miette::Result<String> {
-    if let Some(v) = metadata
-        .version
-        .as_deref()
-        .filter(|v| !v.is_empty() && *v != "latest")
-    {
-        return Ok(v.to_string());
-    }
-    if let ProtocolRef::Registry {
-        version: Some(tag), ..
-    } = request
-    {
-        if tag != "latest" {
-            return Ok(tag.clone());
-        }
-    }
-    Err(miette::miette!(
-        "the published image does not carry a concrete version and was requested by a mutable tag; \
-         ask the publisher to `trix publish` a concretely-versioned release, then `trix use <scope>/<name>:<version>`"
-    ))
-}
-
-fn discover_transactions(tii_bytes: &[u8]) -> Vec<String> {
-    let Ok(json) = serde_json::from_slice::<serde_json::Value>(tii_bytes) else {
-        return Vec::new();
-    };
-    let Some(map) = json.get("transactions").and_then(|v| v.as_object()) else {
-        return Vec::new();
-    };
-    let mut names: Vec<String> = map.keys().cloned().collect();
-    names.sort();
-    names
-}
-
