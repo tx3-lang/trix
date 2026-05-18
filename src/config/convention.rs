@@ -389,12 +389,12 @@ impl RootConfig {
                     alias
                 ));
             }
-            if !is_valid_alias(alias) {
-                return Err(miette::miette!(
+            crate::refs::validate_ident(alias).map_err(|_| {
+                miette::miette!(
                     "dependency alias '{}' is not a valid identifier (must match [a-zA-Z_][a-zA-Z0-9_.-]*)",
                     alias
-                ));
-            }
+                )
+            })?;
             let (scope, name, version) = match &entry.reference {
                 ProtocolRef::Registry {
                     scope,
@@ -435,16 +435,6 @@ impl RootConfig {
     }
 }
 
-fn is_valid_alias(s: &str) -> bool {
-    let mut chars = s.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    if !(first.is_ascii_alphabetic() || first == '_') {
-        return false;
-    }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '-')
-}
 
 #[cfg(test)]
 mod tests {

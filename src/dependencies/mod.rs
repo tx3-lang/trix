@@ -22,6 +22,11 @@ use crate::config::{DependencyEntry, RootConfig};
 use crate::oci;
 use crate::refs::ProtocolRef;
 
+pub const CACHE_SOURCE_FILE: &str = "main.tx3";
+pub const CACHE_TII_FILE: &str = "main.tii";
+pub const CACHE_README_FILE: &str = "README.md";
+pub const CACHE_MANIFEST_FILE: &str = "metadata.json";
+
 pub struct CachePaths {
     pub root: PathBuf,
     pub source: PathBuf,
@@ -53,72 +58,76 @@ pub fn cache_paths(entry: &DependencyEntry) -> Result<CachePaths> {
     let (scope, name, version) = registry_parts(entry)?;
     let root = crate::dirs::protocol_cache_dir(scope, name, version)?;
     Ok(CachePaths {
-        source: root.join("main.tx3"),
-        tii: root.join("main.tii"),
-        readme: root.join("README.md"),
-        manifest: root.join("metadata.json"),
+        source: root.join(CACHE_SOURCE_FILE),
+        tii: root.join(CACHE_TII_FILE),
+        readme: root.join(CACHE_README_FILE),
+        manifest: root.join(CACHE_MANIFEST_FILE),
         root,
     })
 }
 
-/// Returns `Ok(())` only when the cache exists, parses, and the digest
-/// matches `entry.digest`. Returns `Err` (variant in the message) otherwise
-/// so the caller can decide whether to fetch or surface the error.
-pub fn verify_cached(entry: &DependencyEntry) -> Result<()> {
+/// Outcome of inspecting a dependency's local cache.
+pub enum CacheStatus {
+    /// Present, parses, and digest matches `trix.toml`.
+    Valid,
+    /// A required file is absent — the caller may fetch it.
+    Missing,
+    /// Present but inconsistent (digest mismatch, corrupt metadata, or a
+    /// malformed TII). The caller should surface this rather than refetch,
+    /// since cache and lockfile genuinely disagree.
+    Invalid(miette::Report),
+}
+
+/// Inspects the cache for `entry` in a single pass: at most one stat per
+/// file and one parse of metadata.json / main.tii. The outer `Result` is
+/// reserved for unexpected I/O failures.
+pub fn verify_cached(entry: &DependencyEntry) -> Result<CacheStatus> {
     let paths = cache_paths(entry)?;
+
+    let manifest_bytes = match std::fs::read(&paths.manifest) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(CacheStatus::Missing),
+        Err(e) => return Err(e).into_diagnostic(),
+    };
     if !paths.source.exists() {
-        return Err(miette::miette!(
-            "dependency '{}' cache missing: {}",
-            entry.alias,
-            paths.source.display()
-        ));
+        return Ok(CacheStatus::Missing);
     }
-    if !paths.tii.exists() {
-        return Err(miette::miette!(
-            "dependency '{}' cache missing TII: {}",
-            entry.alias,
-            paths.tii.display()
-        ));
-    }
-    if !paths.manifest.exists() {
-        return Err(miette::miette!(
-            "dependency '{}' cache missing manifest: {}",
-            entry.alias,
-            paths.manifest.display()
-        ));
-    }
-    let manifest_bytes = std::fs::read(&paths.manifest).into_diagnostic()?;
-    let manifest: ProtocolManifest = serde_json::from_slice(&manifest_bytes)
-        .into_diagnostic()
-        .map_err(|e| {
-            miette::miette!(
+
+    let manifest: ProtocolManifest = match serde_json::from_slice(&manifest_bytes) {
+        Ok(m) => m,
+        Err(e) => {
+            return Ok(CacheStatus::Invalid(miette::miette!(
                 "dependency '{}' cache has malformed metadata.json: {}",
                 entry.alias,
                 e
-            )
-        })?;
+            )));
+        }
+    };
     if manifest.digest != entry.digest {
-        return Err(miette::miette!(
+        return Ok(CacheStatus::Invalid(miette::miette!(
             "dependency '{}' cache digest '{}' does not match trix.toml digest '{}'. \
              Run `trix use --force {}` to refresh.",
             entry.alias,
             manifest.digest,
             entry.digest,
             entry.reference
-        ));
+        )));
     }
-    // Make sure the TII layer is at least well-formed JSON.
-    let tii_bytes = std::fs::read(&paths.tii).into_diagnostic()?;
-    serde_json::from_slice::<serde_json::Value>(&tii_bytes)
-        .into_diagnostic()
-        .map_err(|e| {
-            miette::miette!(
-                "dependency '{}' cached TII is not valid JSON: {}",
-                entry.alias,
-                e
-            )
-        })?;
-    Ok(())
+
+    let tii_bytes = match std::fs::read(&paths.tii) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(CacheStatus::Missing),
+        Err(e) => return Err(e).into_diagnostic(),
+    };
+    if let Err(e) = serde_json::from_slice::<serde_json::Value>(&tii_bytes) {
+        return Ok(CacheStatus::Invalid(miette::miette!(
+            "dependency '{}' cached TII is not valid JSON: {}",
+            entry.alias,
+            e
+        )));
+    }
+
+    Ok(CacheStatus::Valid)
 }
 
 /// Re-download and overwrite the cache for one dep.
@@ -189,18 +198,14 @@ pub fn restore_all(config: &RootConfig) -> Result<()> {
         return Ok(());
     }
     for entry in config.dependencies.values() {
-        if verify_cached(entry).is_ok() {
-            continue;
+        match verify_cached(entry)? {
+            CacheStatus::Valid => {}
+            CacheStatus::Invalid(report) => return Err(report),
+            CacheStatus::Missing => {
+                eprintln!("restoring dependency '{}'...", entry.alias);
+                fetch(entry, config)?;
+            }
         }
-        let paths = cache_paths(entry)?;
-        let cache_present = paths.source.exists() && paths.tii.exists() && paths.manifest.exists();
-        if cache_present {
-            // Re-verify to bubble the precise diagnostic (digest mismatch,
-            // malformed metadata, etc.) instead of obscuring it behind a fetch.
-            return verify_cached(entry);
-        }
-        eprintln!("restoring dependency '{}'...", entry.alias);
-        fetch(entry, config)?;
     }
     Ok(())
 }

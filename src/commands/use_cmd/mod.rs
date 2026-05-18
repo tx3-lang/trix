@@ -126,10 +126,12 @@ fn pin_version(
     request: &ProtocolRef,
     metadata: &crate::oci::ImageMetadata,
 ) -> miette::Result<String> {
-    if let Some(v) = metadata.version.as_deref() {
-        if !v.is_empty() && v != "latest" {
-            return Ok(v.to_string());
-        }
+    if let Some(v) = metadata
+        .version
+        .as_deref()
+        .filter(|v| !v.is_empty() && *v != "latest")
+    {
+        return Ok(v.to_string());
     }
     if let ProtocolRef::Registry {
         version: Some(tag), ..

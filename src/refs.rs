@@ -281,7 +281,7 @@ impl FromStr for TxRef {
 // Validation helpers
 // ============================================================================
 
-fn validate_ident(s: &str) -> Result<(), ParseError> {
+pub fn validate_ident(s: &str) -> Result<(), ParseError> {
     let mut chars = s.chars();
     let Some(first) = chars.next() else {
         return Err(ParseError::InvalidIdent(s.to_string()));
@@ -366,21 +366,21 @@ impl<'a> Resolver<'a> {
                 let Some(entry) = candidate else {
                     return Err(ResolveError::UnknownRegistryRef(r.to_string()));
                 };
-                if let Some(want_ver) = version {
-                    if let ProtocolRef::Registry {
-                        version: Some(have_ver),
-                        ..
-                    } = &entry.reference
-                    {
-                        if want_ver != have_ver {
-                            return Err(ResolveError::VersionMismatch {
-                                alias: entry.alias.clone(),
-                                scope: scope.clone(),
-                                name: name.clone(),
-                                want: want_ver.clone(),
-                                have: have_ver.clone(),
-                            });
-                        }
+                let have_ver = match &entry.reference {
+                    ProtocolRef::Registry {
+                        version: Some(v), ..
+                    } => Some(v),
+                    _ => None,
+                };
+                if let (Some(want), Some(have)) = (version.as_ref(), have_ver) {
+                    if want != have {
+                        return Err(ResolveError::VersionMismatch {
+                            alias: entry.alias.clone(),
+                            scope: scope.clone(),
+                            name: name.clone(),
+                            want: want.clone(),
+                            have: have.clone(),
+                        });
                     }
                 }
                 Ok(ResolvedProtocol::Dependency(entry))
