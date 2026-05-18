@@ -6,14 +6,14 @@ use miette::IntoDiagnostic;
 use crate::{
     builder,
     config::{ProfileConfig, RootConfig},
-    dependencies::{self, ResolvedProtocol, Resolver},
+    interfaces::{self, ResolvedProtocol, Resolver},
     refs::ProtocolRef,
 };
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
     /// Protocol to invoke against. Omit to use the project's own protocol;
-    /// pass a dependency alias (e.g. `widget`) or a full registry reference
+    /// pass a interface alias (e.g. `widget`) or a full registry reference
     /// (e.g. `acme/widget:0.1.0`) to invoke one of its transactions. The
     /// specific transaction is always chosen interactively by the wallet.
     #[arg(long, value_parser = parse_protocol)]
@@ -72,8 +72,8 @@ fn load_args_json(args: &Args) -> miette::Result<serde_json::Value> {
 }
 
 pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
-    config.validate_dependencies()?;
-    dependencies::restore_all(config)?;
+    config.validate_interfaces()?;
+    interfaces::restore_all(config)?;
 
     let wallet = crate::wallet::setup(config, profile)?;
 
@@ -94,8 +94,8 @@ fn resolve_tii_path(args: &Args, config: &RootConfig) -> miette::Result<PathBuf>
     let resolver = Resolver::new(config);
     match resolver.resolve_protocol(from)? {
         ResolvedProtocol::Project => builder::build_tii(config),
-        ResolvedProtocol::Dependency(entry) => {
-            let paths = dependencies::cache_paths(entry)?;
+        ResolvedProtocol::Interface(entry) => {
+            let paths = interfaces::cache_paths(entry)?;
             Ok(paths.tii)
         }
     }

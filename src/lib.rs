@@ -8,7 +8,7 @@ pub mod builder;
 pub mod cli;
 pub mod commands;
 pub mod config;
-pub mod dependencies;
+pub mod interfaces;
 pub mod devnet;
 pub mod dirs;
 pub mod global;

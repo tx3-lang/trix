@@ -374,24 +374,25 @@ impl RootConfig {
         Ok(network)
     }
 
-    /// Validates the [dependencies] table. Run at the top of every scoped
-    /// command (so the user sees the error early) and inside `trix use`
-    /// before writing.
-    pub fn validate_dependencies(&self) -> Result<()> {
+    /// Validates the [interfaces] table. Run by the *consuming* commands
+    /// (`invoke`, `codegen`, `inspect tir`) before they touch an interface,
+    /// and inside `trix use` before writing. `build`/`check` are project-only
+    /// and never call this.
+    pub fn validate_interfaces(&self) -> Result<()> {
         use crate::refs::ProtocolRef;
         use std::collections::HashSet;
 
         let mut seen: HashSet<(String, String)> = HashSet::new();
-        for (alias, entry) in self.dependencies.iter() {
+        for (alias, entry) in self.interfaces.iter() {
             if alias == &self.protocol.name {
                 return Err(miette::miette!(
-                    "dependency alias '{}' conflicts with the project's own protocol name",
+                    "interface alias '{}' conflicts with the project's own protocol name",
                     alias
                 ));
             }
             crate::refs::validate_ident(alias).map_err(|_| {
                 miette::miette!(
-                    "dependency alias '{}' is not a valid identifier (must match [a-zA-Z_][a-zA-Z0-9_.-]*)",
+                    "interface alias '{}' is not a valid identifier (must match [a-zA-Z_][a-zA-Z0-9_.-]*)",
                     alias
                 )
             })?;
@@ -403,7 +404,7 @@ impl RootConfig {
                 } => (scope, name, version),
                 ProtocolRef::Alias(a) => {
                     return Err(miette::miette!(
-                        "dependency '{}' has alias-only ref '{}'; must be a full registry reference (e.g. acme/widget:0.1.0)",
+                        "interface '{}' has alias-only ref '{}'; must be a full registry reference (e.g. acme/widget:0.1.0)",
                         alias,
                         a
                     ));
@@ -411,21 +412,21 @@ impl RootConfig {
             };
             let Some(v) = version else {
                 return Err(miette::miette!(
-                    "dependency '{}' has no version pinned in trix.toml; run `trix use {}` to pin",
+                    "interface '{}' has no version pinned in trix.toml; run `trix use {}` to pin",
                     alias,
                     entry.reference
                 ));
             };
             if v == "latest" {
                 return Err(miette::miette!(
-                    "dependency '{}' is pinned to 'latest'; trix.toml must reference a concrete version",
+                    "interface '{}' is pinned to 'latest'; trix.toml must reference a concrete version",
                     alias
                 ));
             }
             let key = (scope.clone(), name.clone());
             if !seen.insert(key) {
                 return Err(miette::miette!(
-                    "two dependency entries map to the same '{}/{}'; aliases must point to distinct protocols",
+                    "two interface entries map to the same '{}/{}'; aliases must point to distinct protocols",
                     scope,
                     name
                 ));

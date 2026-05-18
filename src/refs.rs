@@ -65,7 +65,7 @@ pub enum ParseError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProtocolRef {
-    /// e.g. "widget" — resolved through the project's [dependencies] map or
+    /// e.g. "widget" — resolved through the project's [interfaces] map or
     /// matched against the project's own protocol.name.
     Alias(String),
 

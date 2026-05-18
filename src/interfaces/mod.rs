@@ -1,14 +1,25 @@
-//! Local dependency cache for protocols pulled from an OCI registry.
+//! Local cache for external protocol **interfaces** pulled from an OCI
+//! registry.
 //!
-//! Cache layout: `.tx3/protocols/<scope>/<name>/<version>/`
-//!     ├── main.tx3       (application/tx3 layer)
-//!     ├── main.tii       (application/tii+json layer)
-//!     ├── README.md      (text/markdown layer, optional)
+//! An interface is an *orthogonal* link, not a build dependency: the
+//! project's own protocol compiles in complete isolation and never ingests
+//! one. Interfaces exist purely so the *consuming* commands (`invoke`,
+//! `codegen`, `inspect tir`) can interact with already-published protocols.
+//!
+//! The **normative** artifact is the published TII (`main.tii`); the cached
+//! `main.tx3` and `README.md` are retained only as human-readable
+//! references — informative, never compiled or otherwise treated as
+//! authoritative.
+//!
+//! Cache layout (shared with the project's own built TII):
+//! `.tx3/tii/<scope>/<name>/<version>/`
+//!     ├── main.tx3       (application/tx3 layer — informative)
+//!     ├── main.tii       (application/tii+json layer — normative)
+//!     ├── README.md      (text/markdown layer, optional — informative)
 //!     └── metadata.json  (ProtocolManifest)
 //!
-//! Every command that needs deps (`check`, `build`, `codegen`, `inspect`,
-//! `invoke`) calls `restore_all` first — it's a no-op when the cache is
-//! consistent with `trix.toml`.
+//! Each consuming command calls `restore_all` first — a no-op when the cache
+//! is consistent with `trix.toml`.
 
 pub mod manifest;
 pub mod resolve;
@@ -20,7 +31,7 @@ use std::path::PathBuf;
 
 use miette::{IntoDiagnostic as _, Result};
 
-use crate::config::{DependencyEntry, RootConfig};
+use crate::config::{InterfaceEntry, RootConfig};
 use crate::oci;
 use crate::refs::ProtocolRef;
 
@@ -37,7 +48,7 @@ pub struct CachePaths {
     pub manifest: PathBuf,
 }
 
-fn registry_parts(entry: &DependencyEntry) -> Result<(&str, &str, &str)> {
+fn registry_parts(entry: &InterfaceEntry) -> Result<(&str, &str, &str)> {
     match &entry.reference {
         ProtocolRef::Registry {
             scope,
@@ -45,20 +56,20 @@ fn registry_parts(entry: &DependencyEntry) -> Result<(&str, &str, &str)> {
             version: Some(v),
         } => Ok((scope.as_str(), name.as_str(), v.as_str())),
         ProtocolRef::Registry { version: None, .. } => Err(miette::miette!(
-            "dependency '{}' has no version pinned — run `trix use` to refresh",
+            "interface '{}' has no version pinned — run `trix use` to refresh",
             entry.alias
         )),
         ProtocolRef::Alias(a) => Err(miette::miette!(
-            "dependency '{}' has alias-only ref '{}'; trix.toml requires a registry reference",
+            "interface '{}' has alias-only ref '{}'; trix.toml requires a registry reference",
             entry.alias,
             a
         )),
     }
 }
 
-pub fn cache_paths(entry: &DependencyEntry) -> Result<CachePaths> {
+pub fn cache_paths(entry: &InterfaceEntry) -> Result<CachePaths> {
     let (scope, name, version) = registry_parts(entry)?;
-    let root = crate::dirs::protocol_cache_dir(scope, name, version)?;
+    let root = crate::dirs::tii_dir(scope, name, version)?;
     Ok(CachePaths {
         source: root.join(CACHE_SOURCE_FILE),
         tii: root.join(CACHE_TII_FILE),
@@ -68,7 +79,7 @@ pub fn cache_paths(entry: &DependencyEntry) -> Result<CachePaths> {
     })
 }
 
-/// Outcome of inspecting a dependency's local cache.
+/// Outcome of inspecting an interface's local cache.
 pub enum CacheStatus {
     /// Present, parses, and digest matches `trix.toml`.
     Valid,
@@ -83,7 +94,7 @@ pub enum CacheStatus {
 /// Inspects the cache for `entry` in a single pass: at most one stat per
 /// file and one parse of metadata.json / main.tii. The outer `Result` is
 /// reserved for unexpected I/O failures.
-pub fn verify_cached(entry: &DependencyEntry) -> Result<CacheStatus> {
+pub fn verify_cached(entry: &InterfaceEntry) -> Result<CacheStatus> {
     let paths = cache_paths(entry)?;
 
     let manifest_bytes = match std::fs::read(&paths.manifest) {
@@ -99,7 +110,7 @@ pub fn verify_cached(entry: &DependencyEntry) -> Result<CacheStatus> {
         Ok(m) => m,
         Err(e) => {
             return Ok(CacheStatus::Invalid(miette::miette!(
-                "dependency '{}' cache has malformed metadata.json: {}",
+                "interface '{}' cache has malformed metadata.json: {}",
                 entry.alias,
                 e
             )));
@@ -107,7 +118,7 @@ pub fn verify_cached(entry: &DependencyEntry) -> Result<CacheStatus> {
     };
     if manifest.digest != entry.digest {
         return Ok(CacheStatus::Invalid(miette::miette!(
-            "dependency '{}' cache digest '{}' does not match trix.toml digest '{}'. \
+            "interface '{}' cache digest '{}' does not match trix.toml digest '{}'. \
              Run `trix use --force {}` to refresh.",
             entry.alias,
             manifest.digest,
@@ -123,7 +134,7 @@ pub fn verify_cached(entry: &DependencyEntry) -> Result<CacheStatus> {
     };
     if let Err(e) = serde_json::from_slice::<serde_json::Value>(&tii_bytes) {
         return Ok(CacheStatus::Invalid(miette::miette!(
-            "dependency '{}' cached TII is not valid JSON: {}",
+            "interface '{}' cached TII is not valid JSON: {}",
             entry.alias,
             e
         )));
@@ -141,13 +152,13 @@ fn pull_ref(config: &RootConfig, reference: &ProtocolRef) -> Result<oci::PulledA
     futures::executor::block_on(oci::pull(&client, &oci_reference))
 }
 
-/// Re-download and overwrite the cache for one already-pinned dep.
-pub fn fetch(entry: &DependencyEntry, config: &RootConfig) -> Result<()> {
+/// Re-download and overwrite the cache for one already-pinned interface.
+pub fn fetch(entry: &InterfaceEntry, config: &RootConfig) -> Result<()> {
     let pulled = pull_ref(config, &entry.reference)?;
 
     if pulled.digest != entry.digest {
         return Err(miette::miette!(
-            "dependency '{}' registry digest '{}' no longer matches trix.toml digest '{}'. \
+            "interface '{}' registry digest '{}' no longer matches trix.toml digest '{}'. \
              The published image has been rotated. Run `trix use --force {}` to repin.",
             entry.alias,
             pulled.digest,
@@ -164,7 +175,7 @@ pub fn fetch(entry: &DependencyEntry, config: &RootConfig) -> Result<()> {
 fn write_cache(
     paths: &CachePaths,
     pulled: &oci::PulledArtifact,
-    entry: &DependencyEntry,
+    entry: &InterfaceEntry,
 ) -> Result<()> {
     let (scope, name, version) = registry_parts(entry)?;
     std::fs::write(&paths.source, &pulled.source).into_diagnostic()?;
@@ -193,7 +204,7 @@ fn write_cache(
     Ok(())
 }
 
-/// A request to add a dependency, mapped straight from the CLI.
+/// A request to add an interface, mapped straight from the CLI.
 pub struct AddRequest {
     /// As provided by the user; version is optional (defaults to `latest`).
     pub reference: ProtocolRef,
@@ -227,7 +238,7 @@ pub fn add(config: &RootConfig, req: AddRequest) -> Result<AddOutcome> {
         .alias
         .unwrap_or_else(|| pinned_ref.short_name().to_string());
 
-    let replaced = config.dependencies.contains_key(&alias);
+    let replaced = config.interfaces.contains_key(&alias);
     if replaced && !req.force {
         return Err(miette::miette!(
             "alias '{}' already exists. Pass --force to replace, or --alias <name> to use a different one.",
@@ -235,7 +246,7 @@ pub fn add(config: &RootConfig, req: AddRequest) -> Result<AddOutcome> {
         ));
     }
 
-    let entry = DependencyEntry {
+    let entry = InterfaceEntry {
         alias: alias.clone(),
         reference: pinned_ref.clone(),
         digest: pulled.digest.clone(),
@@ -244,8 +255,8 @@ pub fn add(config: &RootConfig, req: AddRequest) -> Result<AddOutcome> {
     // Validate the prospective config so a bad alias/ref is rejected with the
     // same diagnostics as on-load validation, before we touch disk.
     let mut next_config = config.clone();
-    next_config.dependencies.insert(alias.clone(), entry.clone());
-    next_config.validate_dependencies()?;
+    next_config.interfaces.insert(alias.clone(), entry.clone());
+    next_config.validate_interfaces()?;
 
     let paths = cache_paths(&entry)?;
     write_cache(&paths, &pulled, &entry)?;
@@ -340,21 +351,21 @@ fn discover_transactions(tii_bytes: &[u8]) -> Vec<String> {
     names
 }
 
-/// For every entry in `config.dependencies`, verify the cache. If a dep is
+/// For every entry in `config.interfaces`, verify the cache. If an interface is
 /// merely missing from disk we attempt to re-download it; if the cache is
 /// present but inconsistent (digest mismatch, corrupt metadata, malformed
 /// TII), we surface the verification error directly so the user knows their
-/// cache and lockfile disagree. No-op when `dependencies` is empty.
+/// cache and lockfile disagree. No-op when `interfaces` is empty.
 pub fn restore_all(config: &RootConfig) -> Result<()> {
-    if config.dependencies.is_empty() {
+    if config.interfaces.is_empty() {
         return Ok(());
     }
-    for entry in config.dependencies.values() {
+    for entry in config.interfaces.values() {
         match verify_cached(entry)? {
             CacheStatus::Valid => {}
             CacheStatus::Invalid(report) => return Err(report),
             CacheStatus::Missing => {
-                eprintln!("restoring dependency '{}'...", entry.alias);
+                eprintln!("restoring interface '{}'...", entry.alias);
                 fetch(entry, config)?;
             }
         }

@@ -144,10 +144,10 @@ impl TestContext {
         TestConfig::load(&path).expect("Failed to load tests/basic.toml config")
     }
 
-    /// Copy the use-stub fixture into the temp dir's `.tx3/protocols/...` cache
+    /// Copy the use-stub fixture into the temp dir's `.tx3/tii/...` cache
     /// for `(scope, name, version)`. Returns the fixture's digest so the
     /// caller can write a matching trix.toml entry.
-    pub fn prime_dep_cache(&self, scope: &str, name: &str, version: &str) -> String {
+    pub fn prime_interface_cache(&self, scope: &str, name: &str, version: &str) -> String {
         let fixture_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/e2e/fixtures/use-stub")
             .join(scope)
@@ -163,11 +163,11 @@ impl TestContext {
         );
         let dest_root = self
             .path()
-            .join(".tx3/protocols")
+            .join(".tx3/tii")
             .join(scope)
             .join(name)
             .join(version);
-        fs::create_dir_all(&dest_root).expect("create dep cache dir");
+        fs::create_dir_all(&dest_root).expect("create interface cache dir");
         for entry in fs::read_dir(&fixture_root).expect("read fixture") {
             let entry = entry.expect("fixture entry");
             let path = entry.path();
@@ -185,9 +185,9 @@ impl TestContext {
             .to_string()
     }
 
-    /// Append a `[dependencies.<alias>]` table to the project's trix.toml so
-    /// the rest of the project sees the primed cache as a declared dep.
-    pub fn declare_dep(
+    /// Append an `[interfaces.<alias>]` table to the project's trix.toml so
+    /// the rest of the project sees the primed cache as a declared interface.
+    pub fn declare_interface(
         &self,
         alias: &str,
         scope: &str,
@@ -200,7 +200,7 @@ impl TestContext {
             content.push('\n');
         }
         content.push_str(&format!(
-            "\n[dependencies.{}]\nref = \"{}/{}:{}\"\ndigest = \"{}\"\n",
+            "\n[interfaces.{}]\nref = \"{}/{}:{}\"\ndigest = \"{}\"\n",
             alias, scope, name, version, digest,
         ));
         self.write_file("trix.toml", &content);

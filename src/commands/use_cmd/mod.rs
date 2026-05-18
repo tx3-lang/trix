@@ -1,7 +1,7 @@
 use clap::Args as ClapArgs;
 
 use crate::config::{ProfileConfig, RootConfig};
-use crate::dependencies::{self, AddRequest};
+use crate::interfaces::{self, AddRequest};
 use crate::refs::ProtocolRef;
 
 mod view;
@@ -14,7 +14,7 @@ pub struct Args {
     #[arg(value_name = "REFERENCE", value_parser = ProtocolRef::parse_registry)]
     pub reference: ProtocolRef,
 
-    /// Local alias for this dependency. Defaults to the reference's name.
+    /// Local alias for this interface. Defaults to the reference's name.
     #[arg(long)]
     pub alias: Option<String>,
 
@@ -30,7 +30,7 @@ pub struct Args {
 pub fn run(args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
     let dry_run = args.dry_run;
 
-    let outcome = dependencies::add(
+    let outcome = interfaces::add(
         config,
         AddRequest {
             reference: args.reference,

@@ -36,7 +36,7 @@ pub enum Commands {
     /// Generate bindings for smart contracts
     Codegen(commands::codegen::Args),
 
-    /// Check a Tx3 package and all of its dependencies for errors
+    /// Check the project's Tx3 protocol for errors
     Check(commands::check::Args),
 
     /// Inspect a Tx3 file
@@ -58,7 +58,7 @@ pub enum Commands {
     #[command(hide = true)]
     Publish(commands::publish::Args),
 
-    /// Add a published protocol as a dependency
+    /// Add a published protocol as an interface
     #[command(name = "use")]
     Use(commands::use_cmd::Args),
 

@@ -1,7 +1,7 @@
 //! Shared OCI helpers for pulling and pushing tx3 protocol artifacts.
 //!
 //! Used by both `trix publish` (push) and `trix use` (pull), plus the
-//! dependency-cache restore path. All string-level reference parsing happens
+//! interface-cache restore path. All string-level reference parsing happens
 //! in `crate::refs` — this module only deals with already-typed references.
 
 use miette::{IntoDiagnostic as _, Result};

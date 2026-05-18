@@ -1,4 +1,4 @@
-//! Dependency-aware codegen lives only in the unstable codegen path
+//! Interface-aware codegen lives only in the unstable codegen path
 //! (`src/commands/codegen.rs`). These tests are compiled and run only under
 //! `cargo test --features unstable`, where `assert_cmd::cargo_bin` resolves
 //! the unstable-built `trix` binary. They require a real `tx3c` (like
@@ -24,10 +24,10 @@ fn append_codegen_block(ctx: &TestContext) {
     ctx.write_file("trix.toml", &trix_toml);
 }
 
-/// With a dependency declared + cached, codegen emits one binding set per
+/// With an interface declared + cached, codegen emits one binding set per
 /// protocol into per-protocol subdirs: `gen/<project>/` and `gen/<alias>/`.
 #[test]
-fn codegen_with_dependency_emits_subdirs() {
+fn codegen_with_interface_emits_subdirs() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
@@ -36,8 +36,8 @@ fn codegen_with_dependency_emits_subdirs() {
         .expect("tx3c should be available in PATH or TX3_TX3C_PATH");
     assert!(tx3c_path.is_file(), "tx3c path should exist");
 
-    let digest = ctx.prime_dep_cache("acme", "widget", "0.1.0");
-    ctx.declare_dep("widget", "acme", "widget", "0.1.0", &digest);
+    let digest = ctx.prime_interface_cache("acme", "widget", "0.1.0");
+    ctx.declare_interface("widget", "acme", "widget", "0.1.0", &digest);
     append_codegen_block(&ctx);
 
     let project_name = ctx.load_trix_config().protocol.name;
@@ -55,11 +55,11 @@ fn codegen_with_dependency_emits_subdirs() {
     );
 }
 
-/// Even with NO dependencies, the unstable path nests the project under its
+/// Even with NO interfaces, the unstable path nests the project under its
 /// own subdir — the deliberate break from the old flat layout, confined to
 /// the unstable path.
 #[test]
-fn codegen_without_dependency_still_uses_subdir() {
+fn codegen_without_interface_still_uses_subdir() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 

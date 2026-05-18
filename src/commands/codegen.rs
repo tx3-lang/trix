@@ -103,10 +103,10 @@ async fn extract_github_templates(
 }
 
 /// Output-subdir names, in generation order: the project first, then each
-/// dependency alias. The name doubles as the per-protocol output subdir —
+/// interface alias. The name doubles as the per-protocol output subdir —
 /// the layout is unconditional (a project with no deps still nests under
 /// `<output_dir>/<project>/`), so the path a binding lands at never depends
-/// on dependency count.
+/// on interface count.
 fn codegen_targets(project_name: &str, dep_aliases: &[String]) -> Vec<String> {
     let mut out = Vec::with_capacity(1 + dep_aliases.len());
     out.push(project_name.to_string());
@@ -115,15 +115,15 @@ fn codegen_targets(project_name: &str, dep_aliases: &[String]) -> Vec<String> {
 }
 
 /// Resolves each codegen target to `(subdir_name, tii_path)`. The project's
-/// TII is built from source; each dependency's TII is the cached, pre-built
+/// TII is built from source; each interface's TII is the cached, pre-built
 /// published one (not recompiled), consistent with `trix build`.
 fn collect_codegen_targets(config: &RootConfig) -> miette::Result<Vec<(String, PathBuf)>> {
     let dep_aliases: Vec<String> = config
-        .dependencies
+        .interfaces
         .values()
         .map(|e| e.alias.clone())
         .collect();
-    // `validate_dependencies` (run before this) guarantees no dep alias
+    // `validate_interfaces` (run before this) guarantees no interface alias
     // equals the project name, so name == protocol.name ⇒ the project.
     let order = codegen_targets(&config.protocol.name, &dep_aliases);
 
@@ -133,11 +133,11 @@ fn collect_codegen_targets(config: &RootConfig) -> miette::Result<Vec<(String, P
             crate::builder::build_tii(config)?
         } else {
             let entry = config
-                .dependencies
+                .interfaces
                 .values()
                 .find(|e| e.alias == name)
-                .expect("alias originates from config.dependencies");
-            crate::dependencies::cache_paths(entry)?.tii
+                .expect("alias originates from config.interfaces");
+            crate::interfaces::cache_paths(entry)?.tii
         };
         targets.push((name, tii));
     }
@@ -146,8 +146,8 @@ fn collect_codegen_targets(config: &RootConfig) -> miette::Result<Vec<(String, P
 }
 
 pub async fn run(_args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
-    config.validate_dependencies()?;
-    crate::dependencies::restore_all(config)?;
+    config.validate_interfaces()?;
+    crate::interfaces::restore_all(config)?;
 
     let targets = collect_codegen_targets(config)?;
 

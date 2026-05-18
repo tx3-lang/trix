@@ -184,8 +184,8 @@ pub struct CodegenConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct DependencyEntry {
-    /// Filled in by NamedMap deserialization with the [dependencies.<alias>] key.
+pub struct InterfaceEntry {
+    /// Filled in by NamedMap deserialization with the [interfaces.<alias>] key.
     #[serde(skip)]
     pub alias: String,
 
@@ -199,7 +199,7 @@ pub struct DependencyEntry {
     pub digest: String,
 }
 
-impl Named for DependencyEntry {
+impl Named for InterfaceEntry {
     fn name(&self) -> String {
         self.alias.clone()
     }
@@ -227,5 +227,5 @@ pub struct RootConfig {
     pub profiles: NamedMap<ProfileConfig>,
 
     #[serde(default, skip_serializing_if = "NamedMap::is_empty")]
-    pub dependencies: NamedMap<DependencyEntry>,
+    pub interfaces: NamedMap<InterfaceEntry>,
 }

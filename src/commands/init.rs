@@ -108,7 +108,7 @@ fn default_config() -> RootConfig {
         profiles: NamedMap::default(),
         networks: NamedMap::default(),
         registry: None,
-        dependencies: NamedMap::default(),
+        interfaces: NamedMap::default(),
     }
 }
 

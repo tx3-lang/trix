@@ -1,23 +1,23 @@
 //! Resolves a parsed reference (`refs::ProtocolRef` / `TxRef`) to a concrete
-//! artifact: either the project's own protocol or a declared dependency.
-//! This is dependency-domain logic — it queries `config.dependencies` — so
+//! artifact: either the project's own protocol or a declared interface.
+//! This is interface-domain logic — it queries `config.interfaces` — so
 //! it lives here rather than in the pure `refs` grammar module.
 
 use miette::Diagnostic;
 use thiserror::Error;
 
-use crate::config::{DependencyEntry, RootConfig};
+use crate::config::{InterfaceEntry, RootConfig};
 use crate::refs::{ProtocolRef, TxRef};
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum ResolveError {
-    #[error("no protocol named '{0}' (not the project, not a dependency alias)")]
+    #[error("no protocol named '{0}' (not the project, not an interface alias)")]
     UnknownAlias(String),
 
-    #[error("no dependency matches '{0}' — declare it with 'trix use'")]
+    #[error("no interface matches '{0}' — declare it with 'trix use'")]
     UnknownRegistryRef(String),
 
-    #[error("dependency '{alias}' matches '{scope}/{name}' but at version '{have}', not '{want}'")]
+    #[error("interface '{alias}' matches '{scope}/{name}' but at version '{have}', not '{want}'")]
     VersionMismatch {
         alias: String,
         scope: String,
@@ -31,8 +31,8 @@ pub enum ResolveError {
 pub enum ResolvedProtocol<'a> {
     /// The project's authored protocol (`config.protocol.main`).
     Project,
-    /// A dep declared in `[dependencies]` and resolved to a cached artifact.
-    Dependency(&'a DependencyEntry),
+    /// An interface declared in `[interfaces]` and resolved to a cached artifact.
+    Interface(&'a InterfaceEntry),
 }
 
 pub struct Resolver<'a> {
@@ -53,8 +53,8 @@ impl<'a> Resolver<'a> {
                 if a == &self.config.protocol.name {
                     return Ok(ResolvedProtocol::Project);
                 }
-                if let Some(entry) = self.config.dependencies.get(a) {
-                    return Ok(ResolvedProtocol::Dependency(entry));
+                if let Some(entry) = self.config.interfaces.get(a) {
+                    return Ok(ResolvedProtocol::Interface(entry));
                 }
                 Err(ResolveError::UnknownAlias(a.clone()))
             }
@@ -63,7 +63,7 @@ impl<'a> Resolver<'a> {
                 name,
                 version,
             } => {
-                let candidate = self.config.dependencies.values().find(|d| {
+                let candidate = self.config.interfaces.values().find(|d| {
                     if let ProtocolRef::Registry {
                         scope: ds, name: dn, ..
                     } = &d.reference
@@ -93,7 +93,7 @@ impl<'a> Resolver<'a> {
                         have: have.clone(),
                     });
                 }
-                Ok(ResolvedProtocol::Dependency(entry))
+                Ok(ResolvedProtocol::Interface(entry))
             }
         }
     }

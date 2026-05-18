@@ -21,10 +21,11 @@ fn use_rejects_alias_only_reference() {
 }
 
 /// A cloned/freshly-initialized project with no `[registry]` section can
-/// still consume an already-cached dependency — the registry URL falls back
-/// to the hardcoded default and is only contacted on a cache miss.
+/// still consume an already-cached interface — the registry URL falls back
+/// to the hardcoded default and is only contacted on a cache miss. Exercised
+/// via `inspect tir`, an interface-aware command (`check` is project-only).
 #[test]
-fn check_works_without_registry_when_dep_cached() {
+fn interface_consumed_without_registry_when_cached() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
@@ -34,38 +35,37 @@ fn check_works_without_registry_when_dep_cached() {
         "fresh init should not write a [registry] section"
     );
 
-    let digest = ctx.prime_dep_cache("acme", "widget", "0.1.0");
-    ctx.declare_dep("widget", "acme", "widget", "0.1.0", &digest);
+    let digest = ctx.prime_interface_cache("acme", "widget", "0.1.0");
+    ctx.declare_interface("widget", "acme", "widget", "0.1.0", &digest);
 
-    let result = ctx.run_trix(&["check"]);
+    let result = ctx.run_trix(&["inspect", "tir", "--tx", "widget::widget_transfer"]);
     assert_success(&result);
-    assert_output_contains(&result, "check passed");
 }
 
-/// `trix check` succeeds when a dependency is present in the cache and
-/// declared in trix.toml.
+/// `trix check` is project-only: a declared, cached interface neither helps
+/// nor hinders it. Check still parses/analyzes only the project's protocol.
 #[test]
-fn check_runs_with_dependency() {
+fn check_ignores_declared_interfaces() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
-    let digest = ctx.prime_dep_cache("acme", "widget", "0.1.0");
-    ctx.declare_dep("widget", "acme", "widget", "0.1.0", &digest);
+    let digest = ctx.prime_interface_cache("acme", "widget", "0.1.0");
+    ctx.declare_interface("widget", "acme", "widget", "0.1.0", &digest);
 
     let result = ctx.run_trix(&["check"]);
     assert_success(&result);
     assert_output_contains(&result, "check passed");
 }
 
-/// Inspect a transaction that lives inside a dependency, addressed via
+/// Inspect a transaction that lives inside an interface, addressed via
 /// `<alias>::<tx>`.
 #[test]
-fn inspect_tir_addresses_dep_transaction_by_alias() {
+fn inspect_tir_addresses_interface_tx_by_alias() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
-    let digest = ctx.prime_dep_cache("acme", "widget", "0.1.0");
-    ctx.declare_dep("widget", "acme", "widget", "0.1.0", &digest);
+    let digest = ctx.prime_interface_cache("acme", "widget", "0.1.0");
+    ctx.declare_interface("widget", "acme", "widget", "0.1.0", &digest);
 
     let result = ctx.run_trix(&["inspect", "tir", "--tx", "widget::widget_transfer"]);
     assert_success(&result);
@@ -85,12 +85,12 @@ fn inspect_tir_addresses_dep_transaction_by_alias() {
 
 /// Inspect via the fully-qualified registry form.
 #[test]
-fn inspect_tir_addresses_dep_transaction_by_full_ref() {
+fn inspect_tir_addresses_interface_tx_by_full_ref() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
-    let digest = ctx.prime_dep_cache("acme", "widget", "0.1.0");
-    ctx.declare_dep("widget", "acme", "widget", "0.1.0", &digest);
+    let digest = ctx.prime_interface_cache("acme", "widget", "0.1.0");
+    ctx.declare_interface("widget", "acme", "widget", "0.1.0", &digest);
 
     let result = ctx.run_trix(&[
         "inspect",
@@ -107,8 +107,8 @@ fn inspect_tir_bare_tx_targets_project() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
-    let digest = ctx.prime_dep_cache("acme", "widget", "0.1.0");
-    ctx.declare_dep("widget", "acme", "widget", "0.1.0", &digest);
+    let digest = ctx.prime_interface_cache("acme", "widget", "0.1.0");
+    ctx.declare_interface("widget", "acme", "widget", "0.1.0", &digest);
 
     // The default init template defines `tx transfer`.
     let result = ctx.run_trix(&["inspect", "tir", "--tx", "transfer"]);
@@ -131,16 +131,16 @@ fn inspect_tir_rejects_unknown_alias() {
     );
 }
 
-/// Tampered cache digest: `trix check` surfaces a digest-mismatch error and
-/// tells the user to `trix use --force` to refresh.
+/// Tampered cache digest: an interface-aware command (`inspect tir`) surfaces
+/// a digest-mismatch error and tells the user to `trix use --force`.
 #[test]
-fn check_fails_on_digest_mismatch_after_tamper() {
+fn interface_digest_mismatch_after_tamper_is_rejected() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
-    let digest = ctx.prime_dep_cache("acme", "widget", "0.1.0");
-    // Declare the dep with a digest that does NOT match the metadata.json's.
-    ctx.declare_dep(
+    let digest = ctx.prime_interface_cache("acme", "widget", "0.1.0");
+    // Declare the interface with a digest that does NOT match the metadata.json's.
+    ctx.declare_interface(
         "widget",
         "acme",
         "widget",
@@ -149,7 +149,7 @@ fn check_fails_on_digest_mismatch_after_tamper() {
     );
     let _ = digest;
 
-    let result = ctx.run_trix(&["check"]);
+    let result = ctx.run_trix(&["inspect", "tir", "--tx", "transfer"]);
     assert!(
         !result.success(),
         "expected digest mismatch failure but got success:\n{}",
@@ -175,11 +175,11 @@ fn trix_toml_rejects_alias_only_ref() {
         content.push('\n');
     }
     content.push_str(
-        "\n[dependencies.widget]\nref = \"widget\"\ndigest = \"sha256:deadbeef\"\n",
+        "\n[interfaces.widget]\nref = \"widget\"\ndigest = \"sha256:deadbeef\"\n",
     );
     ctx.write_file("trix.toml", &content);
 
-    let result = ctx.run_trix(&["check"]);
+    let result = ctx.run_trix(&["inspect", "tir", "--tx", "transfer"]);
     assert!(
         !result.success(),
         "alias-only ref in trix.toml should be rejected"
@@ -198,20 +198,20 @@ fn trix_toml_rejects_latest_ref() {
         content.push('\n');
     }
     content.push_str(
-        "\n[dependencies.widget]\nref = \"acme/widget:latest\"\ndigest = \"sha256:deadbeef\"\n",
+        "\n[interfaces.widget]\nref = \"acme/widget:latest\"\ndigest = \"sha256:deadbeef\"\n",
     );
     ctx.write_file("trix.toml", &content);
 
-    let result = ctx.run_trix(&["check"]);
+    let result = ctx.run_trix(&["inspect", "tir", "--tx", "transfer"]);
     assert!(
         !result.success(),
         "latest ref in trix.toml should be rejected"
     );
 }
 
-/// Projects without `[dependencies]` should be entirely unaffected.
+/// Projects without `[interfaces]` should be entirely unaffected.
 #[test]
-fn projects_without_dependencies_section_unchanged() {
+fn projects_without_interfaces_section_unchanged() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
@@ -220,7 +220,7 @@ fn projects_without_dependencies_section_unchanged() {
 
     let config = ctx.load_trix_config();
     assert!(
-        config.dependencies.is_empty(),
-        "fresh init should have no dependencies declared"
+        config.interfaces.is_empty(),
+        "fresh init should have no interfaces declared"
     );
 }

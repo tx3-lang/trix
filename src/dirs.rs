@@ -47,23 +47,30 @@ pub fn target_dir(artifact_kind: &str) -> miette::Result<PathBuf> {
     Ok(target)
 }
 
-/// Root of the local dependency cache: `.tx3/protocols/`.
-pub fn protocols_cache_dir() -> miette::Result<PathBuf> {
-    target_dir("protocols")
+/// Scope segment used for the project's own protocol when `trix.toml` does
+/// not declare `[protocol] scope`. Keeps the TII tree uniform between the
+/// local protocol and fetched interfaces.
+pub const LOCAL_SCOPE: &str = "local";
+
+/// Root of the TII artifact tree: `.tx3/tii/`.
+pub fn tii_root_dir() -> miette::Result<PathBuf> {
+    target_dir("tii")
 }
 
-/// Cache directory for a single protocol artifact:
-/// `.tx3/protocols/<scope>/<name>/<version>/`.
-/// Creates the directory tree if missing.
-pub fn protocol_cache_dir(scope: &str, name: &str, version: &str) -> miette::Result<PathBuf> {
-    let mut p = protocols_cache_dir()?;
+/// Per-protocol TII directory: `.tx3/tii/<scope>/<name>/<version>/`.
+///
+/// One uniform layout for every protocol the toolchain knows about — the
+/// project's own built TII and each fetched interface alike. Creates the
+/// directory tree if missing.
+pub fn tii_dir(scope: &str, name: &str, version: &str) -> miette::Result<PathBuf> {
+    let mut p = tii_root_dir()?;
     p.push(scope);
     p.push(name);
     p.push(version);
     if !p.exists() {
         std::fs::create_dir_all(&p)
             .into_diagnostic()
-            .context("creating protocol cache directory")?;
+            .context("creating tii directory")?;
     }
     Ok(p)
 }
