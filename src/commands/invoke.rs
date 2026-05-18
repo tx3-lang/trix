@@ -6,8 +6,8 @@ use miette::IntoDiagnostic;
 use crate::{
     builder,
     config::{ProfileConfig, RootConfig},
-    dependencies,
-    refs::{ProtocolRef, ResolvedProtocol, Resolver},
+    dependencies::{self, ResolvedProtocol, Resolver},
+    refs::ProtocolRef,
 };
 
 #[derive(ClapArgs, Debug)]

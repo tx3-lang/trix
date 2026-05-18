@@ -11,8 +11,10 @@
 //! consistent with `trix.toml`.
 
 pub mod manifest;
+pub mod resolve;
 
 pub use manifest::ProtocolManifest;
+pub use resolve::{ResolveError, ResolvedProtocol, Resolver};
 
 use std::path::PathBuf;
 

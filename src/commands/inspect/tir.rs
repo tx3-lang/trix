@@ -4,8 +4,8 @@ use clap::Args as ClapArgs;
 use miette::{Context as _, IntoDiagnostic as _};
 
 use crate::config::RootConfig;
-use crate::dependencies;
-use crate::refs::{ResolvedProtocol, Resolver, TxRef};
+use crate::dependencies::{self, ResolvedProtocol, Resolver};
+use crate::refs::TxRef;
 
 #[derive(ClapArgs)]
 pub struct Args {
