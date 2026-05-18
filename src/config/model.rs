@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
 use crate::config::serde::{KnownOrCustom, Named, NamedMap};
+use crate::refs::ProtocolRef;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProtocolConfig {
@@ -183,6 +184,31 @@ pub struct CodegenConfig {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InterfaceEntry {
+    /// Filled in by NamedMap deserialization with the [interfaces.<alias>] key.
+    #[serde(skip)]
+    pub alias: String,
+
+    /// Canonical reference, e.g. "acme/widget:0.1.3". Always a
+    /// ProtocolRef::Registry with a concrete version; aliases and "latest"
+    /// are rejected on load (the file is a pinned lockfile).
+    #[serde(rename = "ref")]
+    pub reference: ProtocolRef,
+
+    /// OCI manifest digest captured at `trix use` time.
+    pub digest: String,
+}
+
+impl Named for InterfaceEntry {
+    fn name(&self) -> String {
+        self.alias.clone()
+    }
+    fn set_name(&mut self, name: String) {
+        self.alias = name;
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RootConfig {
     pub protocol: ProtocolConfig,
 
@@ -199,4 +225,7 @@ pub struct RootConfig {
 
     #[serde(default, skip_serializing_if = "NamedMap::is_empty")]
     pub profiles: NamedMap<ProfileConfig>,
+
+    #[serde(default, skip_serializing_if = "NamedMap::is_empty")]
+    pub interfaces: NamedMap<InterfaceEntry>,
 }

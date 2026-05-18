@@ -143,6 +143,68 @@ impl TestContext {
         let path = self.file_path("tests/basic.toml");
         TestConfig::load(&path).expect("Failed to load tests/basic.toml config")
     }
+
+    /// Copy the use-stub fixture into the temp dir's `.tx3/tii/...` cache
+    /// for `(scope, name, version)`. Returns the fixture's digest so the
+    /// caller can write a matching trix.toml entry.
+    pub fn prime_interface_cache(&self, scope: &str, name: &str, version: &str) -> String {
+        let fixture_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/e2e/fixtures/use-stub")
+            .join(scope)
+            .join(name)
+            .join(version);
+        assert!(
+            fixture_root.is_dir(),
+            "fixture missing for {}/{}@{}: expected at {}",
+            scope,
+            name,
+            version,
+            fixture_root.display(),
+        );
+        let dest_root = self
+            .path()
+            .join(".tx3/tii")
+            .join(scope)
+            .join(name)
+            .join(version);
+        fs::create_dir_all(&dest_root).expect("create interface cache dir");
+        for entry in fs::read_dir(&fixture_root).expect("read fixture") {
+            let entry = entry.expect("fixture entry");
+            let path = entry.path();
+            let file_name = path.file_name().unwrap();
+            fs::copy(&path, dest_root.join(file_name)).expect("copy fixture file");
+        }
+        let metadata = fs::read_to_string(fixture_root.join("metadata.json"))
+            .expect("read fixture metadata.json");
+        let value: serde_json::Value =
+            serde_json::from_str(&metadata).expect("parse fixture metadata.json");
+        value
+            .get("digest")
+            .and_then(|v| v.as_str())
+            .expect("digest in fixture metadata.json")
+            .to_string()
+    }
+
+    /// Append an `[interfaces.<alias>]` table to the project's trix.toml so
+    /// the rest of the project sees the primed cache as a declared interface.
+    pub fn declare_interface(
+        &self,
+        alias: &str,
+        scope: &str,
+        name: &str,
+        version: &str,
+        digest: &str,
+    ) {
+        let mut content = self.read_file("trix.toml");
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str(&format!(
+            "\n[interfaces.{}]\nref = \"{}/{}:{}\"\ndigest = \"{}\"\n",
+            alias, scope, name, version, digest,
+        ));
+        self.write_file("trix.toml", &content);
+    }
 }
 
 pub struct CommandResult {
@@ -206,9 +268,12 @@ pub fn is_process_running(_pid: u32) -> bool {
     true
 }
 
+#[cfg(feature = "unstable")]
+pub mod codegen_deps;
 pub mod edge_cases;
 pub mod happy_path;
 pub mod smoke;
+pub mod use_command;
 
 fn resolve_tool_path(tool: &str) -> Option<PathBuf> {
     let env_var = format!("TX3_{}_PATH", tool.to_uppercase());

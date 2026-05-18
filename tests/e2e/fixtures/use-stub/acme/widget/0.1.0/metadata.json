@@ -1,0 +1,11 @@
+{
+  "scope": "acme",
+  "name": "widget",
+  "version": "0.1.0",
+  "digest": "sha256:fixture0000000000000000000000000000000000000000000000000000acme01",
+  "published_date": 1700000000,
+  "description": "fixture dep for e2e tests",
+  "repository_url": null,
+  "fetched_at": 1700000000,
+  "has_readme": true
+}

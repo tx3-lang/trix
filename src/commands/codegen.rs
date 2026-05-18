@@ -102,12 +102,58 @@ async fn extract_github_templates(
     Ok(template_root)
 }
 
+/// Output-subdir names, in generation order: the project first, then each
+/// interface alias. The name doubles as the per-protocol output subdir —
+/// the layout is unconditional (a project with no deps still nests under
+/// `<output_dir>/<project>/`), so the path a binding lands at never depends
+/// on interface count.
+fn codegen_targets(project_name: &str, dep_aliases: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(1 + dep_aliases.len());
+    out.push(project_name.to_string());
+    out.extend(dep_aliases.iter().cloned());
+    out
+}
+
+/// Resolves each codegen target to `(subdir_name, tii_path)`. The project's
+/// TII is built from source; each interface's TII is the cached, pre-built
+/// published one (not recompiled), consistent with `trix build`.
+fn collect_codegen_targets(config: &RootConfig) -> miette::Result<Vec<(String, PathBuf)>> {
+    let dep_aliases: Vec<String> = config
+        .interfaces
+        .values()
+        .map(|e| e.alias.clone())
+        .collect();
+    // `validate` (run before this) guarantees no interface alias
+    // equals the project name, so name == protocol.name ⇒ the project.
+    let order = codegen_targets(&config.protocol.name, &dep_aliases);
+
+    let mut targets = Vec::with_capacity(order.len());
+    for name in order {
+        let tii = if name == config.protocol.name {
+            crate::builder::build_tii(config)?
+        } else {
+            let entry = config
+                .interfaces
+                .values()
+                .find(|e| e.alias == name)
+                .expect("alias originates from config.interfaces");
+            crate::interfaces::cache_paths(entry)?.tii
+        };
+        targets.push((name, tii));
+    }
+
+    Ok(targets)
+}
+
 pub async fn run(_args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
-    let tii_path = crate::builder::build_tii(config)?;
+    crate::interfaces::validate(config)?;
+    crate::interfaces::restore_all(config)?;
+
+    let targets = collect_codegen_targets(config)?;
 
     for codegen in config.codegen.iter() {
-        let output_dir = codegen.output_dir()?;
-        std::fs::create_dir_all(&output_dir).into_diagnostic()?;
+        let base_output_dir = codegen.output_dir()?;
+        std::fs::create_dir_all(&base_output_dir).into_diagnostic()?;
 
         let plugin = CodegenPluginConfig::from(codegen.plugin.clone());
         let github_url = if PathBuf::from(&plugin.repo).is_dir() {
@@ -120,12 +166,36 @@ pub async fn run(_args: Args, config: &RootConfig, _profile: &ProfileConfig) -> 
             )
         };
 
+        // Extract templates once per [[codegen]] entry, reuse across protocols.
         let template_temp = TempDir::new().into_diagnostic()?;
-        let templates_dir = extract_github_templates(&github_url, &template_temp, &plugin.path).await?;
+        let templates_dir =
+            extract_github_templates(&github_url, &template_temp, &plugin.path).await?;
 
-        crate::spawn::tx3c::codegen(&tii_path, &templates_dir, &output_dir)?;
-        println!("Bindgen successful");
+        for (name, tii_path) in &targets {
+            let dest = base_output_dir.join(name);
+            std::fs::create_dir_all(&dest).into_diagnostic()?;
+            crate::spawn::tx3c::codegen(tii_path, &templates_dir, &dest)?;
+            println!("Bindgen successful for '{}'", name);
+        }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::codegen_targets;
+
+    #[test]
+    fn targets_without_deps_still_nest_project() {
+        assert_eq!(codegen_targets("proj", &[]), vec!["proj".to_string()]);
+    }
+
+    #[test]
+    fn targets_project_first_then_deps_in_order() {
+        assert_eq!(
+            codegen_targets("proj", &["a".to_string(), "b".to_string()]),
+            vec!["proj".to_string(), "a".to_string(), "b".to_string()]
+        );
+    }
 }

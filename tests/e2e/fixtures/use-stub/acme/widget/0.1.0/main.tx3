@@ -1,0 +1,17 @@
+party Alice;
+party Bob;
+
+tx widget_transfer(quantity: Int) {
+    input source {
+        from: Alice,
+        min_amount: Ada(quantity) + fees,
+    }
+    output {
+        to: Bob,
+        amount: Ada(quantity),
+    }
+    output {
+        to: Alice,
+        amount: source - Ada(quantity) - fees,
+    }
+}

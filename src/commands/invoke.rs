@@ -6,10 +6,19 @@ use miette::IntoDiagnostic;
 use crate::{
     builder,
     config::{ProfileConfig, RootConfig},
+    interfaces::{self, ResolvedProtocol, Resolver},
+    refs::ProtocolRef,
 };
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
+    /// Protocol to invoke against. Omit to use the project's own protocol;
+    /// pass a interface alias (e.g. `widget`) or a full registry reference
+    /// (e.g. `acme/widget:0.1.0`) to invoke one of its transactions. The
+    /// specific transaction is always chosen interactively by the wallet.
+    #[arg(long, value_parser = parse_protocol)]
+    from: Option<ProtocolRef>,
+
     /// Args for the TX3 transaction as a raw JSON string.
     #[arg(long)]
     args_json: Option<String>,
@@ -21,6 +30,10 @@ pub struct Args {
     /// Skip submitting the transaction.
     #[arg(long)]
     skip_submit: bool,
+}
+
+fn parse_protocol(s: &str) -> Result<ProtocolRef, String> {
+    ProtocolRef::parse(s).map_err(|e| e.to_string())
 }
 
 pub type ArgMap = serde_json::Map<String, serde_json::Value>;
@@ -59,13 +72,31 @@ fn load_args_json(args: &Args) -> miette::Result<serde_json::Value> {
 }
 
 pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
+    interfaces::validate(config)?;
+    interfaces::restore_all(config)?;
+
     let wallet = crate::wallet::setup(config, profile)?;
 
-    let tii_file = builder::build_tii(config)?;
+    let tii_file = resolve_tii_path(&args, config)?;
 
     let args_json = load_args_json(&args)?;
 
     wallet.invoke_interactive(&tii_file, &args_json, &profile.name, args.skip_submit)?;
 
     Ok(())
+}
+
+fn resolve_tii_path(args: &Args, config: &RootConfig) -> miette::Result<PathBuf> {
+    let Some(from) = &args.from else {
+        return builder::build_tii(config);
+    };
+
+    let resolver = Resolver::new(config);
+    match resolver.resolve_protocol(from)? {
+        ResolvedProtocol::Project => builder::build_tii(config),
+        ResolvedProtocol::Interface(entry) => {
+            let paths = interfaces::cache_paths(entry)?;
+            Ok(paths.tii)
+        }
+    }
 }

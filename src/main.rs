@@ -49,6 +49,7 @@ async fn run_scoped_command(cli: Cli, config: RootConfig) -> Result<()> {
         Commands::Identities(args) => cmds::identities::run(args, &config, &profile),
         Commands::Profile(args) => cmds::profile::run(args, &config, &profile),
         Commands::Publish(args) => cmds::publish::run(args, &config),
+        Commands::Use(args) => cmds::use_cmd::run(args, &config, &profile),
         Commands::Telemetry(args) => cmds::telemetry::run(args),
     };
 
