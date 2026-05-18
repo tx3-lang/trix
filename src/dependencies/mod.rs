@@ -14,7 +14,7 @@ pub mod manifest;
 
 pub use manifest::ProtocolManifest;
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use miette::{IntoDiagnostic as _, Result};
 
@@ -203,11 +203,4 @@ pub fn restore_all(config: &RootConfig) -> Result<()> {
         fetch(entry, config)?;
     }
     Ok(())
-}
-
-/// Convenience: load and parse a cached TII as raw JSON for callers that
-/// don't need the whole `tx3_tir` model.
-pub fn load_tii_json(tii_path: &Path) -> Result<serde_json::Value> {
-    let bytes = std::fs::read(tii_path).into_diagnostic()?;
-    serde_json::from_slice(&bytes).into_diagnostic()
 }

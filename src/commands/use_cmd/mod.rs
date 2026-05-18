@@ -54,9 +54,9 @@ pub fn run(
     let pulled =
         futures::executor::block_on(crate::oci::pull(&client, &oci_reference))?;
 
-    // Pin the concrete version. Prefer the publisher-recorded version from
-    // the image config; fall back to the OCI tag if it was concrete; if both
-    // are missing/`latest`, fall back to a short digest with a warning.
+    // Pin the concrete version: prefer the publisher-recorded version from
+    // the image config, then a concrete request tag. A mutable-only tag is a
+    // hard error (see `pin_version`).
     let pinned_version = pin_version(&request_ref, &pulled.metadata)?;
     let pinned_ref = match request_ref {
         ProtocolRef::Registry { scope, name, .. } => ProtocolRef::Registry {
@@ -67,13 +67,10 @@ pub fn run(
         _ => unreachable!("parse_registry rejects aliases"),
     };
 
-    let alias = args.alias.clone().unwrap_or_else(|| {
-        pinned_ref
-            .short_name()
-            .to_string()
-    });
-
-    let scope_name = scope_and_name(&pinned_ref);
+    let alias = args
+        .alias
+        .clone()
+        .unwrap_or_else(|| pinned_ref.short_name().to_string());
 
     // Trial-validate against a hypothetical config to surface alias-conflict
     // errors with the same diagnostics that load-time validation uses.
@@ -116,7 +113,6 @@ pub fn run(
         dry_run: args.dry_run,
     });
 
-    let _ = scope_name; // reserved for future telemetry / structured logging
     Ok(())
 }
 
@@ -147,13 +143,6 @@ fn pin_version(
         "the published image does not carry a concrete version and was requested by a mutable tag; \
          ask the publisher to `trix publish` a concretely-versioned release, then `trix use <scope>/<name>:<version>`"
     ))
-}
-
-fn scope_and_name(r: &ProtocolRef) -> (String, String) {
-    match r {
-        ProtocolRef::Registry { scope, name, .. } => (scope.clone(), name.clone()),
-        ProtocolRef::Alias(_) => unreachable!(),
-    }
 }
 
 fn discover_transactions(tii_bytes: &[u8]) -> Vec<String> {

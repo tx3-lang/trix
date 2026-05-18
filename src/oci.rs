@@ -104,11 +104,13 @@ pub async fn pull(
     let mut source: Option<Vec<u8>> = None;
     let mut tii: Option<Vec<u8>> = None;
     let mut readme: Option<Vec<u8>> = None;
-    for layer in &image.layers {
+    // Move the layer bytes out rather than cloning — layers can be large and
+    // `image` is owned here.
+    for mut layer in image.layers {
         match layer.media_type.as_str() {
-            PROTOCOL_MEDIA_TYPE => source = Some(layer.data.clone()),
-            TII_MEDIA_TYPE => tii = Some(layer.data.clone()),
-            MARKDOWN_MEDIA_TYPE => readme = Some(layer.data.clone()),
+            PROTOCOL_MEDIA_TYPE => source = Some(std::mem::take(&mut layer.data)),
+            TII_MEDIA_TYPE => tii = Some(std::mem::take(&mut layer.data)),
+            MARKDOWN_MEDIA_TYPE => readme = Some(std::mem::take(&mut layer.data)),
             _ => {}
         }
     }
