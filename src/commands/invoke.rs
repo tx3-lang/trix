@@ -72,7 +72,7 @@ fn load_args_json(args: &Args) -> miette::Result<serde_json::Value> {
 }
 
 pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> miette::Result<()> {
-    config.validate_interfaces()?;
+    interfaces::validate(config)?;
     interfaces::restore_all(config)?;
 
     let wallet = crate::wallet::setup(config, profile)?;

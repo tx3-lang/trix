@@ -53,7 +53,7 @@ pub fn run(args: Args, config: &RootConfig) -> miette::Result<()> {
     // `inspect tir` is a consuming command: it may target an interface, so it
     // applies the interface integrity gate up front, exactly like `invoke`
     // and `codegen`. A no-op when no interfaces are declared.
-    config.validate_interfaces()?;
+    interfaces::validate(config)?;
     interfaces::restore_all(config)?;
 
     let resolver = Resolver::new(config);

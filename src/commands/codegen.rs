@@ -123,7 +123,7 @@ fn collect_codegen_targets(config: &RootConfig) -> miette::Result<Vec<(String, P
         .values()
         .map(|e| e.alias.clone())
         .collect();
-    // `validate_interfaces` (run before this) guarantees no interface alias
+    // `validate` (run before this) guarantees no interface alias
     // equals the project name, so name == protocol.name ⇒ the project.
     let order = codegen_targets(&config.protocol.name, &dep_aliases);
 
@@ -146,7 +146,7 @@ fn collect_codegen_targets(config: &RootConfig) -> miette::Result<Vec<(String, P
 }
 
 pub async fn run(_args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
-    config.validate_interfaces()?;
+    crate::interfaces::validate(config)?;
     crate::interfaces::restore_all(config)?;
 
     let targets = collect_codegen_targets(config)?;

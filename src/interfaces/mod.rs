@@ -256,7 +256,7 @@ pub fn add(config: &RootConfig, req: AddRequest) -> Result<AddOutcome> {
     // same diagnostics as on-load validation, before we touch disk.
     let mut next_config = config.clone();
     next_config.interfaces.insert(alias.clone(), entry.clone());
-    next_config.validate_interfaces()?;
+    validate(&next_config)?;
 
     let paths = cache_paths(&entry)?;
     write_cache(&paths, &pulled, &entry)?;
@@ -349,6 +349,68 @@ fn discover_transactions(tii_bytes: &[u8]) -> Vec<String> {
     let mut names: Vec<String> = map.keys().cloned().collect();
     names.sort();
     names
+}
+
+/// Validate the `[interfaces]` table against the project. Interface-domain
+/// semantics (alias rules, registry-ref pinning, no duplicate `(scope, name)`)
+/// live here, not in the config layer — `config` only models the schema.
+///
+/// Run by the *consuming* commands (`invoke`, `codegen`, `inspect tir`) before
+/// they touch an interface, and inside `add` before writing. `build`/`check`
+/// are project-only and never call this.
+pub fn validate(config: &RootConfig) -> Result<()> {
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<(String, String)> = HashSet::new();
+    for (alias, entry) in config.interfaces.iter() {
+        if alias == &config.protocol.name {
+            return Err(miette::miette!(
+                "interface alias '{}' conflicts with the project's own protocol name",
+                alias
+            ));
+        }
+        crate::refs::validate_ident(alias).map_err(|_| {
+            miette::miette!(
+                "interface alias '{}' is not a valid identifier (must match [a-zA-Z_][a-zA-Z0-9_.-]*)",
+                alias
+            )
+        })?;
+        let (scope, name, version) = match &entry.reference {
+            ProtocolRef::Registry {
+                scope,
+                name,
+                version,
+            } => (scope, name, version),
+            ProtocolRef::Alias(a) => {
+                return Err(miette::miette!(
+                    "interface '{}' has alias-only ref '{}'; must be a full registry reference (e.g. acme/widget:0.1.0)",
+                    alias,
+                    a
+                ));
+            }
+        };
+        let Some(v) = version else {
+            return Err(miette::miette!(
+                "interface '{}' has no version pinned in trix.toml; run `trix use {}` to pin",
+                alias,
+                entry.reference
+            ));
+        };
+        if v == "latest" {
+            return Err(miette::miette!(
+                "interface '{}' is pinned to 'latest'; trix.toml must reference a concrete version",
+                alias
+            ));
+        }
+        if !seen.insert((scope.clone(), name.clone())) {
+            return Err(miette::miette!(
+                "two interface entries map to the same '{}/{}'; aliases must point to distinct protocols",
+                scope,
+                name
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// For every entry in `config.interfaces`, verify the cache. If an interface is

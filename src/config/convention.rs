@@ -374,66 +374,6 @@ impl RootConfig {
         Ok(network)
     }
 
-    /// Validates the [interfaces] table. Run by the *consuming* commands
-    /// (`invoke`, `codegen`, `inspect tir`) before they touch an interface,
-    /// and inside `trix use` before writing. `build`/`check` are project-only
-    /// and never call this.
-    pub fn validate_interfaces(&self) -> Result<()> {
-        use crate::refs::ProtocolRef;
-        use std::collections::HashSet;
-
-        let mut seen: HashSet<(String, String)> = HashSet::new();
-        for (alias, entry) in self.interfaces.iter() {
-            if alias == &self.protocol.name {
-                return Err(miette::miette!(
-                    "interface alias '{}' conflicts with the project's own protocol name",
-                    alias
-                ));
-            }
-            crate::refs::validate_ident(alias).map_err(|_| {
-                miette::miette!(
-                    "interface alias '{}' is not a valid identifier (must match [a-zA-Z_][a-zA-Z0-9_.-]*)",
-                    alias
-                )
-            })?;
-            let (scope, name, version) = match &entry.reference {
-                ProtocolRef::Registry {
-                    scope,
-                    name,
-                    version,
-                } => (scope, name, version),
-                ProtocolRef::Alias(a) => {
-                    return Err(miette::miette!(
-                        "interface '{}' has alias-only ref '{}'; must be a full registry reference (e.g. acme/widget:0.1.0)",
-                        alias,
-                        a
-                    ));
-                }
-            };
-            let Some(v) = version else {
-                return Err(miette::miette!(
-                    "interface '{}' has no version pinned in trix.toml; run `trix use {}` to pin",
-                    alias,
-                    entry.reference
-                ));
-            };
-            if v == "latest" {
-                return Err(miette::miette!(
-                    "interface '{}' is pinned to 'latest'; trix.toml must reference a concrete version",
-                    alias
-                ));
-            }
-            let key = (scope.clone(), name.clone());
-            if !seen.insert(key) {
-                return Err(miette::miette!(
-                    "two interface entries map to the same '{}/{}'; aliases must point to distinct protocols",
-                    scope,
-                    name
-                ));
-            }
-        }
-        Ok(())
-    }
 }
 
 
