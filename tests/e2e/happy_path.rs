@@ -170,13 +170,23 @@ fn codegen_generates_bindings_from_fixture() {
     ));
     ctx.write_file("trix.toml", &trix_toml);
 
+    let project_name = ctx.load_trix_config().protocol.name;
+
     let result = ctx.run_trix(&["codegen"]);
     assert_success(&result);
 
-    ctx.assert_file_exists("gen/bindings.txt");
-    ctx.assert_file_contains("gen/bindings.txt", "Protocol:");
-    ctx.assert_file_contains("gen/bindings.txt", "Transactions:");
-    ctx.assert_file_contains("gen/bindings.txt", "transfer");
-    ctx.assert_file_contains("gen/bindings.txt", "Profiles:");
-    ctx.assert_file_contains("gen/bindings.txt", "local");
+    // Output nests under the project's own subdir (the deliberate layout of
+    // the tx3c-delegating codegen, see `codegen_deps`); nothing is written
+    // flat at `gen/bindings.txt`.
+    let bindings = format!("gen/{project_name}/bindings.txt");
+    ctx.assert_file_exists(&bindings);
+    ctx.assert_file_contains(&bindings, "Protocol:");
+    ctx.assert_file_contains(&bindings, "Transactions:");
+    ctx.assert_file_contains(&bindings, "transfer");
+    ctx.assert_file_contains(&bindings, "Profiles:");
+    ctx.assert_file_contains(&bindings, "local");
+    assert!(
+        !ctx.file_path("gen/bindings.txt").exists(),
+        "unified layout: nothing should be written flat at gen/bindings.txt"
+    );
 }

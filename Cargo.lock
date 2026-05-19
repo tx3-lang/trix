@@ -540,33 +540,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ciborium"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e"
-dependencies = [
- "ciborium-io",
- "ciborium-ll",
- "serde",
-]
-
-[[package]]
-name = "ciborium-io"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05afea1e0a06c9be33d539b876f1ce3692f4afea2cb41f740e7743225ed1c757"
-
-[[package]]
-name = "ciborium-ll"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9"
-dependencies = [
- "ciborium-io",
- "half",
-]
-
-[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2888,9 +2861,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1db05f56d34358a8b1066f67cbb203ee3e7ed2ba674a6263a1d5ec6db2204323"
 dependencies = [
  "memchr",
- "miette",
- "serde",
- "serde_json",
  "thiserror 2.0.17",
  "ucd-trie",
 ]
@@ -4474,6 +4444,7 @@ dependencies = [
  "predicates",
  "prost",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "serde_with",
@@ -4485,8 +4456,6 @@ dependencies = [
  "toml",
  "tracing",
  "tracing-subscriber",
- "tx3-lang",
- "tx3-tir",
  "utxorpc",
  "zip",
 ]
@@ -4496,35 +4465,6 @@ name = "try-lock"
 version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
-
-[[package]]
-name = "tx3-lang"
-version = "0.14.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22ccd68861b3f9fe5dc2df8ba4b258cc9a29ec23c17da0e1583ab11149e4aaf4"
-dependencies = [
- "ciborium",
- "hex",
- "miette",
- "pest",
- "pest_derive",
- "serde",
- "thiserror 2.0.17",
- "trait-variant",
- "tx3-tir",
-]
-
-[[package]]
-name = "tx3-tir"
-version = "0.14.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed1dfb5f68fde6e552fdb1877e309cec4b9a56469ba94068dabd026660b911c3"
-dependencies = [
- "ciborium",
- "hex",
- "serde",
- "thiserror 2.0.17",
-]
 
 [[package]]
 name = "typenum"

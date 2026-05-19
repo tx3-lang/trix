@@ -1,8 +1,6 @@
-//! Interface-aware codegen lives only in the unstable codegen path
-//! (`src/commands/codegen.rs`). These tests are compiled and run only under
-//! `cargo test --features unstable`, where `assert_cmd::cargo_bin` resolves
-//! the unstable-built `trix` binary. They require a real `tx3c` (like
-//! `happy_path::codegen_generates_bindings_from_fixture`).
+//! Interface-aware codegen (`src/commands/codegen.rs`), which delegates the
+//! whole pipeline to the `tx3c` binary. These tests require a real `tx3c`
+//! (like `happy_path::codegen_generates_bindings_from_fixture`).
 
 use super::*;
 use std::path::PathBuf;
