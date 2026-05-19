@@ -1,29 +1,29 @@
 //! Compatibility matrix and version gating for the external CLIs `trix`
 //! drives.
 //!
-//! `trix` links no `tx3-*` crate; it orchestrates the toolchain binaries
-//! (`tx3c`, `cshell`, `dolos`) as subprocesses. Each tool's CLI surface —
-//! subcommands, flags, JSON output — is the versioned contract. Rather than
-//! embed markers in payloads, we gate on the binary's own `--version` against
-//! a supported window. This module owns that mechanism and the single matrix
-//! for every integration.
+//! `trix` links no implementation crate of a dependent tool; it orchestrates
+//! the toolchain binaries (`tx3c`, `cshell`, `dolos`) as subprocesses. Each
+//! tool's CLI surface — subcommands, flags, JSON output — is the versioned
+//! contract. Rather than embed markers in payloads, we gate on the binary's
+//! own `--version`. This module owns that mechanism and the single matrix for
+//! every integration. See `design/004-toolchain-delegation.md`.
 
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 
-/// The supported version window for one external CLI: `min` is the inclusive
-/// lower bound, `before` the exclusive upper bound (`min <= v < before`).
+/// The supported version window for one external CLI. `min` is the inclusive
+/// lower bound — the oldest release whose surface `trix` relies on. The
+/// exclusive upper bound is derived, not stored: it is the **next major**
+/// version (`min.major + 1`.0.0).
 ///
-/// The window is bounded on both ends on purpose: too-old binaries lack
-/// capabilities `trix` relies on, and — since the toolchain is pre-1.0, where
-/// a new minor may break the CLI — a too-new binary may have changed the
-/// contract out from under us. Widen the window when `trix` is updated to
-/// track a new release.
+/// A breaking change to a tool's CLI is expected to be signalled by a major
+/// version bump (semver), so `trix` accepts any release within the same major
+/// and needs updating only when a tool makes a breaking, major change — not on
+/// every minor. Raise `min` when `trix` starts relying on a newer capability.
 struct Compat {
     tool: &'static str,
     min: &'static str,
-    before: &'static str,
 }
 
 const COMPAT_MATRIX: &[Compat] = &[
@@ -32,7 +32,6 @@ const COMPAT_MATRIX: &[Compat] = &[
     Compat {
         tool: "tx3c",
         min: "0.18.0",
-        before: "0.19.0",
     },
 ];
 
@@ -41,7 +40,7 @@ fn entry(tool: &str) -> Option<&'static Compat> {
 }
 
 /// Probe `<tool> --version` and confirm it falls within the supported window
-/// in [`COMPAT_MATRIX`].
+/// in [`COMPAT_MATRIX`] (`min <= v`, and `v` within the same major as `min`).
 ///
 /// A no-op for tools not in the matrix. Cached per tool: a toolchain can't
 /// change mid-process, so each tool is probed at most once. Call this before
@@ -49,7 +48,7 @@ fn entry(tool: &str) -> Option<&'static Compat> {
 ///
 /// Escape hatch: setting `TX3_SKIP_COMPAT_CHECK` to a non-empty value bypasses
 /// the window. This exists for developing/CI-testing against an *unreleased*
-/// toolchain — a locally built `tx3c` carries the new CLI surface but still
+/// toolchain — a locally built tool carries the new CLI surface but still
 /// reports the pre-bump version until its release is cut. Not for end users.
 pub fn ensure_supported(tool: &str) -> miette::Result<()> {
     if std::env::var_os("TX3_SKIP_COMPAT_CHECK").is_some_and(|v| !v.is_empty()) {
@@ -96,7 +95,9 @@ fn check(c: &Compat) -> Result<(), String> {
         .map_err(|e| format!("cannot parse {tool} version from {stdout:?}: {e}"))?;
 
     let min = semver::Version::parse(c.min).expect("valid matrix const");
-    let before = semver::Version::parse(c.before).expect("valid matrix const");
+    // Exclusive upper bound: the next major. Same-major releases are accepted;
+    // a breaking CLI change must come with a major bump.
+    let before = semver::Version::new(min.major + 1, 0, 0);
 
     if found < min {
         return Err(format!(

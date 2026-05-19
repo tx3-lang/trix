@@ -1,4 +1,4 @@
-# Toolchain Delegation: `trix` as a Driver, `tx3c` as the Compiler
+# External CLI Delegation: `trix` as a Driver
 
 ## Status
 
@@ -6,118 +6,106 @@ Accepted — 2026-05-19.
 
 ## Context
 
-`trix` is the Tx3 package manager and workspace orchestrator. Its value —
-project layout, profiles, registry, devnet, codegen orchestration — evolves on
-its own cadence. The Tx3 language implementation (parsing, analysis, lowering,
-IR encoding) evolves on the toolchain's cadence, and its internal APIs are
-unstable by design.
+`trix` is the Tx3 package manager and workspace orchestrator. It does not
+implement the operations it exposes; it coordinates a set of dependent tools:
+the language compiler (`tx3c`), the local chain node (`dolos`), the wallet /
+transaction client (`cshell`), and others over time.
 
-Binding `trix` to the language implementation as linked libraries couples these
-two cadences: a `trix` release would be pinned to a specific compiler/IR
-version, and every compiler change would risk unrelated `trix` churn. The two
-concerns must be able to move independently.
+Each dependent tool evolves on its own cadence, and the internal APIs of
+several are unstable by design. Binding `trix` to any of them as a linked
+library couples their release cadences: a `trix` release would be pinned to a
+specific implementation version, and an unrelated change in that tool would
+risk `trix` churn. `trix` and its dependents must move independently.
 
 ## Decision
 
-**`trix` links no `tx3-*` crate. Every low-level Tx3 language operation is
-delegated to the `tx3c` binary, invoked as a subprocess. The `tx3c`
-command-line surface — its subcommands, flags, and JSON output — is the
-contract between the two.**
+**`trix` links no implementation crate of a dependent tool. It interacts with
+each tool only by invoking its binary as a subprocess. A tool's command-line
+surface — its subcommands, flags, and structured (JSON) I/O — is the contract
+between `trix` and that tool.**
 
-This is the driver/compiler split that `cargo`↔`rustc` uses: the stable,
-user-facing verbs live in the driver (`trix`); the language implementation
-lives behind a small, flag-driven compiler (`tx3c`) the driver shells out to.
-The toolchain manager (`tx3up`) pairs compatible versions, as `rustup` does for
-`cargo`/`rustc`.
-
-### `tx3c` surface
-
-`tx3c` exposes two symmetric verbs, each a single pipeline driven by `--emit`:
-
-- **`build <src>`** — forward pipeline (source → artifact). `--emit tii`
-  produces the TII; `--emit tir-json --tx <name>` prints a transaction's
-  lowered v1beta0 TIR as JSON; an empty `--emit` runs the front end
-  (parse + analyze) and stops before lowering — the "check" semantic, modelled
-  on `rustc --emit=metadata`. `--diagnostics-format human|json` selects
-  rendering; `json` is the machine contract (mirrors
-  `rustc --error-format=json`).
-- **`decode --tii <path>`** — reverse pipeline (compiled artifact → report).
-  `--emit tir-json --tx <name>` decodes the artifact's TIR payload and prints
-  the same JSON shape as `build --emit tir-json`, so a consumer cannot tell
-  source-derived from artifact-derived IR (cf. `protoc --decode`,
-  `llvm-dis`).
+This is the driver pattern, as `cargo` uses with `rustc`: the stable,
+user-facing verbs live in the driver (`trix`); each capability lives behind a
+small, flag-driven tool the driver shells out to. The toolchain manager
+(`tx3up`) installs and pairs compatible versions, as `rustup` does for the
+`cargo`/`rustc` pair.
 
 ### Division of responsibility
 
-`tx3c` owns all language semantics. `trix` owns orchestration and
-presentation: it selects what to compile, supplies project/profile context,
-and renders results — reconstructing diagnostic output from the JSON contract,
-and serializing IR through its own formatting path. No Tx3 semantics live in
-`trix`.
+Each tool owns its domain; `trix` owns orchestration and presentation —
+selecting what to run, supplying project/profile context, and rendering
+results from each tool's structured output. No domain logic of a dependent
+tool is reimplemented in `trix`.
 
-| `trix` flow | `tx3c` invocation |
-|---|---|
-| `check` | `build … --diagnostics-format json` (no `--emit`) |
-| `inspect tir` (project) | `build … --emit tir-json --tx` |
-| `inspect tir` (interface) | `decode --tii … --emit tir-json --tx` |
-| `build` / `invoke` / `test` / `publish` | `build --emit tii` |
-| `codegen` | `build` + `codegen` |
+The language compiler is the primary instance: `trix` delegates all low-level
+Tx3 operations (parse, analyze, lower, decode an artifact) to `tx3c` through
+its CLI, reconstructing diagnostics and IR presentation from `tx3c`'s JSON
+output. `dolos` (devnet) and `cshell` (wallets, submission) are delegated the
+same way. The mechanism is uniform; the tools differ only in domain.
 
 ## The contract and its versioning
 
-Because `trix` shares no types with the compiler, the `tx3c` CLI is an
-interface that must be versioned. Two principles:
+Because `trix` shares no types with a dependent tool, that tool's CLI is an
+interface `trix` must version. The principles are tool-agnostic:
 
 1. **No in-band schema markers.** Versioning belongs to the surface, not to
-   each payload. Stamping every JSON message with a schema tag versions one
+   each payload. Stamping every message with a schema tag versions one
    payload, not the contract, and bloats the wire.
 
-2. **Gate on the binary version, against a window.** Compatibility is a single
-   matrix (`trix`'s `spawn::compat`) of `Compat { tool, min, before }` — an
-   inclusive lower and *exclusive upper* bound. Both bounds matter: a too-old
-   binary lacks capabilities `trix` relies on; and because the toolchain is
-   pre-1.0 (a new minor may change the CLI), a too-new binary may have moved
-   the contract. `spawn::ensure_supported(tool)` probes `<tool> --version`,
+2. **Gate on the binary version, against a per-tool window.** Compatibility
+   for every dependent tool lives in one matrix (`trix`'s `spawn::compat`):
+   an inclusive lower bound (the oldest release whose surface `trix` relies
+   on) and an exclusive upper bound at the **next major version**. A breaking
+   change to a tool's CLI is expected to be signalled by a major version bump
+   (semver); `trix` therefore accepts any release within the same major and
+   needs updating only when a tool makes a breaking, major change — not on
+   every minor. `spawn::ensure_supported(tool)` probes `<tool> --version`,
    range-checks, caches per process, and fails with a distinct, actionable
-   message per direction (too old → run `tx3up`; too new → update `trix`). The
-   same matrix fronts other external tools (`cshell`, `dolos`), gated when
-   they need entries.
+   message per direction (too old → update the toolchain via `tx3up`; too new
+   → update `trix`).
 
-JSON shapes are objects, not bare arrays, so they stay extensible: additive
-fields are backward-compatible and need no version change; only breaking
-changes do, paired with widening the matrix window.
+3. **Escape hatch for unreleased toolchains.** A locally built tool carries
+   the new surface but still reports its pre-release version. An environment
+   override bypasses the window for development and CI against an unreleased
+   toolchain; it is not for end users.
+
+Structured payloads are objects, not bare arrays, so they stay extensible:
+additive fields are backward-compatible and need no version change; only
+breaking changes do, paired with a tool major bump and a matrix update.
 
 ## Consequences
 
 **Positive**
 
-- `trix`'s version is decoupled from the toolchain's. The compiler ships on
-  its own cadence; `trix` follows only when it wants a new capability.
-- The integration surface is small, explicit, and testable from the outside.
-- Compiler-internal API instability cannot leak into `trix`.
+- `trix`'s version is decoupled from every dependent tool's. Each ships on its
+  own cadence; `trix` follows only to adopt a new capability or a major break.
+- The integration surface is small, explicit, and testable from outside.
+- Implementation-internal API instability cannot leak into `trix`.
 - One place (`spawn::compat`) describes every external-tool compatibility
   requirement.
 
 **Costs**
 
-- A process boundary per operation. Acceptable: operations are coarse-grained
-  (whole-project build/check), so spawn cost is negligible against the work.
-- The CLI/JSON is a real interface with real discipline: breaking changes to
-  subcommands, flags, or JSON shapes require a `tx3c` version bump and a
+- A process boundary per operation. Acceptable: operations are coarse-grained,
+  so spawn cost is negligible against the work, and `trix` already spawned
+  these tools.
+- Each tool's CLI / structured I/O is a real interface with real discipline:
+  a breaking change requires a major version bump on that tool and a
   matrix-window update, coordinated across repos.
-- Release sequencing: a `tx3c` satisfying `trix`'s window must be published and
-  resolvable (via the toolchain dir / `tx3up`) before the corresponding `trix`.
+- Release sequencing: a tool release satisfying `trix`'s window must be
+  published and resolvable (via the toolchain dir / `tx3up`) before the
+  `trix` that requires it.
 
 ## Alternatives considered
 
-- **Link the language crates, track versions tightly.** This is the coupling
-  the decision exists to avoid; it keeps compiler API instability inside
+- **Link a dependent tool's crates, track versions tightly.** The coupling
+  this decision exists to avoid; it keeps that tool's API instability inside
   `trix`.
-- **Link the crates only for a subset of operations.** A partial dependency
-  still pins `trix` to a crate version and complicates the build; the marginal
+- **Link only for a subset of operations.** A partial dependency still pins
+  `trix` to a crate version and complicates the build; the marginal
   in-process speedup is irrelevant for coarse operations.
-- **In-band payload version markers.** Brittle (see above); superseded by
-  binary-version windowing.
-- **A dedicated subcommand per operation (`check`, `decode-tir`, …).** Grows
-  the long-term CLI surface. Flags on `build` plus one symmetric `decode` verb
-  cover every need with minimal surface (the `rustc`/`protoc` precedent).
+- **In-band payload version markers.** Brittle; superseded by binary-version
+  windowing.
+- **An exclusive upper bound at the next minor.** Rejected: it forces a `trix`
+  update for every dependent-tool minor even when nothing breaks. The next
+  *major* is the semver-correct breaking-change signal.
