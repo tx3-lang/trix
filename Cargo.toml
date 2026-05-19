@@ -7,13 +7,9 @@ repository = "https://github.com/tx3-lang/trix"
 homepage = "https://github.com/tx3-lang/trix"
 
 [dependencies]
-tx3-lang = "0.14.2"
-# tx3-lang = { path = "../tx3/crates/tx3-lang" }
-# tx3-lang = { git = "https://github.com/tx3-lang/tx3.git" }
-
-tx3-tir = "0.14.2"
-# tx3-tir = { path = "../tx3/crates/tx3-tir" }
-# tx3-tir = { git = "https://github.com/tx3-lang/tx3.git" }
+# Low-level Tx3 language operations (parse/analyze/lower, TIR decode) are
+# delegated to the `tx3c` binary via `spawn::tx3c`, so `trix` links no
+# `tx3-*` crate and its version is decoupled from the toolchain's.
 
 utxorpc = "0.12.0"
 # utxorpc = { git = "https://github.com/utxorpc/rust-sdk.git" }
@@ -33,6 +29,7 @@ toml = "0.8"
 anyhow = "1.0"
 miette = { version = "7.5.0", features = ["fancy"] }
 thiserror = "2.0.12"
+semver = "1.0"
 inquire = "0.7.5"
 dirs = "6.0.0"
 serde_json = "1.0.140"

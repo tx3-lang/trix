@@ -77,6 +77,10 @@ impl TestContext {
                 "TX3_TX3C_PATH".to_string(),
                 path.to_string_lossy().to_string(),
             ));
+            // The tx3c under test is built from this tree: it has the new CLI
+            // surface but still reports the pre-release version, which is
+            // outside trix's compat window. Bypass the gate for the suite.
+            envs.push(("TX3_SKIP_COMPAT_CHECK".to_string(), "1".to_string()));
         }
 
         envs
@@ -268,7 +272,6 @@ pub fn is_process_running(_pid: u32) -> bool {
     true
 }
 
-#[cfg(feature = "unstable")]
 pub mod codegen_deps;
 pub mod edge_cases;
 pub mod happy_path;

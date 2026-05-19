@@ -233,10 +233,9 @@ impl std::fmt::Display for KnownCodegenPlugin {
     }
 }
 
-#[cfg(not(feature = "unstable"))]
-const CURRENT_CODEGEN_VERSION: &str = "bindgen-v1alpha2";
-
-#[cfg(feature = "unstable")]
+// Codegen is delegated entirely to `tx3c`; the built-in SDK plugins are
+// pinned to the `codegen-v1beta0` bindgen templates that match it. (The old
+// `bindgen-v1alpha2` ref went with the now-removed legacy in-process codegen.)
 const CURRENT_CODEGEN_VERSION: &str = "codegen-v1beta0";
 
 impl From<KnownCodegenPlugin> for CodegenPluginConfig {

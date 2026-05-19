@@ -56,6 +56,8 @@ pub fn initialize_config(
 }
 
 pub fn daemon(home: &Path, silent: bool) -> miette::Result<Child> {
+    crate::spawn::ensure_supported("dolos")?;
+
     let tool_path = crate::home::tool_path("dolos")?;
 
     let config_path = home.join("dolos.toml");

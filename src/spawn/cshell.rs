@@ -85,6 +85,8 @@ pub struct CshellTomlTemplate {
 }
 
 fn new_generic_command(home: &Path) -> miette::Result<Command> {
+    crate::spawn::ensure_supported("cshell")?;
+
     let tool_path = crate::home::tool_path("cshell")?;
 
     let config_path = home.join("cshell.toml");
