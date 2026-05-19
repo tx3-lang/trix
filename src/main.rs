@@ -1,11 +1,10 @@
 use clap::Parser;
 
 use trix::{
-    builder,
     cli::{Cli, Commands},
     commands as cmds,
     config::RootConfig,
-    devnet, dirs, global, home, spawn, telemetry, updates, wallet,
+    global, telemetry, updates,
 };
 use miette::{IntoDiagnostic as _, Result};
 
