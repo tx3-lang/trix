@@ -37,19 +37,87 @@ pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     }
 }
 
-/// Split `owner/repo` into its parts. The grammar matches what GitHub
-/// accepts in its URL paths; the registry will re-validate against the
-/// authenticated identity, this is just a shape check.
-fn parse_repository(s: &str) -> miette::Result<(&str, &str)> {
-    let (owner, repo) = s.split_once('/').ok_or_else(|| {
-        miette::miette!("`[protocol].repository` must be 'owner/repo', got '{s}'")
-    })?;
-    if owner.is_empty() || repo.is_empty() || repo.contains('/') {
+/// Hosts whose OIDC issuer + claim shape `trix` knows how to verify.
+/// v1 is GitHub-only; add a match arm here (and the corresponding trust
+/// chain) when extending to GitLab, Codeberg, etc.
+const ALLOWED_REPOSITORY_HOSTS: &[&str] = &["github.com"];
+
+#[derive(Debug, PartialEq, Eq)]
+struct ParsedRepositoryUrl {
+    host: String,
+    owner: String,
+    repo: String,
+    /// Normalized `https://host/owner/repo` form, written to
+    /// `ImageMetadata.repository_url` and `org.opencontainers.image.source`.
+    canonical_url: String,
+}
+
+/// Parse the user-supplied `[protocol].repository` value. Accepts the
+/// shapes people actually paste:
+///   * `https://github.com/owner/repo`
+///   * `https://github.com/owner/repo.git`
+///   * `https://github.com/owner/repo/`
+///   * `git@github.com:owner/repo.git`
+///   * `git+https://github.com/owner/repo` (cargo-style)
+///
+/// Returns a normalized canonical URL plus the extracted (host, owner, repo)
+/// triple. Host must be in `ALLOWED_REPOSITORY_HOSTS`. v1 requires exactly
+/// two path segments — nested GitLab groups are deferred along with GitLab
+/// trust-chain support.
+fn parse_repository_url(input: &str) -> miette::Result<ParsedRepositoryUrl> {
+    let raw = input.trim();
+    let s = raw.strip_prefix("git+").unwrap_or(raw);
+
+    let (host, path) = if let Some(rest) = s.strip_prefix("git@") {
+        rest.split_once(':').ok_or_else(|| {
+            miette::miette!(
+                "`[protocol].repository` SSH form must be 'git@host:owner/repo', got '{raw}'"
+            )
+        })?
+    } else if let Some(rest) = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+    {
+        rest.split_once('/').ok_or_else(|| {
+            miette::miette!(
+                "`[protocol].repository` URL must be 'https://host/owner/repo', got '{raw}'"
+            )
+        })?
+    } else {
         return Err(miette::miette!(
-            "`[protocol].repository` must be 'owner/repo', got '{s}'"
+            "`[protocol].repository` must be a repository URL (e.g. 'https://github.com/owner/repo'), got '{raw}'"
+        ));
+    };
+
+    if !ALLOWED_REPOSITORY_HOSTS.contains(&host) {
+        return Err(miette::miette!(
+            "unsupported repository host '{host}' in '{raw}'; supported: {}",
+            ALLOWED_REPOSITORY_HOSTS.join(", ")
         ));
     }
-    Ok((owner, repo))
+
+    let path = path.trim_end_matches('/');
+    let path = path.strip_suffix(".git").unwrap_or(path);
+
+    let mut segments = path.split('/').filter(|seg| !seg.is_empty());
+    let owner = segments.next().ok_or_else(|| {
+        miette::miette!("`[protocol].repository` missing owner segment in '{raw}'")
+    })?;
+    let repo = segments.next().ok_or_else(|| {
+        miette::miette!("`[protocol].repository` missing repo segment in '{raw}'")
+    })?;
+    if segments.next().is_some() {
+        return Err(miette::miette!(
+            "`[protocol].repository` must have exactly two path segments (owner/repo), got extra in '{raw}'"
+        ));
+    }
+
+    Ok(ParsedRepositoryUrl {
+        host: host.to_string(),
+        owner: owner.to_string(),
+        repo: repo.to_string(),
+        canonical_url: format!("https://{host}/{owner}/{repo}"),
+    })
 }
 
 /// Best-effort capture of the publishing working tree's HEAD commit. Used
@@ -75,21 +143,26 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     };
 
     // GitHub-anchored identity: a published protocol MUST declare the repo
-    // that owns it, and that repo's owner segment MUST match `scope`. The
-    // registry will independently verify the caller has push to the repo;
-    // this preflight just catches typos before we attempt the push.
+    // that owns it as a URL, and that repo's owner segment MUST match
+    // `scope`. The registry will independently verify the caller has push
+    // to the repo; this preflight just catches typos before we push.
     let Some(repository) = config.protocol.repository.clone() else {
         return Err(miette::miette!(
-            "`[protocol].repository` is required to publish — set it to 'owner/repo' (e.g. '{scope}/{}')",
+            "`[protocol].repository` is required to publish — set it to a repository URL (e.g. 'https://github.com/{scope}/{}')",
             config.protocol.name
         ));
     };
-    let (owner, _repo) = parse_repository(&repository)?;
-    if owner != scope {
+    let parsed = parse_repository_url(&repository)?;
+    if parsed.owner != scope {
         return Err(miette::miette!(
-            "`[protocol].repository` owner '{owner}' does not match `[protocol].scope` '{scope}'"
+            "`[protocol].repository` owner '{}' does not match `[protocol].scope` '{scope}'",
+            parsed.owner
         ));
     }
+    // Short `owner/repo` handle for the tx3-specific annotation and any
+    // string-comparison checks against OIDC claims downstream.
+    let repository_short = format!("{}/{}", parsed.owner, parsed.repo);
+    let repository_url = parsed.canonical_url.clone();
 
     let name = config.protocol.name.clone();
     let version = config.protocol.version.clone();
@@ -126,8 +199,6 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
         ));
     }
 
-    let repository_url = format!("https://github.com/{repository}");
-
     let image_config = oci_client::client::Config {
         data: serde_json::to_vec(&ImageMetadata {
             name: name.clone(),
@@ -136,7 +207,7 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
             repository_url: Some(repository_url.clone()),
             description: config.protocol.description.clone(),
             version: Some(version.clone()),
-            repository: Some(repository.clone()),
+            repository: Some(repository_short.clone()),
             license: config.protocol.license.clone(),
             authors: config.protocol.authors.clone(),
             homepage: config.protocol.homepage.clone(),
@@ -170,7 +241,7 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
         ),
         (
             "land.tx3.protocol.repository".to_string(),
-            repository.clone(),
+            repository_short.clone(),
         ),
     ]);
     if let Some(license) = &config.protocol.license {
@@ -228,4 +299,83 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     println!("Manifest URL: {}", digest.manifest_url);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parsed(host: &str, owner: &str, repo: &str) -> ParsedRepositoryUrl {
+        ParsedRepositoryUrl {
+            host: host.into(),
+            owner: owner.into(),
+            repo: repo.into(),
+            canonical_url: format!("https://{host}/{owner}/{repo}"),
+        }
+    }
+
+    #[test]
+    fn canonical_https_form() {
+        assert_eq!(
+            parse_repository_url("https://github.com/acme/widget").unwrap(),
+            parsed("github.com", "acme", "widget")
+        );
+    }
+
+    #[test]
+    fn strips_dot_git_suffix() {
+        assert_eq!(
+            parse_repository_url("https://github.com/acme/widget.git").unwrap(),
+            parsed("github.com", "acme", "widget")
+        );
+    }
+
+    #[test]
+    fn strips_trailing_slash() {
+        assert_eq!(
+            parse_repository_url("https://github.com/acme/widget/").unwrap(),
+            parsed("github.com", "acme", "widget")
+        );
+    }
+
+    #[test]
+    fn normalizes_ssh_form() {
+        assert_eq!(
+            parse_repository_url("git@github.com:acme/widget.git").unwrap(),
+            parsed("github.com", "acme", "widget")
+        );
+    }
+
+    #[test]
+    fn accepts_cargo_style_git_plus_prefix() {
+        assert_eq!(
+            parse_repository_url("git+https://github.com/acme/widget").unwrap(),
+            parsed("github.com", "acme", "widget")
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_host() {
+        let err = parse_repository_url("https://gitlab.com/acme/widget").unwrap_err();
+        assert!(format!("{err:?}").contains("unsupported repository host"));
+    }
+
+    #[test]
+    fn rejects_extra_path_segments() {
+        let err =
+            parse_repository_url("https://github.com/acme/widget/tree/main").unwrap_err();
+        assert!(format!("{err:?}").contains("exactly two path segments"));
+    }
+
+    #[test]
+    fn rejects_missing_repo() {
+        let err = parse_repository_url("https://github.com/acme").unwrap_err();
+        assert!(format!("{err:?}").contains("missing repo segment"));
+    }
+
+    #[test]
+    fn rejects_bare_owner_repo_shorthand() {
+        let err = parse_repository_url("acme/widget").unwrap_err();
+        assert!(format!("{err:?}").contains("repository URL"));
+    }
 }
