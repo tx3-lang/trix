@@ -12,6 +12,21 @@ pub struct ProtocolConfig {
     pub description: Option<String>,
     pub main: PathBuf,
     pub readme: Option<PathBuf>,
+
+    /// GitHub `owner/repo` that owns this protocol. Required at publish
+    /// time; the owner segment must equal `scope`. Surfaces as
+    /// `org.opencontainers.image.source` on the published manifest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub homepage: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -183,6 +198,105 @@ pub struct CodegenConfig {
     pub options: Option<HashMap<String, serde_json::Value>>,
 }
 
+/// Publisher trust tier. Mirrors the `land.tx3.protocol.publisher.kind`
+/// annotation written by `trix publish` and the verification result
+/// produced by `trix use`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PublisherKind {
+    /// Keyless OIDC publish from a GitHub Actions workflow, verified
+    /// against Sigstore Fulcio with `repository`/`repository_owner` claims.
+    GithubOidc,
+    /// Local publish authenticated through the tx3 GitHub App device
+    /// flow; provenance attestation is signed by the registry, not Fulcio.
+    GithubApp,
+}
+
+/// User intent recorded in `[interfaces.<alias>]` about who should keep
+/// publishing this interface. Absence means TOFU on first verify; presence
+/// turns publisher drift into a hard error.
+///
+/// On-disk form is a compact string for the common cases:
+///   "github-oidc:acme/widget"        — tier + repo
+///   "github-oidc:acme/widget@main"   — tier + repo + git ref
+///   "github-app:acme"                — tier + GH login (App-tier has no repo claim)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublisherExpectation {
+    pub tier: PublisherKind,
+    /// `owner/repo` for `GithubOidc`; GitHub login for `GithubApp` (no slash).
+    pub repository: Option<String>,
+    /// Optional narrower pin to a git ref (branch or tag).
+    pub git_ref: Option<String>,
+}
+
+impl std::fmt::Display for PublisherExpectation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let tier = match self.tier {
+            PublisherKind::GithubOidc => "github-oidc",
+            PublisherKind::GithubApp => "github-app",
+        };
+        match (&self.repository, &self.git_ref) {
+            (Some(repo), Some(r)) => write!(f, "{tier}:{repo}@{r}"),
+            (Some(repo), None) => write!(f, "{tier}:{repo}"),
+            (None, _) => f.write_str(tier),
+        }
+    }
+}
+
+impl std::str::FromStr for PublisherExpectation {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (tier_str, rest) = s
+            .split_once(':')
+            .ok_or_else(|| format!("expected '<tier>:<repo>[@ref]', got '{s}'"))?;
+        let tier = match tier_str {
+            "github-oidc" => PublisherKind::GithubOidc,
+            "github-app" => PublisherKind::GithubApp,
+            other => return Err(format!("unknown publisher tier '{other}'")),
+        };
+        let (repo, git_ref) = match rest.split_once('@') {
+            Some((r, gr)) if !gr.is_empty() => (r, Some(gr.to_string())),
+            Some((_, _)) => return Err(format!("empty git ref after '@' in '{s}'")),
+            None => (rest, None),
+        };
+        if repo.is_empty() {
+            return Err(format!("empty repository in '{s}'"));
+        }
+        match tier {
+            PublisherKind::GithubOidc if !repo.contains('/') => {
+                return Err(format!(
+                    "github-oidc expects 'owner/repo', got '{repo}' in '{s}'"
+                ));
+            }
+            PublisherKind::GithubApp if repo.contains('/') => {
+                return Err(format!(
+                    "github-app expects a bare GitHub login (no '/'), got '{repo}' in '{s}'"
+                ));
+            }
+            _ => {}
+        }
+        Ok(PublisherExpectation {
+            tier,
+            repository: Some(repo.to_string()),
+            git_ref,
+        })
+    }
+}
+
+impl Serialize for PublisherExpectation {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for PublisherExpectation {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InterfaceEntry {
     /// Filled in by NamedMap deserialization with the [interfaces.<alias>] key.
@@ -197,6 +311,11 @@ pub struct InterfaceEntry {
 
     /// OCI manifest digest captured at `trix use` time.
     pub digest: String,
+
+    /// Optional publisher pin. Absent => TOFU on first verify, warn on drift.
+    /// Present => verification must match exactly or fail hard.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expect: Option<PublisherExpectation>,
 }
 
 impl Named for InterfaceEntry {
