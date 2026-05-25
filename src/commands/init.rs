@@ -100,6 +100,7 @@ fn default_config() -> RootConfig {
             description: None,
             main: "main.tx3".into(),
             readme: None,
+            repository: None,
         },
         ledger: LedgerConfig {
             family: KnownLedgerFamily::Cardano,
@@ -146,6 +147,7 @@ fn inquire_config(initial: &RootConfig) -> miette::Result<RootConfig> {
             description,
             main: "main.tx3".into(),
             readme: None,
+            repository: None,
         },
         codegen: generate_bindings
             .iter()

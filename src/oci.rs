@@ -20,12 +20,26 @@ pub struct ImageMetadata {
     pub name: String,
     pub scope: String,
     pub published_date: i64,
+    /// GitHub `https://github.com/<owner>/<repo>` URL. Mirrors the
+    /// `org.opencontainers.image.source` annotation.
     pub repository_url: Option<String>,
     pub description: Option<String>,
     /// Optional concrete version; `trix use` prefers this over the OCI tag
     /// when pinning, falling back to the tag if absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+
+    /// `owner/repo` from `[protocol].repository` at publish time. Short
+    /// handle used for OIDC-claim comparison; the human-readable URL
+    /// lives in `repository_url`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+
+    /// Source commit SHA captured at publish time. Best-effort: populated
+    /// from `git rev-parse HEAD` in the publishing working tree. Future
+    /// OIDC-tier publishes will overwrite this from the workflow claim.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit_sha: Option<String>,
 }
 
 pub fn client_for(registry_url: &str) -> oci_client::Client {

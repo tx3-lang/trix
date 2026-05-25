@@ -15,6 +15,7 @@ pub mod global;
 pub mod home;
 pub mod oci;
 pub mod refs;
+pub mod repository;
 pub mod spawn;
 pub mod telemetry;
 pub mod updates;
