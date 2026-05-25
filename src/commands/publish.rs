@@ -210,9 +210,6 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
             description: config.protocol.description.clone(),
             version: Some(version.clone()),
             repository: Some(repository_short.clone()),
-            license: config.protocol.license.clone(),
-            authors: config.protocol.authors.clone(),
-            homepage: config.protocol.homepage.clone(),
             commit_sha: commit_sha.clone(),
         })
         .into_diagnostic()?,
@@ -246,24 +243,6 @@ pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
             repository_short.clone(),
         ),
     ]);
-    if let Some(license) = &config.protocol.license {
-        annotations.insert(
-            "org.opencontainers.image.licenses".to_string(),
-            license.clone(),
-        );
-    }
-    if !config.protocol.authors.is_empty() {
-        annotations.insert(
-            "org.opencontainers.image.authors".to_string(),
-            config.protocol.authors.join(", "),
-        );
-    }
-    if let Some(homepage) = &config.protocol.homepage {
-        annotations.insert(
-            "org.opencontainers.image.url".to_string(),
-            homepage.clone(),
-        );
-    }
     if let Some(sha) = &commit_sha {
         annotations.insert(
             "org.opencontainers.image.revision".to_string(),

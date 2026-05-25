@@ -29,18 +29,11 @@ pub struct ImageMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 
-    /// `owner/repo` from `[protocol].repository` at publish time.
+    /// `owner/repo` from `[protocol].repository` at publish time. Short
+    /// handle used for OIDC-claim comparison; the human-readable URL
+    /// lives in `repository_url`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub license: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub authors: Vec<String>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub homepage: Option<String>,
 
     /// Source commit SHA captured at publish time. Best-effort: populated
     /// from `git rev-parse HEAD` in the publishing working tree. Future

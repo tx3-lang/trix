@@ -13,20 +13,12 @@ pub struct ProtocolConfig {
     pub main: PathBuf,
     pub readme: Option<PathBuf>,
 
-    /// GitHub `owner/repo` that owns this protocol. Required at publish
-    /// time; the owner segment must equal `scope`. Surfaces as
+    /// Repository URL that owns this protocol (e.g.
+    /// `https://github.com/acme/widget`). Required at publish time; the
+    /// owner segment must equal `scope`. Surfaces as
     /// `org.opencontainers.image.source` on the published manifest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repository: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub license: Option<String>,
-
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub authors: Vec<String>,
-
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub homepage: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
