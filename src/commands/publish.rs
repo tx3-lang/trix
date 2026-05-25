@@ -66,29 +66,31 @@ struct ParsedRepositoryUrl {
 /// trust-chain support.
 fn parse_repository_url(input: &str) -> miette::Result<ParsedRepositoryUrl> {
     let raw = input.trim();
-    let s = raw.strip_prefix("git+").unwrap_or(raw);
+    let stripped = raw.strip_prefix("git+").unwrap_or(raw);
 
-    let (host, path) = if let Some(rest) = s.strip_prefix("git@") {
-        rest.split_once(':').ok_or_else(|| {
+    // Rewrite SCP-style SSH (`git@host:owner/repo`) into a real URL so the
+    // `url` crate can parse it. RFC 3986 reads the `:` after the user as a
+    // port separator, so the SCP form isn't a valid URL on its own.
+    let normalized: std::borrow::Cow<'_, str> = if let Some(rest) = stripped.strip_prefix("git@") {
+        let (host, path) = rest.split_once(':').ok_or_else(|| {
             miette::miette!(
                 "`[protocol].repository` SSH form must be 'git@host:owner/repo', got '{raw}'"
             )
-        })?
-    } else if let Some(rest) = s
-        .strip_prefix("https://")
-        .or_else(|| s.strip_prefix("http://"))
-    {
-        rest.split_once('/').ok_or_else(|| {
-            miette::miette!(
-                "`[protocol].repository` URL must be 'https://host/owner/repo', got '{raw}'"
-            )
-        })?
+        })?;
+        format!("ssh://git@{host}/{path}").into()
     } else {
-        return Err(miette::miette!(
-            "`[protocol].repository` must be a repository URL (e.g. 'https://github.com/owner/repo'), got '{raw}'"
-        ));
+        stripped.into()
     };
 
+    let url = url::Url::parse(&normalized).map_err(|e| {
+        miette::miette!(
+            "`[protocol].repository` is not a valid URL ('{raw}'): {e}; expected something like 'https://github.com/owner/repo'"
+        )
+    })?;
+
+    let host = url.host_str().ok_or_else(|| {
+        miette::miette!("`[protocol].repository` URL has no host ('{raw}')")
+    })?;
     if !ALLOWED_REPOSITORY_HOSTS.contains(&host) {
         return Err(miette::miette!(
             "unsupported repository host '{host}' in '{raw}'; supported: {}",
@@ -96,7 +98,7 @@ fn parse_repository_url(input: &str) -> miette::Result<ParsedRepositoryUrl> {
         ));
     }
 
-    let path = path.trim_end_matches('/');
+    let path = url.path().trim_end_matches('/');
     let path = path.strip_suffix(".git").unwrap_or(path);
 
     let mut segments = path.split('/').filter(|seg| !seg.is_empty());
@@ -376,6 +378,6 @@ mod tests {
     #[test]
     fn rejects_bare_owner_repo_shorthand() {
         let err = parse_repository_url("acme/widget").unwrap_err();
-        assert!(format!("{err:?}").contains("repository URL"));
+        assert!(format!("{err:?}").contains("not a valid URL"));
     }
 }
