@@ -212,16 +212,17 @@ pub enum PublisherKind {
     GithubApp,
 }
 
-/// User intent recorded in `[interfaces.<alias>]` about who should keep
-/// publishing this interface. Absence means TOFU on first verify; presence
-/// turns publisher drift into a hard error.
+/// User-declared trust for a published interface: "I trust this publisher
+/// tier from this repo (optionally narrowed to a git ref) to keep
+/// publishing this dependency." Absence means TOFU on first verify;
+/// presence turns publisher drift into a hard error.
 ///
 /// On-disk form is a compact string for the common cases:
 ///   "github-oidc:acme/widget"        — tier + repo
 ///   "github-oidc:acme/widget@main"   — tier + repo + git ref
 ///   "github-app:acme"                — tier + GH login (App-tier has no repo claim)
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PublisherExpectation {
+pub struct TrustedPublisher {
     pub tier: PublisherKind,
     /// `owner/repo` for `GithubOidc`; GitHub login for `GithubApp` (no slash).
     pub repository: Option<String>,
@@ -229,7 +230,7 @@ pub struct PublisherExpectation {
     pub git_ref: Option<String>,
 }
 
-impl std::fmt::Display for PublisherExpectation {
+impl std::fmt::Display for TrustedPublisher {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let tier = match self.tier {
             PublisherKind::GithubOidc => "github-oidc",
@@ -243,7 +244,7 @@ impl std::fmt::Display for PublisherExpectation {
     }
 }
 
-impl std::str::FromStr for PublisherExpectation {
+impl std::str::FromStr for TrustedPublisher {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -276,7 +277,7 @@ impl std::str::FromStr for PublisherExpectation {
             }
             _ => {}
         }
-        Ok(PublisherExpectation {
+        Ok(TrustedPublisher {
             tier,
             repository: Some(repo.to_string()),
             git_ref,
@@ -284,13 +285,13 @@ impl std::str::FromStr for PublisherExpectation {
     }
 }
 
-impl Serialize for PublisherExpectation {
+impl Serialize for TrustedPublisher {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.to_string())
     }
 }
 
-impl<'de> Deserialize<'de> for PublisherExpectation {
+impl<'de> Deserialize<'de> for TrustedPublisher {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
         s.parse().map_err(serde::de::Error::custom)
@@ -312,10 +313,10 @@ pub struct InterfaceEntry {
     /// OCI manifest digest captured at `trix use` time.
     pub digest: String,
 
-    /// Optional publisher pin. Absent => TOFU on first verify, warn on drift.
+    /// Trusted publisher pin. Absent => TOFU on first verify, warn on drift.
     /// Present => verification must match exactly or fail hard.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub expect: Option<PublisherExpectation>,
+    pub trust: Option<TrustedPublisher>,
 }
 
 impl Named for InterfaceEntry {

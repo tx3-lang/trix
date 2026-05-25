@@ -250,7 +250,7 @@ pub fn add(config: &RootConfig, req: AddRequest) -> Result<AddOutcome> {
         alias: alias.clone(),
         reference: pinned_ref.clone(),
         digest: pulled.digest.clone(),
-        expect: None,
+        trust: None,
     };
 
     // Validate the prospective config so a bad alias/ref is rejected with the
