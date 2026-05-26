@@ -21,10 +21,18 @@
 //! Each consuming command calls `restore_all` first — a no-op when the cache
 //! is consistent with `trix.toml`.
 
+pub mod attestation;
 pub mod manifest;
+pub mod oci;
+pub mod repository;
 pub mod resolve;
 
-pub use manifest::ProtocolManifest;
+pub use attestation::{VerificationFacts, verify_registry_attestation, verify_sigstore_bundle};
+pub use manifest::{ProtocolManifest, VerificationTier};
+pub use oci::{
+    ImageMetadata, MARKDOWN_MEDIA_TYPE, PROTOCOL_MEDIA_TYPE, PulledArtifact, TII_MEDIA_TYPE,
+};
+pub use repository::RepositoryUrl;
 pub use resolve::{ResolveError, ResolvedProtocol, Resolver};
 
 use std::path::PathBuf;
@@ -32,7 +40,6 @@ use std::path::PathBuf;
 use miette::{IntoDiagnostic as _, Result};
 
 use crate::config::{InterfaceEntry, RootConfig};
-use crate::oci;
 use crate::refs::ProtocolRef;
 
 pub const CACHE_SOURCE_FILE: &str = "main.tx3";
@@ -140,7 +147,64 @@ pub fn verify_cached(entry: &InterfaceEntry) -> Result<CacheStatus> {
         )));
     }
 
+    if let Some(report) = check_trust(entry, &manifest) {
+        return Ok(CacheStatus::Invalid(report));
+    }
+
     Ok(CacheStatus::Valid)
+}
+
+/// Compare an `InterfaceEntry.trust` pin against the cached manifest's
+/// verification facts. Absent pin → no enforcement (TOFU). Present pin
+/// with the manifest still at `tier = Unverified` → warn and accept,
+/// because the verifier hasn't landed yet (see "Identity & trust" in
+/// `design/003-protocol-interfaces.md`); promoting this to a hard error
+/// would block every consumer until the registry implements its half.
+/// Present pin with a real tier → strict comparison.
+fn check_trust(entry: &InterfaceEntry, manifest: &ProtocolManifest) -> Option<miette::Report> {
+    let pin = entry.trust.as_ref()?;
+
+    if manifest.tier == VerificationTier::Unverified {
+        eprintln!(
+            "warning: interface '{}' has trust pin '{}' but the cached artifact is unverified \
+             (sigstore / GitHub App verification is not yet wired). Accepting for now — \
+             this will become a hard error once the verifier lands.",
+            entry.alias, pin
+        );
+        return None;
+    }
+
+    if !manifest.tier.satisfies(pin.tier) {
+        return Some(miette::miette!(
+            "interface '{}' trust pin expects tier '{}', but the cached artifact was \
+             verified at a different tier. Run `trix use --force {}` to repin, or update \
+             the trust pin in trix.toml.",
+            entry.alias,
+            pin,
+            entry.reference,
+        ));
+    }
+
+    if let Some(expected_repo) = pin.repository.as_deref()
+        && let Some(actual_repo) = manifest.repository.as_deref()
+        && expected_repo != actual_repo
+    {
+        return Some(miette::miette!(
+            "interface '{}' trust pin expects repository '{}', but the cached artifact \
+             reports '{}'. Run `trix use --force {}` to repin, or update the trust pin.",
+            entry.alias,
+            expected_repo,
+            actual_repo,
+            entry.reference,
+        ));
+    }
+
+    // `git_ref` narrowing is meaningful only once the sigstore tier records
+    // the workflow's `ref` claim. Until then, ignore it silently — the
+    // tier-`Unverified` early return already covers the user.
+    let _ = pin.git_ref.as_deref();
+
+    None
 }
 
 /// Resolve + anonymously pull an OCI artifact for `reference` against the
@@ -198,10 +262,46 @@ fn write_cache(
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0),
         has_readme: pulled.readme.is_some(),
+        repository: pulled.metadata.repository.clone(),
+        commit_sha: pulled.metadata.commit_sha.clone(),
+        // Until the sigstore / App-attestation paths land, every fetched
+        // artifact is recorded as Unverified. `verify_cached` reads this
+        // when comparing against an `InterfaceEntry.trust` pin.
+        tier: VerificationTier::Unverified,
+        subject: None,
+        fulcio_issuer: None,
+        bundle_digest: None,
+        verified_at: None,
     };
     let manifest_bytes = serde_json::to_vec_pretty(&manifest).into_diagnostic()?;
     std::fs::write(&paths.manifest, manifest_bytes).into_diagnostic()?;
     Ok(())
+}
+
+/// Verification policy for a `trix use` invocation. Drives whether
+/// publisher attestations are required, optional, or skipped. The
+/// non-`Default` variants surface a clear "verification not yet
+/// available" error until the sigstore / App-attestation paths land
+/// (see `crate::interfaces::attestation`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrustPolicy {
+    /// Today's behavior: pull, cache, record `tier = Unverified`.
+    Default,
+    /// `--insecure`: explicit acknowledgement that no verification will
+    /// be performed even when it becomes available.
+    Insecure,
+    /// `--require=oidc`: refuse the pull unless an OIDC-tier attestation
+    /// verifies. Today's stub verifier always errors.
+    RequireOidc,
+    /// `--require=app`: refuse unless an App-tier attestation verifies.
+    /// Strictly weaker than OIDC; accepted for completeness.
+    RequireApp,
+}
+
+impl Default for TrustPolicy {
+    fn default() -> Self {
+        TrustPolicy::Default
+    }
 }
 
 /// A request to add an interface, mapped straight from the CLI.
@@ -214,6 +314,11 @@ pub struct AddRequest {
     pub force: bool,
     /// Pull + cache but do not modify `trix.toml`.
     pub dry_run: bool,
+    /// What level of publisher verification to require.
+    pub trust_policy: TrustPolicy,
+    /// Allow a publisher-subject change without failing. No-op until the
+    /// verifier records previous subjects.
+    pub accept_rename: bool,
 }
 
 /// Everything the command/view layer needs to report a completed `add`.
@@ -233,6 +338,30 @@ pub fn add(config: &RootConfig, req: AddRequest) -> Result<AddOutcome> {
     let request_ref = default_to_latest(req.reference);
     let pulled = pull_ref(config, &request_ref)?;
     let pinned_ref = pin_reference(&request_ref, &pulled.metadata)?;
+
+    // Enforce `--require=…`. Both tiers reject with the stub's
+    // "not yet wired" error until the registry-side verifier ships.
+    // `Insecure` and `Default` skip the verifier entirely — there is
+    // nothing to verify against today, so `Default` behaves like
+    // `Insecure` in practice; the distinction starts mattering when
+    // the verifier becomes real and `Default` flips to "TOFU verify".
+    let _ = req.accept_rename; // wired through for forward-compat; consumed by the future verifier
+    match req.trust_policy {
+        TrustPolicy::RequireOidc => {
+            attestation::verify_sigstore_bundle(
+                &[],
+                pulled.metadata.repository.as_deref().unwrap_or(""),
+                pulled.metadata.repository.as_deref().unwrap_or(""),
+            )?;
+        }
+        TrustPolicy::RequireApp => {
+            attestation::verify_registry_attestation(
+                &[],
+                pulled.metadata.repository.as_deref().unwrap_or(""),
+            )?;
+        }
+        TrustPolicy::Insecure | TrustPolicy::Default => {}
+    }
 
     let alias = req
         .alias
@@ -434,4 +563,96 @@ pub fn restore_all(config: &RootConfig) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{PublisherKind, TrustedPublisher};
+
+    fn manifest(tier: VerificationTier, repository: Option<&str>) -> ProtocolManifest {
+        ProtocolManifest {
+            scope: "acme".into(),
+            name: "widget".into(),
+            version: "0.1.3".into(),
+            digest: "sha256:abc".into(),
+            published_date: 0,
+            description: None,
+            repository_url: None,
+            fetched_at: 0,
+            has_readme: false,
+            repository: repository.map(str::to_string),
+            commit_sha: None,
+            tier,
+            subject: None,
+            fulcio_issuer: None,
+            bundle_digest: None,
+            verified_at: None,
+        }
+    }
+
+    fn entry(trust: Option<TrustedPublisher>) -> InterfaceEntry {
+        InterfaceEntry {
+            alias: "widget".into(),
+            reference: ProtocolRef::Registry {
+                scope: "acme".into(),
+                name: "widget".into(),
+                version: Some("0.1.3".into()),
+            },
+            digest: "sha256:abc".into(),
+            trust,
+        }
+    }
+
+    #[test]
+    fn no_pin_means_no_enforcement() {
+        let m = manifest(VerificationTier::Unverified, None);
+        assert!(check_trust(&entry(None), &m).is_none());
+    }
+
+    #[test]
+    fn pin_against_unverified_warns_but_passes() {
+        let m = manifest(VerificationTier::Unverified, None);
+        let pin = TrustedPublisher {
+            tier: PublisherKind::GithubOidc,
+            repository: Some("acme/widget".into()),
+            git_ref: None,
+        };
+        assert!(check_trust(&entry(Some(pin)), &m).is_none());
+    }
+
+    #[test]
+    fn tier_mismatch_is_rejected() {
+        let m = manifest(VerificationTier::GithubApp, Some("acme/widget"));
+        let pin = TrustedPublisher {
+            tier: PublisherKind::GithubOidc,
+            repository: Some("acme/widget".into()),
+            git_ref: None,
+        };
+        let err = check_trust(&entry(Some(pin)), &m).expect("expected mismatch report");
+        assert!(format!("{err:?}").contains("tier"));
+    }
+
+    #[test]
+    fn repo_mismatch_is_rejected() {
+        let m = manifest(VerificationTier::GithubOidc, Some("acme/widget"));
+        let pin = TrustedPublisher {
+            tier: PublisherKind::GithubOidc,
+            repository: Some("acme/imposter".into()),
+            git_ref: None,
+        };
+        let err = check_trust(&entry(Some(pin)), &m).expect("expected mismatch report");
+        assert!(format!("{err:?}").contains("repository"));
+    }
+
+    #[test]
+    fn matching_pin_accepts() {
+        let m = manifest(VerificationTier::GithubOidc, Some("acme/widget"));
+        let pin = TrustedPublisher {
+            tier: PublisherKind::GithubOidc,
+            repository: Some("acme/widget".into()),
+            git_ref: Some("main".into()),
+        };
+        assert!(check_trust(&entry(Some(pin)), &m).is_none());
+    }
 }

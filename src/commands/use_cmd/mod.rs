@@ -1,10 +1,21 @@
-use clap::Args as ClapArgs;
+use clap::{Args as ClapArgs, ValueEnum};
 
 use crate::config::{ProfileConfig, RootConfig};
-use crate::interfaces::{self, AddRequest};
+use crate::interfaces::{self, AddRequest, TrustPolicy};
 use crate::refs::ProtocolRef;
 
 mod view;
+
+/// The verification tier a `trix use` invocation requires. Today only
+/// `oidc` is meaningful as a *requirement* (the App tier is a strictly
+/// weaker assertion); both reject with "verification not yet available"
+/// until the sigstore / App-attestation paths land.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[clap(rename_all = "kebab-case")]
+pub enum RequiredTier {
+    Oidc,
+    App,
+}
 
 #[derive(ClapArgs, Debug)]
 pub struct Args {
@@ -25,10 +36,42 @@ pub struct Args {
     /// Resolve and cache the artifact but do not modify trix.toml.
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Pin without checking publisher attestations. Use only when the
+    /// publisher has not yet adopted OIDC publishing and you have other
+    /// out-of-band confidence in the artifact. Conflicts with `--require`.
+    #[arg(long)]
+    pub insecure: bool,
+
+    /// Require a specific publisher tier. `oidc` is the canonical choice;
+    /// `app` is accepted for completeness but is a weaker assertion. Until
+    /// the registry-side verifier ships, any explicit requirement fails
+    /// with a clear "verification not yet available" error.
+    #[arg(long, value_name = "TIER")]
+    pub require: Option<RequiredTier>,
+
+    /// Accept a publisher-subject change (e.g. a GitHub repo or org
+    /// rename) without failing the verification step. No-op until the
+    /// verifier records previous subjects to compare against.
+    #[arg(long)]
+    pub accept_rename: bool,
 }
 
 pub fn run(args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
     let dry_run = args.dry_run;
+
+    if args.insecure && args.require.is_some() {
+        return Err(miette::miette!(
+            "--insecure cannot be combined with --require — they ask for opposite things",
+        ));
+    }
+
+    let trust_policy = match (args.insecure, args.require) {
+        (true, _) => TrustPolicy::Insecure,
+        (false, Some(RequiredTier::Oidc)) => TrustPolicy::RequireOidc,
+        (false, Some(RequiredTier::App)) => TrustPolicy::RequireApp,
+        (false, None) => TrustPolicy::Default,
+    };
 
     let outcome = interfaces::add(
         config,
@@ -37,6 +80,8 @@ pub fn run(args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette:
             alias: args.alias,
             force: args.force,
             dry_run,
+            trust_policy,
+            accept_rename: args.accept_rename,
         },
     )?;
 

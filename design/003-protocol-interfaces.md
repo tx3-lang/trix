@@ -106,6 +106,115 @@ Existing projects are unaffected: `interfaces` is
 `#[serde(default, skip_serializing_if = "NamedMap::is_empty")]`, so
 `trix.toml` files with no interfaces parse and round-trip unchanged.
 
+## Identity & trust
+
+Anonymous OCI pulls give content integrity (the digest pins the manifest
+body) but say nothing about *who* published an interface. Two consumers
+can pin the same digest and still disagree about whether the publisher
+was legitimate. Identity is therefore a separate concern, layered on top
+of the digest pin.
+
+### Scope = GitHub owner
+
+A published protocol's `scope` MUST equal a real GitHub user or org
+login. The registry refuses to mint a scope whose login does not exist
+on GitHub. `name` is free-form (kebab-case); one owner can publish many
+protocols, and a single repo can publish many protocols (DSL monorepos
+are first-class — just N sibling folders, each with its own `trix.toml`
+and its own `trix publish`).
+
+`[protocol].repository` (introduced in #112) is a full URL that anchors
+*this* protocol to *one* GitHub repo. Publish preflight asserts
+`parsed.owner == scope`; the registry will independently verify the
+caller has push to the repo. Today's host allowlist is `github.com`
+only — see "GitHub-only v1" below.
+
+### Two publisher tiers
+
+| Tier | Trigger | OIDC subject | Use case |
+|---|---|---|---|
+| `github-oidc` | publish from a GitHub Actions workflow | minted from the workflow JWT (`aud=tx3-registry`, claims include `repository`, `repository_owner`, `ref`, `sha`, `workflow`) | the canonical path; npm/PyPI-style provenance for free |
+| `github-app` | publish from a developer machine via device flow against the tx3 GitHub App | the authenticated GitHub login | solo devs / local hotfixes; weaker — no commit/ref claim |
+
+Personal access tokens are explicitly **not** a supported tier. They
+normalize long-lived credentials and offer no claim shape worth
+verifying.
+
+### Trust pin: declared intent vs. observed fact
+
+`InterfaceEntry.trust` (introduced in #112) is a consumer-side
+declaration of *which publisher I expect to keep publishing this
+interface*. It is intent, not evidence. Three forms:
+
+```toml
+trust = "github-oidc:acme/widget"          # tier + repo
+trust = "github-oidc:acme/widget@main"     # tier + repo + git ref
+trust = "github-app:acme"                  # tier + GH login (App-tier has no repo claim)
+```
+
+If `trust` is set: every restore compares observed publisher facts
+against it; a mismatch is a hard error. If absent: TOFU — the first
+successful verify is implicitly trusted, and subsequent verifies log a
+warning on drift but do not fail. The OCI manifest digest in
+`trix.toml` is still the cryptographic anchor under either regime.
+
+### Where evidence lives
+
+Verification facts are persisted alongside the artifact in
+`metadata.json` (the existing `ProtocolManifest`):
+
+```
+.tx3/tii/<scope>/<name>/<version>/
+    └── metadata.json
+        - existing: scope, name, version, digest, repository_url, ...
+        - identity:   repository (owner/repo), commit_sha
+        - verified:   tier, subject, fulcio_issuer, bundle_digest, verified_at
+```
+
+Keeping everything in one file matches the cache's existing
+`(scope, name, version)` keying and avoids a second source of truth.
+The digest in `trix.toml` is the only persisted commitment to artifact
+content; everything in `metadata.json` is derivable from a re-pull.
+
+### Trust chain — the registry is **not** a trust root
+
+For OIDC-tier publishes, the registry attaches a sigstore bundle as an
+OCI 1.1 referrer (`application/vnd.dev.sigstore.bundle.v0.3+json`)
+wrapping the Fulcio cert minted from the workflow's OIDC token.
+Consumers verify against pinned Fulcio roots offline; tx3 trusts the
+sigstore root and the GitHub OIDC issuer, not the registry's word.
+
+For App-tier publishes (no workflow OIDC), the registry produces a
+registry-signed attestation, and consumers verify it against a pinned
+tx3 registry signing key. App-tier is a strictly weaker assertion and
+is reported as such in the manifest and in any consumer-facing surface.
+
+### Threat model
+
+| Threat | Defense |
+|---|---|
+| Scope squatting on the registry | Scope mint requires a real GitHub login; first publish under a scope reserves it |
+| Tampered artifact in transit / at rest | Digest pin in `trix.toml` |
+| Compromised registry | Sigstore referrer verified offline against Fulcio roots; registry-signed attestation only used for App-tier and clearly downgraded |
+| GitHub account takeover | Existing digest-pinned consumers unaffected; new publishes get a fresh subject — TOFU warns on drift, explicit `trust` pins fail closed |
+| Repo rename | Fulcio claims are immutable; subsequent publishes get a new subject; consumers must opt-in via `--accept-rename` |
+| GitHub-level name squatting | Out of scope — GitHub owns that namespace |
+| OIDC issuer outage | Publishing pauses; pull/verify still works offline against pinned roots |
+
+Trust does **not** transit through interface composition. A protocol
+that pulls another interface does not inherit its authority — every
+`[interfaces.*]` entry is independently verified, and its publisher
+subject is recorded in that interface's own `metadata.json`.
+
+### GitHub-only v1
+
+The trust chain is intentionally tied to a single VCS in v1. The schema
+itself does not lock us in: the repository allowlist
+(`src/repository.rs::ALLOWED_HOSTS`) is a one-line addition for each
+new host, and `PublisherKind` is an open enum. Adding GitLab requires a
+parallel OIDC issuer + Fulcio configuration on the registry side, not a
+schema change here.
+
 ## The cache
 
 Interfaces and the project's own built TII share **one uniform layout**,
@@ -215,3 +324,21 @@ to the unstable path; the default/legacy layout is unchanged.
   version directories behind.
 - Discovery commands (`trix search` / registry listing). Protocols are found
   out-of-band; `trix use` takes the reference directly.
+
+### Deferred to follow-up (Identity & trust)
+
+The schema and consumer-side surfaces described in "Identity & trust"
+land in this repo; the verification path is staged behind registry
+work that is out of this repo's scope. Until the registry implements
+its half, `metadata.json` carries `tier = "unverified"` and explicit
+`trust` pins warn (rather than fail) on tier mismatch.
+
+- Minting workflow OIDC tokens (`aud=tx3-registry`) and verifying
+  scope-claim alignment server-side.
+- GitHub App registration, device flow on the client, App-token
+  verification + registry-signed attestation on the server.
+- OCI 1.1 Referrers API for the sigstore bundle.
+- Scope-claim reservation API (first publish under a GH owner pins it).
+- A revocations endpoint.
+- `land.tx3.protocol.publisher.{kind,subject}` annotations on the
+  published manifest — meaningful only once a real OIDC subject exists.
