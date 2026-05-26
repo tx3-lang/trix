@@ -18,9 +18,23 @@
 //! Both return a [`VerificationFacts`] that the caller drops into the
 //! cached [`crate::interfaces::ProtocolManifest`].
 
-use miette::Result;
+use miette::{Diagnostic, Result};
+use thiserror::Error;
 
 use super::VerificationTier;
+
+/// Errors raised by the verifier surfaces. Today the only inhabitant is
+/// [`AttestationError::NotYetWired`], emitted by the stubs; real
+/// verification will extend this enum with variants for chain
+/// failures, claim mismatches, expired certs, and so on.
+#[derive(Debug, Error, Diagnostic)]
+pub enum AttestationError {
+    #[error(
+        "{tier:?} verification is not yet wired — the registry has not shipped its half. \
+         See design/003-protocol-interfaces.md → 'Identity & trust → Deferred to follow-up'."
+    )]
+    NotYetWired { tier: VerificationTier },
+}
 
 /// What a successful verification yields. Mirrors the verification
 /// fields on `ProtocolManifest`; the caller copies them across rather
@@ -66,11 +80,10 @@ pub fn verify_sigstore_bundle(
     _expected_owner: &str,
     _expected_repo: &str,
 ) -> Result<VerificationFacts> {
-    Err(miette::miette!(
-        "sigstore verification is not yet wired — the registry has not shipped its OIDC + \
-         referrer-API support. See design/003-protocol-interfaces.md → 'Identity & trust → \
-         Deferred to follow-up'."
-    ))
+    Err(AttestationError::NotYetWired {
+        tier: VerificationTier::GithubOidc,
+    }
+    .into())
 }
 
 /// Verify a registry-signed attestation for an App-tier publish.
@@ -82,26 +95,42 @@ pub fn verify_registry_attestation(
     _attestation: &[u8],
     _expected_owner: &str,
 ) -> Result<VerificationFacts> {
-    Err(miette::miette!(
-        "App-tier (registry-attested) verification is not yet wired — the registry has not \
-         published its signing key. See design/003-protocol-interfaces.md → 'Identity & trust \
-         → Deferred to follow-up'."
-    ))
+    Err(AttestationError::NotYetWired {
+        tier: VerificationTier::GithubApp,
+    }
+    .into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn sigstore_verifier_is_a_stub() {
-        let err = verify_sigstore_bundle(&[], "acme", "acme/widget").unwrap_err();
-        assert!(format!("{err:?}").contains("not yet wired"));
+    /// Helper: downcast the `miette::Report` produced by the stubs back
+    /// to the typed `AttestationError` so we can assert on the variant
+    /// instead of substring-matching the rendered message.
+    fn as_attestation_err(report: miette::Report) -> AttestationError {
+        report
+            .downcast::<AttestationError>()
+            .expect("verifier should return an AttestationError")
     }
 
     #[test]
-    fn registry_attestation_verifier_is_a_stub() {
-        let err = verify_registry_attestation(&[], "acme").unwrap_err();
-        assert!(format!("{err:?}").contains("not yet wired"));
+    fn sigstore_verifier_reports_not_yet_wired_for_oidc() {
+        let report = verify_sigstore_bundle(&[], "acme", "acme/widget").unwrap_err();
+        match as_attestation_err(report) {
+            AttestationError::NotYetWired { tier } => {
+                assert_eq!(tier, VerificationTier::GithubOidc);
+            }
+        }
+    }
+
+    #[test]
+    fn registry_attestation_verifier_reports_not_yet_wired_for_app() {
+        let report = verify_registry_attestation(&[], "acme").unwrap_err();
+        match as_attestation_err(report) {
+            AttestationError::NotYetWired { tier } => {
+                assert_eq!(tier, VerificationTier::GithubApp);
+            }
+        }
     }
 }

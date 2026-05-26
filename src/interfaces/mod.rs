@@ -37,10 +37,41 @@ pub use resolve::{ResolveError, ResolvedProtocol, Resolver};
 
 use std::path::PathBuf;
 
-use miette::{IntoDiagnostic as _, Result};
+use miette::{Diagnostic, IntoDiagnostic as _, Result};
+use thiserror::Error;
 
-use crate::config::{InterfaceEntry, RootConfig};
+use crate::config::{InterfaceEntry, PublisherKind, RootConfig};
 use crate::refs::ProtocolRef;
+
+/// A consumer-side trust pin disagreed with what the cached manifest
+/// records. Caller-facing — `verify_cached` wraps these in
+/// [`CacheStatus::Invalid`].
+#[derive(Debug, Error, Diagnostic)]
+pub enum TrustViolation {
+    #[error(
+        "interface '{alias}' trust pin expects tier '{expected:?}', but the cached artifact \
+         was verified at tier '{actual:?}'. Run `trix use --force {reference}` to repin, or \
+         update the trust pin in trix.toml."
+    )]
+    TierMismatch {
+        alias: String,
+        expected: PublisherKind,
+        actual: VerificationTier,
+        reference: String,
+    },
+
+    #[error(
+        "interface '{alias}' trust pin expects repository '{expected}', but the cached \
+         artifact reports '{actual}'. Run `trix use --force {reference}` to repin, or update \
+         the trust pin in trix.toml."
+    )]
+    RepositoryMismatch {
+        alias: String,
+        expected: String,
+        actual: String,
+        reference: String,
+    },
+}
 
 pub const CACHE_SOURCE_FILE: &str = "main.tx3";
 pub const CACHE_TII_FILE: &str = "main.tii";
@@ -147,8 +178,8 @@ pub fn verify_cached(entry: &InterfaceEntry) -> Result<CacheStatus> {
         )));
     }
 
-    if let Some(report) = check_trust(entry, &manifest) {
-        return Ok(CacheStatus::Invalid(report));
+    if let Some(violation) = check_trust(entry, &manifest) {
+        return Ok(CacheStatus::Invalid(violation.into()));
     }
 
     Ok(CacheStatus::Valid)
@@ -161,7 +192,10 @@ pub fn verify_cached(entry: &InterfaceEntry) -> Result<CacheStatus> {
 /// `design/003-protocol-interfaces.md`); promoting this to a hard error
 /// would block every consumer until the registry implements its half.
 /// Present pin with a real tier → strict comparison.
-fn check_trust(entry: &InterfaceEntry, manifest: &ProtocolManifest) -> Option<miette::Report> {
+fn check_trust(
+    entry: &InterfaceEntry,
+    manifest: &ProtocolManifest,
+) -> Option<TrustViolation> {
     let pin = entry.trust.as_ref()?;
 
     if manifest.tier == VerificationTier::Unverified {
@@ -175,28 +209,24 @@ fn check_trust(entry: &InterfaceEntry, manifest: &ProtocolManifest) -> Option<mi
     }
 
     if !manifest.tier.satisfies(pin.tier) {
-        return Some(miette::miette!(
-            "interface '{}' trust pin expects tier '{}', but the cached artifact was \
-             verified at a different tier. Run `trix use --force {}` to repin, or update \
-             the trust pin in trix.toml.",
-            entry.alias,
-            pin,
-            entry.reference,
-        ));
+        return Some(TrustViolation::TierMismatch {
+            alias: entry.alias.clone(),
+            expected: pin.tier,
+            actual: manifest.tier,
+            reference: entry.reference.to_string(),
+        });
     }
 
     if let Some(expected_repo) = pin.repository.as_deref()
         && let Some(actual_repo) = manifest.repository.as_deref()
         && expected_repo != actual_repo
     {
-        return Some(miette::miette!(
-            "interface '{}' trust pin expects repository '{}', but the cached artifact \
-             reports '{}'. Run `trix use --force {}` to repin, or update the trust pin.",
-            entry.alias,
-            expected_repo,
-            actual_repo,
-            entry.reference,
-        ));
+        return Some(TrustViolation::RepositoryMismatch {
+            alias: entry.alias.clone(),
+            expected: expected_repo.to_string(),
+            actual: actual_repo.to_string(),
+            reference: entry.reference.to_string(),
+        });
     }
 
     // `git_ref` narrowing is meaningful only once the sigstore tier records
@@ -568,7 +598,7 @@ pub fn restore_all(config: &RootConfig) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{PublisherKind, TrustedPublisher};
+    use crate::config::TrustedPublisher;
 
     fn manifest(tier: VerificationTier, repository: Option<&str>) -> ProtocolManifest {
         ProtocolManifest {
@@ -629,8 +659,20 @@ mod tests {
             repository: Some("acme/widget".into()),
             git_ref: None,
         };
-        let err = check_trust(&entry(Some(pin)), &m).expect("expected mismatch report");
-        assert!(format!("{err:?}").contains("tier"));
+        let violation = check_trust(&entry(Some(pin)), &m).expect("expected violation");
+        match violation {
+            TrustViolation::TierMismatch {
+                alias,
+                expected,
+                actual,
+                ..
+            } => {
+                assert_eq!(alias, "widget");
+                assert_eq!(expected, PublisherKind::GithubOidc);
+                assert_eq!(actual, VerificationTier::GithubApp);
+            }
+            other => panic!("expected TierMismatch, got {other:?}"),
+        }
     }
 
     #[test]
@@ -641,8 +683,16 @@ mod tests {
             repository: Some("acme/imposter".into()),
             git_ref: None,
         };
-        let err = check_trust(&entry(Some(pin)), &m).expect("expected mismatch report");
-        assert!(format!("{err:?}").contains("repository"));
+        let violation = check_trust(&entry(Some(pin)), &m).expect("expected violation");
+        match violation {
+            TrustViolation::RepositoryMismatch {
+                expected, actual, ..
+            } => {
+                assert_eq!(expected, "acme/imposter");
+                assert_eq!(actual, "acme/widget");
+            }
+            other => panic!("expected RepositoryMismatch, got {other:?}"),
+        }
     }
 
     #[test]
