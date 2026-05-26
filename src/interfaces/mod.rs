@@ -313,9 +313,10 @@ fn write_cache(
 /// non-`Default` variants surface a clear "verification not yet
 /// available" error until the sigstore / App-attestation paths land
 /// (see `crate::interfaces::attestation`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum TrustPolicy {
     /// Today's behavior: pull, cache, record `tier = Unverified`.
+    #[default]
     Default,
     /// `--insecure`: explicit acknowledgement that no verification will
     /// be performed even when it becomes available.
@@ -326,12 +327,6 @@ pub enum TrustPolicy {
     /// `--require=app`: refuse unless an App-tier attestation verifies.
     /// Strictly weaker than OIDC; accepted for completeness.
     RequireApp,
-}
-
-impl Default for TrustPolicy {
-    fn default() -> Self {
-        TrustPolicy::Default
-    }
 }
 
 /// A request to add an interface, mapped straight from the CLI.
