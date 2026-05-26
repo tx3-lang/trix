@@ -1,9 +1,9 @@
 use crate::config::RootConfig;
-use crate::oci::{
+use crate::interfaces::oci::{
     self, ImageMetadata, MARKDOWN_MEDIA_TYPE, PROTOCOL_MEDIA_TYPE, TII_MEDIA_TYPE,
 };
+use crate::interfaces::repository::RepositoryUrl;
 use crate::refs::ProtocolRef;
-use crate::repository::RepositoryUrl;
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic as _;
 

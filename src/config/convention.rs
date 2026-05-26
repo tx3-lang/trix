@@ -109,6 +109,35 @@ impl From<KnownProfile> for ProfileConfig {
 /// [`RootConfig::registry_url`] rather than reading `config.registry` directly.
 pub const DEFAULT_REGISTRY_URL: &str = "https://oci.tx3.land";
 
+// ----- Trust roots (placeholders) ---------------------------------------
+//
+// These pin the verification anchors that `crate::interfaces::attestation` will read
+// once the registry-side publish paths land. They are intentionally
+// placeholders today: the verifier is a stub and the registry has not
+// shipped its OIDC + sigstore wiring. The real values get filled in when
+// the registry team publishes them — every other call site is already
+// pointed here so the swap is one edit per constant.
+
+/// Issuer URL of the Fulcio CA whose roots tx3 trusts for OIDC-tier
+/// publishes. The verifier validates the bundle's certificate chain
+/// against this issuer.
+pub const FULCIO_ROOT_ISSUER: &str = "https://fulcio.sigstore.dev";
+
+/// PEM-encoded Fulcio root certificate. Empty placeholder — the real
+/// cert is pinned at the same time `crate::interfaces::attestation::verify_sigstore_bundle`
+/// becomes non-stub.
+pub const FULCIO_ROOT_CERT_PEM: &str = "";
+
+/// Expected OIDC issuer claim on the workflow token. Matches GitHub
+/// Actions; alternate VCS issuers (GitLab, Codeberg) get their own
+/// constants when host support is added.
+pub const GITHUB_OIDC_ISSUER: &str = "https://token.actions.githubusercontent.com";
+
+/// Ed25519 public key (base64) used to verify App-tier registry
+/// attestations. Empty placeholder — replaced once the registry signs
+/// its first attestation.
+pub const TX3_REGISTRY_SIGNING_KEY: &str = "";
+
 impl Default for RegistryConfig {
     fn default() -> Self {
         Self {
