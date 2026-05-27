@@ -12,6 +12,15 @@ use crate::refs::ProtocolRef;
 pub const PROTOCOL_MEDIA_TYPE: &str = "application/tx3";
 pub const TII_MEDIA_TYPE: &str = "application/tii+json";
 pub const MARKDOWN_MEDIA_TYPE: &str = "text/markdown";
+pub const LOGO_PNG_MEDIA_TYPE: &str = "image/png";
+
+/// Maximum encoded logo size accepted by `trix publish`. See
+/// `design/005-protocol-logos.md`.
+pub const LOGO_MAX_BYTES: usize = 256 * 1024;
+
+/// PNG file signature (8 bytes). Validated at publish time so we never
+/// attach a layer whose declared media type lies about its bytes.
+pub const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
 /// JSON shape of the OCI image config blob written by `trix publish`.
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
