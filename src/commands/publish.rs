@@ -38,7 +38,7 @@ fn capture_commit_sha() -> Option<String> {
     if s.is_empty() { None } else { Some(s) }
 }
 
-pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
+pub async fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     let Some(scope) = config.protocol.scope.clone() else {
         return Err(miette::miette!("No scope found in trix.toml"));
     };
@@ -191,14 +191,16 @@ pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     let image_reference = oci::reference_for(&registry_url, &protocol_ref)?;
     let oci_client = oci::client_for(&registry_url);
 
-    let digest = futures::executor::block_on(oci_client.push(
-        &image_reference,
-        &image_layers,
-        image_config,
-        &oci_client::secrets::RegistryAuth::Anonymous,
-        Some(image_manifest),
-    ))
-    .into_diagnostic()?;
+    let digest = oci_client
+        .push(
+            &image_reference,
+            &image_layers,
+            image_config,
+            &oci_client::secrets::RegistryAuth::Anonymous,
+            Some(image_manifest),
+        )
+        .await
+        .into_diagnostic()?;
 
     println!("Image pushed successfully!");
     println!("Image URL: {}", get_image_url(config));
