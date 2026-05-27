@@ -54,8 +54,7 @@ pub enum Commands {
     /// Inspect and manage profiles
     Profile(commands::profile::Args),
 
-    /// Publish a Tx3 package into the registry (UNSTABLE - This feature is experimental and may change)
-    #[command(hide = true)]
+    /// Publish a Tx3 package into the registry
     Publish(commands::publish::Args),
 
     /// Add a published protocol as an interface
