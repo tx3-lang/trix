@@ -1,6 +1,7 @@
 use crate::config::RootConfig;
 use crate::interfaces::oci::{
-    self, ImageMetadata, MARKDOWN_MEDIA_TYPE, PROTOCOL_MEDIA_TYPE, TII_MEDIA_TYPE,
+    self, ImageMetadata, LOGO_MAX_BYTES, LOGO_PNG_MEDIA_TYPE, MARKDOWN_MEDIA_TYPE, PNG_MAGIC,
+    PROTOCOL_MEDIA_TYPE, TII_MEDIA_TYPE,
 };
 use crate::interfaces::repository::RepositoryUrl;
 use crate::refs::ProtocolRef;
@@ -93,6 +94,34 @@ pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
         image_layers.push(oci_client::client::ImageLayer::new(
             readme.as_bytes().to_vec(),
             MARKDOWN_MEDIA_TYPE.to_string(),
+            None,
+        ));
+    }
+
+    if let Some(logo_path) = config.protocol.logo.clone() {
+        let bytes = std::fs::read(&logo_path).map_err(|e| {
+            miette::miette!(
+                "failed to read `[protocol].logo` at '{}': {e}",
+                logo_path.display()
+            )
+        })?;
+        if bytes.len() > LOGO_MAX_BYTES {
+            return Err(miette::miette!(
+                "`[protocol].logo` at '{}' is {} bytes; limit is {} bytes",
+                logo_path.display(),
+                bytes.len(),
+                LOGO_MAX_BYTES
+            ));
+        }
+        if !bytes.starts_with(&PNG_MAGIC) {
+            return Err(miette::miette!(
+                "`[protocol].logo` at '{}' is not a PNG (missing magic bytes)",
+                logo_path.display()
+            ));
+        }
+        image_layers.push(oci_client::client::ImageLayer::new(
+            bytes,
+            LOGO_PNG_MEDIA_TYPE.to_string(),
             None,
         ));
     }

@@ -13,6 +13,12 @@ pub struct ProtocolConfig {
     pub main: PathBuf,
     pub readme: Option<PathBuf>,
 
+    /// Optional path to a PNG logo (relative to `trix.toml`). When set,
+    /// `trix publish` attaches it as an `image/png` OCI layer. See
+    /// `design/005-protocol-logos.md` for the publisher contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<PathBuf>,
+
     /// Repository URL that owns this protocol (e.g.
     /// `https://github.com/acme/widget`). Required at publish time; the
     /// owner segment must equal `scope`. Surfaces as
