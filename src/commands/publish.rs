@@ -8,10 +8,8 @@ use clap::Args as ClapArgs;
 use miette::IntoDiagnostic as _;
 
 #[derive(ClapArgs)]
-/// Arguments for the publish command (UNSTABLE - experimental feature)
 pub struct Args {}
 
-#[allow(dead_code)]
 fn get_image_url(config: &RootConfig) -> String {
     let registry_url = config.registry_url();
     format!(
@@ -21,21 +19,6 @@ fn get_image_url(config: &RootConfig) -> String {
         config.protocol.name.clone(),
         config.protocol.version.clone()
     )
-}
-
-#[allow(unused_variables)]
-pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
-    #[cfg(feature = "unstable")]
-    {
-        _run(_args, config)
-    }
-    #[cfg(not(feature = "unstable"))]
-    {
-        let _ = config;
-        Err(miette::miette!(
-            "The publish command is currently unstable and requires the `unstable` feature to be enabled."
-        ))
-    }
 }
 
 /// Best-effort capture of the publishing working tree's HEAD commit. Used
@@ -54,8 +37,7 @@ fn capture_commit_sha() -> Option<String> {
     if s.is_empty() { None } else { Some(s) }
 }
 
-#[allow(dead_code)]
-pub fn _run(_args: Args, config: &RootConfig) -> miette::Result<()> {
+pub fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
     let Some(scope) = config.protocol.scope.clone() else {
         return Err(miette::miette!("No scope found in trix.toml"));
     };
