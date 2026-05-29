@@ -114,7 +114,12 @@ pub async fn pull(
     client: &oci_client::Client,
     reference: &oci_client::Reference,
 ) -> Result<PulledArtifact> {
-    let accepted = vec![PROTOCOL_MEDIA_TYPE, TII_MEDIA_TYPE, MARKDOWN_MEDIA_TYPE];
+    let accepted = vec![
+        PROTOCOL_MEDIA_TYPE,
+        TII_MEDIA_TYPE,
+        MARKDOWN_MEDIA_TYPE,
+        LOGO_PNG_MEDIA_TYPE,
+    ];
     let image = client
         .pull(
             reference,
