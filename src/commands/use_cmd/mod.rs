@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Args as ClapArgs, ValueEnum};
 
 use crate::config::{ProfileConfig, RootConfig};
@@ -5,6 +7,26 @@ use crate::interfaces::{self, AddRequest, TrustPolicy};
 use crate::refs::ProtocolRef;
 
 mod view;
+
+/// Resolve the project that `trix use` will pin into. If `load_config`
+/// already found a `trix.toml` up the tree, use that; otherwise bootstrap a
+/// consumer-shape project in the current directory — unless `--no-init`
+/// turns the absence into a hard error. Keeps the bootstrap decision inside
+/// the command that triggers it, so main.rs can dispatch uniformly.
+pub fn ensure_project(
+    loaded: Option<(RootConfig, PathBuf)>,
+    args: &Args,
+) -> miette::Result<(RootConfig, PathBuf)> {
+    if let Some(found) = loaded {
+        return Ok(found);
+    }
+    if args.no_init {
+        return Err(miette::miette!(
+            "No trix.toml found and --no-init was passed; nothing to do"
+        ));
+    }
+    crate::commands::init::bootstrap_consumer_project()
+}
 
 /// The verification tier a `trix use` invocation requires. Today only
 /// `oidc` is meaningful as a *requirement* (the App tier is a strictly
@@ -55,9 +77,20 @@ pub struct Args {
     /// verifier records previous subjects to compare against.
     #[arg(long)]
     pub accept_rename: bool,
+
+    /// Refuse to auto-bootstrap a consumer project when no `trix.toml` is
+    /// found. Use in CI or scripted setups where a missing project
+    /// indicates a configuration mistake rather than an empty workspace.
+    #[arg(long)]
+    pub no_init: bool,
 }
 
-pub fn run(args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
+pub fn run(
+    args: Args,
+    config: &RootConfig,
+    _config_path: &std::path::Path,
+    _profile: &ProfileConfig,
+) -> miette::Result<()> {
     let dry_run = args.dry_run;
 
     if args.insecure && args.require.is_some() {

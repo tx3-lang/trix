@@ -91,6 +91,51 @@ fn apply(config: RootConfig, devnet: Option<crate::devnet::Config>) -> miette::R
     Ok(())
 }
 
+/// Consumer-shape default config: a project that intends to *use* protocols
+/// rather than author one. Differs from [`default_config`] in that it omits
+/// the owner scope (consumers never publish) and starts with no codegen
+/// targets — `trix codegen --plugin <name>` seeds them on demand.
+fn consumer_default_config() -> RootConfig {
+    RootConfig {
+        protocol: ProtocolConfig {
+            name: infer_project_name(),
+            scope: None,
+            version: "0.1.0".into(),
+            description: None,
+            main: "main.tx3".into(),
+            readme: None,
+            logo: None,
+            repository: None,
+        },
+        ledger: LedgerConfig {
+            family: KnownLedgerFamily::Cardano,
+        },
+        codegen: Vec::new(),
+        profiles: NamedMap::default(),
+        networks: NamedMap::default(),
+        registry: None,
+        interfaces: NamedMap::default(),
+    }
+}
+
+/// Create a minimal consumer-shape project in the current directory. Writes
+/// only `trix.toml` — no `main.tx3`, no `tests/`, no `devnet.toml` — and
+/// prints a one-line notice so the side effect is visible. Returns the
+/// freshly-written config alongside the path it was saved to, so the caller
+/// can save further mutations (e.g. an `[interfaces.*]` pin from `trix use`)
+/// back to the same file.
+pub fn bootstrap_consumer_project() -> miette::Result<(RootConfig, PathBuf)> {
+    let cwd = std::env::current_dir().into_diagnostic()?;
+    let trix_toml = cwd.join("trix.toml");
+
+    let config = consumer_default_config();
+    config.save(&trix_toml)?;
+
+    eprintln!("No trix project found — created trix.toml here.");
+
+    Ok((config, trix_toml))
+}
+
 fn default_config() -> RootConfig {
     RootConfig {
         protocol: ProtocolConfig {
