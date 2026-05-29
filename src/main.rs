@@ -34,16 +34,6 @@ fn run_global_command(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::Init(args) => cmds::init::run(args, None),
         Commands::Telemetry(args) => cmds::telemetry::run(args),
-        Commands::Use(args) => {
-            if args.no_init {
-                return Err(miette::miette!(
-                    "No trix.toml found and --no-init was passed; nothing to do"
-                ));
-            }
-            let (config, path) = cmds::init::bootstrap_consumer_project()?;
-            let profile = config.resolve_profile(&cli.profile)?;
-            cmds::use_cmd::run(args, &config, &path, &profile)
-        }
         _ => Err(miette::miette!("No trix.toml found in current directory")),
     }
 }
@@ -97,6 +87,16 @@ async fn main() -> Result<()> {
     if global_config.telemetry.enabled {
         telemetry::initialize_telemetry(&global_config.telemetry)?;
     }
+
+    // `trix use` is the one command that can fabricate the project it
+    // operates on. Resolve that here so the scoped/global dispatch below
+    // stays uniform — every other command sees the same loaded state it
+    // would have seen without `use`.
+    let loaded = if let Commands::Use(args) = &cli.command {
+        Some(cmds::use_cmd::ensure_project(loaded, args)?)
+    } else {
+        loaded
+    };
 
     match loaded {
         Some((config, path)) => run_scoped_command(cli, config, path).await,
