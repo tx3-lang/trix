@@ -121,14 +121,15 @@ async fn extract_github_templates(
     Ok(template_root)
 }
 
-/// Output-subdir names, in generation order: the project first, then each
-/// interface alias. The name doubles as the per-protocol output subdir —
-/// the layout is unconditional (a project with no deps still nests under
-/// `<output_dir>/<project>/`), so the path a binding lands at never depends
-/// on interface count.
-fn codegen_targets(project_name: &str, dep_aliases: &[String]) -> Vec<String> {
-    let mut out = Vec::with_capacity(1 + dep_aliases.len());
-    out.push(project_name.to_string());
+/// Output-subdir names, in generation order: the project (if it has a `tx3`
+/// source on disk) first, then each interface alias. The name doubles as
+/// the per-protocol output subdir — the layout is unconditional, so the
+/// path a binding lands at never depends on interface count.
+fn codegen_targets(project_name: Option<&str>, dep_aliases: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(usize::from(project_name.is_some()) + dep_aliases.len());
+    if let Some(name) = project_name {
+        out.push(name.to_string());
+    }
     out.extend(dep_aliases.iter().cloned());
     out
 }
@@ -136,18 +137,38 @@ fn codegen_targets(project_name: &str, dep_aliases: &[String]) -> Vec<String> {
 /// Resolves each codegen target to `(subdir_name, tii_path)`. The project's
 /// TII is built from source; each interface's TII is the cached, pre-built
 /// published one (not recompiled), consistent with `trix build`.
-fn collect_codegen_targets(config: &RootConfig) -> miette::Result<Vec<(String, PathBuf)>> {
+///
+/// Consumer projects (those bootstrapped by `trix use` with no `main.tx3`)
+/// don't have a project of their own to generate for — only interfaces. We
+/// detect that by looking for `protocol.main` on disk relative to the
+/// project root; if it's missing, the project is silently skipped.
+fn collect_codegen_targets(
+    config: &RootConfig,
+    project_root: &Path,
+) -> miette::Result<Vec<(String, PathBuf)>> {
     let dep_aliases: Vec<String> = config
         .interfaces
         .values()
         .map(|e| e.alias.clone())
         .collect();
-    // `validate` (run before this) guarantees no interface alias
-    // equals the project name, so name == protocol.name ⇒ the project.
-    let order = codegen_targets(&config.protocol.name, &dep_aliases);
+
+    let project_source = project_root.join(&config.protocol.main);
+    let project_name = project_source
+        .is_file()
+        .then_some(config.protocol.name.as_str());
+
+    let order = codegen_targets(project_name, &dep_aliases);
+    if order.is_empty() {
+        return Err(miette::miette!(
+            "nothing to generate: no `{}` found and no interfaces declared in trix.toml",
+            config.protocol.main.display()
+        ));
+    }
 
     let mut targets = Vec::with_capacity(order.len());
     for name in order {
+        // `validate` guarantees no interface alias equals the project
+        // name, so name == protocol.name ⇒ the project.
         let tii = if name == config.protocol.name {
             crate::builder::build_tii(config)?
         } else {
@@ -254,7 +275,8 @@ pub async fn run(
     crate::interfaces::validate(config)?;
     crate::interfaces::restore_all(config)?;
 
-    let targets = collect_codegen_targets(config)?;
+    let project_root = config_path.parent().unwrap_or_else(|| Path::new("."));
+    let targets = collect_codegen_targets(config, project_root)?;
 
     for codegen in config.codegen.iter() {
         let base_output_dir = codegen.output_dir()?;
@@ -293,14 +315,27 @@ mod tests {
 
     #[test]
     fn targets_without_deps_still_nest_project() {
-        assert_eq!(codegen_targets("proj", &[]), vec!["proj".to_string()]);
+        assert_eq!(codegen_targets(Some("proj"), &[]), vec!["proj".to_string()]);
     }
 
     #[test]
     fn targets_project_first_then_deps_in_order() {
         assert_eq!(
-            codegen_targets("proj", &["a".to_string(), "b".to_string()]),
+            codegen_targets(Some("proj"), &["a".to_string(), "b".to_string()]),
             vec!["proj".to_string(), "a".to_string(), "b".to_string()]
         );
+    }
+
+    #[test]
+    fn consumer_project_targets_skip_own_protocol() {
+        assert_eq!(
+            codegen_targets(None, &["a".to_string(), "b".to_string()]),
+            vec!["a".to_string(), "b".to_string()]
+        );
+    }
+
+    #[test]
+    fn consumer_project_with_no_deps_is_empty() {
+        assert!(codegen_targets(None, &[]).is_empty());
     }
 }
