@@ -55,9 +55,20 @@ pub struct Args {
     /// verifier records previous subjects to compare against.
     #[arg(long)]
     pub accept_rename: bool,
+
+    /// Refuse to auto-bootstrap a consumer project when no `trix.toml` is
+    /// found. Use in CI or scripted setups where a missing project
+    /// indicates a configuration mistake rather than an empty workspace.
+    #[arg(long)]
+    pub no_init: bool,
 }
 
-pub fn run(args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
+pub fn run(
+    args: Args,
+    config: &RootConfig,
+    _config_path: &std::path::Path,
+    _profile: &ProfileConfig,
+) -> miette::Result<()> {
     let dry_run = args.dry_run;
 
     if args.insecure && args.require.is_some() {

@@ -249,6 +249,56 @@ pub const KNOWN_CODEGEN_PLUGINS: &[KnownCodegenPlugin] = &[
     KnownCodegenPlugin::GoClient,
 ];
 
+impl KnownCodegenPlugin {
+    /// Single-word substring → plugin suggestion for the `did you mean`
+    /// message on an unknown `--plugin` value. Deliberately small and
+    /// hand-rolled: keeps the list of "fuzzy synonyms" auditable instead
+    /// of relying on edit-distance scoring that can swing oddly between
+    /// short kebab-case names.
+    fn suggest(input: &str) -> Option<KnownCodegenPlugin> {
+        let lower = input.to_lowercase();
+        if lower.contains("typescript")
+            || lower.contains("javascript")
+            || lower == "ts"
+            || lower == "js"
+            || lower == "node"
+        {
+            Some(KnownCodegenPlugin::TsClient)
+        } else if lower.contains("rust") || lower == "rs" {
+            Some(KnownCodegenPlugin::RustClient)
+        } else if lower.contains("python") || lower == "py" {
+            Some(KnownCodegenPlugin::PythonClient)
+        } else if lower.contains("golang") || lower == "go" {
+            Some(KnownCodegenPlugin::GoClient)
+        } else {
+            None
+        }
+    }
+}
+
+impl std::str::FromStr for KnownCodegenPlugin {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        for plugin in KNOWN_CODEGEN_PLUGINS {
+            if plugin.to_string() == s {
+                return Ok(*plugin);
+            }
+        }
+        let available = KNOWN_CODEGEN_PLUGINS
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let suggestion = KnownCodegenPlugin::suggest(s)
+            .map(|p| format!(" — did you mean '{p}'?"))
+            .unwrap_or_default();
+        Err(format!(
+            "unknown plugin '{s}'{suggestion} (available: {available})"
+        ))
+    }
+}
+
 impl std::fmt::Display for KnownCodegenPlugin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let str = match self {
@@ -423,6 +473,28 @@ mod tests {
         let config: RootConfig = toml::from_str(toml).unwrap();
         assert!(config.registry.is_none());
         assert_eq!(config.registry_url(), DEFAULT_REGISTRY_URL);
+    }
+
+    #[test]
+    fn plugin_from_str_roundtrips_kebab_case() {
+        for plugin in KNOWN_CODEGEN_PLUGINS {
+            let parsed: KnownCodegenPlugin = plugin.to_string().parse().unwrap();
+            assert_eq!(parsed.to_string(), plugin.to_string());
+        }
+    }
+
+    #[test]
+    fn plugin_from_str_suggests_close_alias() {
+        let err: String = "typescript".parse::<KnownCodegenPlugin>().unwrap_err();
+        assert!(err.contains("ts-client"), "no suggestion in: {err}");
+        assert!(err.contains("available:"));
+    }
+
+    #[test]
+    fn plugin_from_str_lists_available_when_no_suggestion() {
+        let err: String = "zzz".parse::<KnownCodegenPlugin>().unwrap_err();
+        assert!(!err.contains("did you mean"));
+        assert!(err.contains("ts-client") && err.contains("rust-client"));
     }
 
     #[test]

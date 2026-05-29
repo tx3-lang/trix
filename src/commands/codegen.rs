@@ -1,6 +1,10 @@
-use std::path::PathBuf;
+use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
 
-use crate::config::{CodegenPluginConfig, ProfileConfig, RootConfig};
+use crate::config::{
+    CodegenConfig, CodegenPlugin, CodegenPluginConfig, KNOWN_CODEGEN_PLUGINS, KnownCodegenPlugin,
+    ProfileConfig, RootConfig,
+};
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
 use reqwest::Client;
@@ -8,7 +12,22 @@ use tempfile::TempDir;
 use zip::ZipArchive;
 
 #[derive(ClapArgs, Debug)]
-pub struct Args {}
+pub struct Args {
+    /// Codegen plugin to use, e.g. `ts-client`, `rust-client`,
+    /// `python-client`, `go-client`. If no `[[codegen]]` entry exists for
+    /// this plugin yet, one is appended to `trix.toml` before generation
+    /// runs. With this flag, `trix codegen` is the only path that needs
+    /// to know plugin names; hand-editing `trix.toml` stays supported for
+    /// custom plugins and bespoke `output_dir`s.
+    #[arg(long, value_name = "NAME")]
+    pub plugin: Option<String>,
+
+    /// Generate without persisting a newly-seeded `[[codegen]]` entry
+    /// back to `trix.toml`. Intended for CI / one-shot scripts that emit
+    /// bindings without mutating the project file.
+    #[arg(long)]
+    pub no_save: bool,
+}
 
 async fn extract_github_templates(
     github_url: &str,
@@ -145,7 +164,93 @@ fn collect_codegen_targets(config: &RootConfig) -> miette::Result<Vec<(String, P
     Ok(targets)
 }
 
-pub async fn run(_args: Args, config: &RootConfig, _profile: &ProfileConfig) -> miette::Result<()> {
+/// Resolve which plugin (if any) the user requested for this invocation,
+/// either through `--plugin <name>` or — when no `[[codegen]]` is configured
+/// and stdin is a TTY — an interactive prompt. Returns `None` when the
+/// project already has at least one target and the user passed no flag
+/// (i.e. the existing non-interactive behavior).
+fn resolve_requested_plugin(
+    explicit: Option<&str>,
+    config: &RootConfig,
+) -> miette::Result<Option<KnownCodegenPlugin>> {
+    if let Some(name) = explicit {
+        let plugin: KnownCodegenPlugin = name.parse().map_err(|e: String| miette::miette!("{e}"))?;
+        return Ok(Some(plugin));
+    }
+
+    if !config.codegen.is_empty() {
+        return Ok(None);
+    }
+
+    if !std::io::stdin().is_terminal() {
+        return Err(miette::miette!(
+            "no [[codegen]] targets configured; pass --plugin <{}> to seed one",
+            KNOWN_CODEGEN_PLUGINS
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join("|")
+        ));
+    }
+
+    let choice = inquire::Select::new(
+        "Generate bindings for:",
+        KNOWN_CODEGEN_PLUGINS.to_vec(),
+    )
+    .prompt()
+    .into_diagnostic()?;
+
+    Ok(Some(choice))
+}
+
+/// Seed-if-absent: if `config` has no `[[codegen]]` entry matching `plugin`,
+/// append a minimal one and persist (unless `no_save`). Returns the
+/// possibly-mutated config to use for the rest of the run. Comparison goes
+/// through the enum so the verbose `KnownOrCustom::Known` form in TOML still
+/// dedups against the short form.
+fn seed_plugin_if_absent(
+    mut config: RootConfig,
+    plugin: KnownCodegenPlugin,
+    config_path: &Path,
+    no_save: bool,
+) -> miette::Result<RootConfig> {
+    let already = config.codegen.iter().any(|c| match c.plugin {
+        CodegenPlugin::Known(known) => std::mem::discriminant(&known) == std::mem::discriminant(&plugin),
+        CodegenPlugin::Custom(_) => false,
+    });
+
+    if already {
+        return Ok(config);
+    }
+
+    config.codegen.push(CodegenConfig {
+        plugin: CodegenPlugin::Known(plugin),
+        job_id: None,
+        output_dir: None,
+        options: None,
+    });
+
+    if !no_save {
+        config.save(&config_path.to_path_buf())?;
+        eprintln!("Added [[codegen]] plugin = \"{plugin}\" to trix.toml.");
+    }
+
+    Ok(config)
+}
+
+pub async fn run(
+    args: Args,
+    config: &RootConfig,
+    config_path: &Path,
+    _profile: &ProfileConfig,
+) -> miette::Result<()> {
+    let requested = resolve_requested_plugin(args.plugin.as_deref(), config)?;
+    let config = match requested {
+        Some(plugin) => seed_plugin_if_absent(config.clone(), plugin, config_path, args.no_save)?,
+        None => config.clone(),
+    };
+    let config = &config;
+
     crate::interfaces::validate(config)?;
     crate::interfaces::restore_all(config)?;
 
