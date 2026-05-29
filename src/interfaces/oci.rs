@@ -114,10 +114,6 @@ pub async fn pull(
     client: &oci_client::Client,
     reference: &oci_client::Reference,
 ) -> Result<PulledArtifact> {
-    // Include LOGO_PNG_MEDIA_TYPE so the OCI client doesn't reject images
-    // that carry a logo layer attached by `trix publish`. The layer body is
-    // not consumed by `trix use` (the logo is for the registry frontend);
-    // it falls through the `_ => {}` arm below.
     let accepted = vec![
         PROTOCOL_MEDIA_TYPE,
         TII_MEDIA_TYPE,
