@@ -92,8 +92,19 @@ pub fn reference_for(
     };
     let tag = version.unwrap_or("latest");
     let host = registry_host(registry_url);
-    oci_client::Reference::try_from(format!("{}/{}/{}:{}", host, scope, name, tag))
-        .into_diagnostic()
+    // OCI repository paths must be lowercase, but `scope` doubles as the
+    // GitHub owner (e.g. "SundaeSwap-finance") which legitimately carries
+    // capitals. Lowercase only the path segments here so registry addressing
+    // stays OCI-compliant while the original-case scope is preserved for
+    // identity/metadata everywhere else. Tags allow uppercase, so leave `tag`.
+    oci_client::Reference::try_from(format!(
+        "{}/{}/{}:{}",
+        host,
+        scope.to_lowercase(),
+        name.to_lowercase(),
+        tag
+    ))
+    .into_diagnostic()
 }
 
 /// Result of a successful pull. Bytes are owned so the caller can write them
@@ -168,4 +179,35 @@ pub async fn pull(
         metadata,
         digest,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reference_lowercases_scope_and_name_for_oci_compliance() {
+        // `scope` mirrors the GitHub owner, which may carry capitals (e.g.
+        // "SundaeSwap-finance"). OCI repository paths must be lowercase, so the
+        // reference is lowercased while identity/metadata keep the original case.
+        let protocol_ref = ProtocolRef::Registry {
+            scope: "SundaeSwap-finance".to_string(),
+            name: "Sundae-V3".to_string(),
+            version: Some("0.1.0".to_string()),
+        };
+        let reference = reference_for("https://registry.tx3.dev", &protocol_ref).unwrap();
+        assert_eq!(reference.repository(), "sundaeswap-finance/sundae-v3");
+        assert_eq!(reference.tag(), Some("0.1.0"));
+    }
+
+    #[test]
+    fn reference_defaults_missing_version_to_latest() {
+        let protocol_ref = ProtocolRef::Registry {
+            scope: "txpipe".to_string(),
+            name: "faucet".to_string(),
+            version: None,
+        };
+        let reference = reference_for("https://registry.tx3.dev", &protocol_ref).unwrap();
+        assert_eq!(reference.tag(), Some("latest"));
+    }
 }
