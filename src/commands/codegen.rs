@@ -155,7 +155,7 @@ fn collect_codegen_targets(
     let project_source = project_root.join(&config.protocol.main);
     let project_name = project_source
         .is_file()
-        .then(|| config.protocol.name.as_str());
+        .then_some(config.protocol.name.as_str());
 
     let order = codegen_targets(project_name, &dep_aliases);
     if order.is_empty() {
