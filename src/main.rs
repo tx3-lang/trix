@@ -39,6 +39,10 @@ fn run_global_command(cli: Cli) -> Result<()> {
 }
 
 async fn run_scoped_command(cli: Cli, config: RootConfig, config_path: PathBuf) -> Result<()> {
+    // Record this project's declared toolchain minimums before any command can
+    // spawn a tool, so version gating (spawn::compat) enforces them.
+    trix::spawn::compat::register_project_requirements(&config)?;
+
     let profile = config.resolve_profile(&cli.profile)?;
 
     let metric = telemetry::track_command_execution(&cli);
