@@ -326,11 +326,25 @@ impl Named for InterfaceEntry {
     }
 }
 
+/// Declared minimum versions of the toolchain binaries `trix` drives, from the
+/// `[toolchain]` table in `trix.toml`. These are *project* requirements (this
+/// protocol needs at least version X); they raise — never lower — the built-in
+/// support window `trix` enforces in [`crate::spawn::compat`].
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct ToolchainConfig {
+    /// Minimum `tx3c` version this protocol requires (semver, e.g. "0.22.0").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tx3c: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RootConfig {
     pub protocol: ProtocolConfig,
 
     pub ledger: LedgerConfig,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolchain: Option<ToolchainConfig>,
 
     #[serde(default)]
     pub registry: Option<RegistryConfig>,

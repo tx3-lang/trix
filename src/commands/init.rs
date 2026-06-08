@@ -110,6 +110,7 @@ fn consumer_default_config() -> RootConfig {
         ledger: LedgerConfig {
             family: KnownLedgerFamily::Cardano,
         },
+        toolchain: None,
         codegen: Vec::new(),
         profiles: NamedMap::default(),
         networks: NamedMap::default(),
@@ -151,6 +152,7 @@ fn default_config() -> RootConfig {
         ledger: LedgerConfig {
             family: KnownLedgerFamily::Cardano,
         },
+        toolchain: None,
         codegen: Vec::new(),
         profiles: NamedMap::default(),
         networks: NamedMap::default(),
