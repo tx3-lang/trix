@@ -29,11 +29,13 @@ struct Compat {
 }
 
 const COMPAT_MATRIX: &[Compat] = &[
-    // 0.18.0 introduced `decode`, `--emit tir-json`, `--diagnostics-format`
-    // (0.17.0 was cut before that surface existed).
+    // 0.22.0 introduced parametric tuple types: tx3c now emits TIR carrying the
+    // `Tuple` type/expression variants, a forward-incompatible addition that
+    // pre-0.22 readers cannot decode. Pin the floor here so the TIR `trix`
+    // consumes always matches the schema it supports.
     Compat {
         tool: "tx3c",
-        min: "0.18.0",
+        min: "0.22.0",
     },
 ];
 
