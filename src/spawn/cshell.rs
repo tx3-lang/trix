@@ -8,6 +8,7 @@ use askama::Template;
 
 use miette::{bail, Context as _, IntoDiagnostic as _};
 use serde::{de, Deserialize, Deserializer, Serialize};
+use utxorpc::spec::query::{any_utxo_data::ParsedState, AnyUtxoData};
 
 use crate::config::{TrpConfig, U5cConfig};
 
@@ -40,35 +41,108 @@ pub struct OutputBalance {
     pub coin: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+// Flat view of a wallet UTxO, holding just what the `expect` checks read:
+// lovelace, native assets, and the datum hash. Built from cshell's utxorpc
+// `AnyUtxoData` output via `flatten_utxo` — bytes are already decoded here, so
+// callers `hex::encode`/`from_utf8` them directly.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Asset {
-    #[serde(with = "hex::serde")]
     pub name: Vec<u8>,
     pub output_coin: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Datum {
-    #[serde(with = "hex::serde")]
     pub hash: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UtxoAsset {
-    #[serde(with = "hex::serde")]
     pub policy_id: Vec<u8>,
     pub assets: Vec<Asset>,
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct UTxO {
-    #[serde(with = "hex::serde")]
-    pub tx: Vec<u8>,
-    pub tx_index: u64,
-    pub address: String,
-    pub coin: String, // To avoid overflow
+    pub coin: String, // lovelace, kept as a string to sidestep overflow
     pub assets: Vec<UtxoAsset>,
     pub datum: Option<Datum>,
+}
+
+// cshell `wallet utxos --output-format json` emits utxorpc `AnyUtxoData` wrapped
+// as `{ "utxos": [...] }`. We deserialize straight into the spec types (pbjson
+// handles the camelCase / base64 / oneof / BigInt-coin shaping) and flatten to
+// the view above. This requires `utxorpc` >= the spec rev that models cardano
+// `coin` as `BigInt` (>= 0.13 / spec 0.18); older revs typed it as plain
+// `uint64` and won't parse cshell's `{ "int": "..." }` coin.
+#[derive(Debug, Deserialize)]
+struct WalletUtxosOutput {
+    #[serde(default)]
+    utxos: Vec<AnyUtxoData>,
+}
+
+// Render a utxorpc `BigInt` as a decimal string. ADA/native amounts always
+// arrive as the plain `Int` variant; the big_*-byte variants don't occur for
+// the quantities we read, so treat them as 0.
+fn bigint_to_string(b: &utxorpc::spec::cardano::BigInt) -> String {
+    use utxorpc::spec::cardano::big_int::BigInt;
+
+    match b.big_int.as_ref() {
+        Some(BigInt::Int(i)) => i.to_string(),
+        _ => "0".to_string(),
+    }
+}
+
+fn flatten_utxo(any: AnyUtxoData) -> UTxO {
+    use utxorpc::spec::cardano::asset::Quantity;
+
+    let Some(ParsedState::Cardano(output)) = any.parsed_state else {
+        return UTxO {
+            coin: "0".to_string(),
+            assets: Vec::new(),
+            datum: None,
+        };
+    };
+
+    let coin = output
+        .coin
+        .as_ref()
+        .map(bigint_to_string)
+        .unwrap_or_else(|| "0".to_string());
+
+    let assets = output
+        .assets
+        .into_iter()
+        .map(|multiasset| UtxoAsset {
+            policy_id: multiasset.policy_id.to_vec(),
+            assets: multiasset
+                .assets
+                .into_iter()
+                .map(|asset| Asset {
+                    name: asset.name.to_vec(),
+                    output_coin: match asset.quantity {
+                        Some(Quantity::OutputCoin(b)) => bigint_to_string(&b),
+                        _ => "0".to_string(),
+                    },
+                })
+                .collect(),
+        })
+        .collect();
+
+    // A no-datum output still carries an (empty) `datum` message; treat an empty
+    // hash as "no datum" so `datum_equals` checks behave as before.
+    let datum = output
+        .datum
+        .filter(|d| !d.hash.is_empty())
+        .map(|d| Datum {
+            hash: d.hash.to_vec(),
+        });
+
+    UTxO {
+        coin,
+        assets,
+        datum,
+    }
 }
 
 pub struct Provider {
@@ -331,37 +405,43 @@ pub fn wallet_balance(home: &Path, wallet_name: &str) -> miette::Result<OutputBa
     serde_json::from_slice(&output.stdout).into_diagnostic()
 }
 
-pub fn wallet_utxos(home: &Path, wallet_name: &str) -> miette::Result<Vec<UTxO>> {
+pub fn wallet_utxos(home: &Path, wallet_name: &str, provider: &str) -> miette::Result<Vec<UTxO>> {
     let mut cmd = new_generic_command(home)?;
 
-    cmd.args(["wallet", "utxos", wallet_name, "--output-format", "json"]);
+    // `cshell wallet utxos <NAME> <PROVIDER>` — the provider is positional and
+    // falls back to cshell's *default* provider when omitted. The generated
+    // cshell.toml marks its single provider `is_default = false`, so the expect
+    // path must name it explicitly (the same one the invoke path submits to),
+    // or cshell errors with "Wallet and provider not found".
+    cmd.args([
+        "wallet",
+        "utxos",
+        wallet_name,
+        provider,
+        "--output-format",
+        "json",
+    ]);
 
     let output = cmd
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .output()
         .into_diagnostic()
         .context("running CShell wallet utxos")?;
 
     if !output.status.success() {
-        bail!("CShell failed to get wallet utxos");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        bail!(
+            "CShell failed to get wallet utxos for `{wallet_name}`: {}",
+            stderr.trim()
+        );
     }
 
-    match serde_json::from_slice::<Vec<UTxO>>(&output.stdout) {
-        Ok(list) => Ok(list),
-        Err(_) => {
-            let v: serde_json::Value = serde_json::from_slice(&output.stdout).into_diagnostic()?;
-            if let Some(utxos_val) = v.get("utxos") {
-                let list: Vec<UTxO> =
-                    serde_json::from_value(utxos_val.clone()).into_diagnostic()?;
-                Ok(list)
-            } else if v.is_array() {
-                let list: Vec<UTxO> = serde_json::from_value(v).into_diagnostic()?;
-                Ok(list)
-            } else {
-                bail!("unexpected CShell wallet balance output shape")
-            }
-        }
-    }
+    let parsed: WalletUtxosOutput = serde_json::from_slice(&output.stdout)
+        .into_diagnostic()
+        .context("parsing cshell wallet utxos output")?;
+
+    Ok(parsed.utxos.into_iter().map(flatten_utxo).collect())
 }
 
 pub fn explorer(home: &Path, provider: &str) -> miette::Result<Child> {

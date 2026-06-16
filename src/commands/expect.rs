@@ -7,17 +7,28 @@ use crate::spawn::cshell;
 // Import Expect types from the `test` module
 use crate::commands::test::ExpectUtxo;
 
+/// Resolve a `from` party reference to a cshell wallet name.
+///
+/// Expectations name their party with the same `@`-prefixed placeholder the
+/// transactions use (e.g. `@bob`), but cshell wallets are named without the
+/// prefix (`bob`). The transaction path strips it in
+/// `test::replace_placeholder_args`; the expect path must do the same before
+/// querying utxos, or cshell errors with `failed to get wallet utxos`.
+fn wallet_name(from: &str) -> &str {
+    from.trim_start_matches('@')
+}
+
 /// Run all checks for a slice of `ExpectUtxo` expectations.
 /// Returns `Ok(true)` when any expectation failed, `Ok(false)` when all passed.
 ///
 ///
-pub fn expect_utxo(expects: &[ExpectUtxo], test_home: &Path) -> Result<bool> {
+pub fn expect_utxo(expects: &[ExpectUtxo], test_home: &Path, provider: &str) -> Result<bool> {
     let mut failed_any = false;
 
     for expect in expects.iter() {
         let mut failed = false;
 
-        let utxos = cshell::wallet_utxos(test_home, &expect.from)?;
+        let utxos = cshell::wallet_utxos(test_home, wallet_name(&expect.from), provider)?;
 
         if expect.datum_equals.is_none() && expect.min_amount.is_empty() {
             if utxos.is_empty() {
@@ -100,4 +111,21 @@ pub fn expect_utxo(expects: &[ExpectUtxo], test_home: &Path) -> Result<bool> {
     }
 
     Ok(failed_any)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wallet_name;
+
+    #[test]
+    fn wallet_name_strips_at_prefix() {
+        // The expect path must query the bare wallet name `bob`, not the
+        // `@bob` placeholder cshell can't resolve.
+        assert_eq!(wallet_name("@bob"), "bob");
+    }
+
+    #[test]
+    fn wallet_name_passes_through_bare_name() {
+        assert_eq!(wallet_name("bob"), "bob");
+    }
 }
