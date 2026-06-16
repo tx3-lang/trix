@@ -194,21 +194,28 @@ pub fn run(args: Args, config: &RootConfig, profile: &ProfileConfig) -> Result<(
         sleep(Duration::from_secs(BLOCK_PRODUCTION_INTERVAL_SECONDS));
     }
 
-    failed |= crate::commands::expect::expect_utxo(&test.expect, &devnet.home)?;
+    // Query utxos from the cshell store that actually holds the wallets and the
+    // provider (`wallet.target_dir`) — the same home the invoke path submits
+    // against. `devnet.home` is the *dolos* store and has neither.
+    let provider = crate::wallet::provider_name(&profile.name);
+    let expect_outcome =
+        crate::commands::expect::expect_utxo(&test.expect, &wallet.target_dir, &provider);
 
-    if !failed {
-        println!("Test Passed\n");
-    }
-
+    // Tear down the devnet unconditionally — even when the expect phase errors,
+    // so a failed or early-exiting test never leaves a Dolos daemon running.
     devnet
         .daemon
         .kill()
         .into_diagnostic()
         .context("failed to stop dolos devnet in background")?;
 
+    failed |= expect_outcome?;
+
     if failed {
         bail!("Test failed, see output above for details.");
     }
+
+    println!("Test Passed\n");
 
     Ok(())
 }

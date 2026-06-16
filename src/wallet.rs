@@ -39,7 +39,7 @@ fn setup_wallet_key(home: &Path, ident: &str) -> miette::Result<String> {
     Ok(address.to_string())
 }
 
-fn provider_name(trix_profile: &str) -> String {
+pub(crate) fn provider_name(trix_profile: &str) -> String {
     format!("trix-{}", trix_profile)
 }
 
