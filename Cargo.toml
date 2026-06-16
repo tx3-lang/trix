@@ -11,7 +11,7 @@ homepage = "https://github.com/tx3-lang/trix"
 # delegated to the `tx3c` binary via `spawn::tx3c`, so `trix` links no
 # `tx3-*` crate and its version is decoupled from the toolchain's.
 
-utxorpc = "0.12.0"
+utxorpc = "0.13.0"
 # utxorpc = { git = "https://github.com/utxorpc/rust-sdk.git" }
 # utxorpc = { path = "../../utxorpc/rust-sdk" }
 
@@ -35,7 +35,6 @@ dirs = "6.0.0"
 serde_json = "1.0.140"
 cryptoxide = "0.5.0"
 hex = { version = "0.4.3", features = ["serde"] }
-base64 = "0.22"
 handlebars = "6.3.2"
 reqwest = { version = "0.12.15", features = ["json"] }
 tempfile = "3.10"

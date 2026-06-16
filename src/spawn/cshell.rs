@@ -8,6 +8,7 @@ use askama::Template;
 
 use miette::{bail, Context as _, IntoDiagnostic as _};
 use serde::{de, Deserialize, Deserializer, Serialize};
+use utxorpc::spec::query::{any_utxo_data::ParsedState, AnyUtxoData};
 
 use crate::config::{TrpConfig, U5cConfig};
 
@@ -41,9 +42,9 @@ pub struct OutputBalance {
 }
 
 // Flat view of a wallet UTxO, holding just what the `expect` checks read:
-// lovelace, native assets, and the datum hash. Built from the cshell wire shape
-// below via `WireUtxo::into_utxo` — raw bytes are already base64-decoded here,
-// so callers `hex::encode`/`from_utf8` them directly.
+// lovelace, native assets, and the datum hash. Built from cshell's utxorpc
+// `AnyUtxoData` output via `flatten_utxo` — bytes are already decoded here, so
+// callers `hex::encode`/`from_utf8` them directly.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Asset {
     pub name: Vec<u8>,
@@ -68,125 +69,79 @@ pub struct UTxO {
     pub datum: Option<Datum>,
 }
 
-// ---- cshell `wallet utxos --output-format json` wire shape ----
-//
-// cshell emits utxorpc `AnyUtxoData` via pbjson: camelCase keys, `bytes` fields
-// as base64, the `parsed_state` oneof flattened to its variant name (`cardano`),
-// `uint64` as decimal strings, and `BigInt` as a nested oneof object
-// (e.g. `{ "int": "2000000" }`). We deserialize that shape directly rather than
-// reuse trix's `utxorpc` types, whose pinned spec models `coin` as a plain
-// `uint64` and so won't parse cshell's BigInt-shaped coin.
-
+// cshell `wallet utxos --output-format json` emits utxorpc `AnyUtxoData` wrapped
+// as `{ "utxos": [...] }`. We deserialize straight into the spec types (pbjson
+// handles the camelCase / base64 / oneof / BigInt-coin shaping) and flatten to
+// the view above. This requires `utxorpc` >= the spec rev that models cardano
+// `coin` as `BigInt` (>= 0.13 / spec 0.18); older revs typed it as plain
+// `uint64` and won't parse cshell's `{ "int": "..." }` coin.
 #[derive(Debug, Deserialize)]
 struct WalletUtxosOutput {
     #[serde(default)]
-    utxos: Vec<WireUtxo>,
+    utxos: Vec<AnyUtxoData>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct WireUtxo {
-    // `parsed_state` oneof — the cardano variant carries everything we read.
-    #[serde(default)]
-    cardano: Option<WireCardano>,
+// Render a utxorpc `BigInt` as a decimal string. ADA/native amounts always
+// arrive as the plain `Int` variant; the big_*-byte variants don't occur for
+// the quantities we read, so treat them as 0.
+fn bigint_to_string(b: &utxorpc::spec::cardano::BigInt) -> String {
+    use utxorpc::spec::cardano::big_int::BigInt;
+
+    match b.big_int.as_ref() {
+        Some(BigInt::Int(i)) => i.to_string(),
+        _ => "0".to_string(),
+    }
 }
 
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WireCardano {
-    #[serde(default)]
-    coin: Option<WireBigInt>,
-    #[serde(default)]
-    assets: Vec<WireMultiasset>,
-    #[serde(default)]
-    datum: Option<WireDatum>,
-}
+fn flatten_utxo(any: AnyUtxoData) -> UTxO {
+    use utxorpc::spec::cardano::asset::Quantity;
 
-#[derive(Debug, Default, Deserialize)]
-struct WireBigInt {
-    // The plain `int` variant of utxorpc's BigInt oneof — lovelace fits here.
-    // The `bigUInt`/`bigNInt` byte variants don't occur for ADA amounts.
-    #[serde(default)]
-    int: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WireMultiasset {
-    #[serde(default)]
-    policy_id: Option<String>,
-    #[serde(default)]
-    assets: Vec<WireAsset>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WireAsset {
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    output_coin: Option<String>,
-}
-
-#[derive(Debug, Default, Deserialize)]
-struct WireDatum {
-    #[serde(default)]
-    hash: Option<String>,
-}
-
-fn decode_b64(s: &str) -> miette::Result<Vec<u8>> {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
-
-    STANDARD
-        .decode(s)
-        .into_diagnostic()
-        .context("decoding base64 bytes in cshell wallet utxos output")
-}
-
-impl WireUtxo {
-    fn into_utxo(self) -> miette::Result<UTxO> {
-        let cardano = self.cardano.unwrap_or_default();
-
-        let coin = cardano
-            .coin
-            .and_then(|b| b.int)
-            .unwrap_or_else(|| "0".to_string());
-
-        let mut assets = Vec::with_capacity(cardano.assets.len());
-        for multiasset in cardano.assets {
-            let policy_id = match multiasset.policy_id {
-                Some(policy) => decode_b64(&policy)?,
-                None => Vec::new(),
-            };
-
-            let mut inner = Vec::with_capacity(multiasset.assets.len());
-            for asset in multiasset.assets {
-                inner.push(Asset {
-                    name: match asset.name {
-                        Some(name) => decode_b64(&name)?,
-                        None => Vec::new(),
-                    },
-                    output_coin: asset.output_coin.unwrap_or_else(|| "0".to_string()),
-                });
-            }
-
-            assets.push(UtxoAsset {
-                policy_id,
-                assets: inner,
-            });
-        }
-
-        let datum = match cardano.datum.and_then(|d| d.hash) {
-            Some(hash) => Some(Datum {
-                hash: decode_b64(&hash)?,
-            }),
-            None => None,
+    let Some(ParsedState::Cardano(output)) = any.parsed_state else {
+        return UTxO {
+            coin: "0".to_string(),
+            assets: Vec::new(),
+            datum: None,
         };
+    };
 
-        Ok(UTxO {
-            coin,
-            assets,
-            datum,
+    let coin = output
+        .coin
+        .as_ref()
+        .map(bigint_to_string)
+        .unwrap_or_else(|| "0".to_string());
+
+    let assets = output
+        .assets
+        .into_iter()
+        .map(|multiasset| UtxoAsset {
+            policy_id: multiasset.policy_id.to_vec(),
+            assets: multiasset
+                .assets
+                .into_iter()
+                .map(|asset| Asset {
+                    name: asset.name.to_vec(),
+                    output_coin: match asset.quantity {
+                        Some(Quantity::OutputCoin(b)) => bigint_to_string(&b),
+                        _ => "0".to_string(),
+                    },
+                })
+                .collect(),
         })
+        .collect();
+
+    // A no-datum output still carries an (empty) `datum` message; treat an empty
+    // hash as "no datum" so `datum_equals` checks behave as before.
+    let datum = output
+        .datum
+        .filter(|d| !d.hash.is_empty())
+        .map(|d| Datum {
+            hash: d.hash.to_vec(),
+        });
+
+    UTxO {
+        coin,
+        assets,
+        datum,
     }
 }
 
@@ -486,7 +441,7 @@ pub fn wallet_utxos(home: &Path, wallet_name: &str, provider: &str) -> miette::R
         .into_diagnostic()
         .context("parsing cshell wallet utxos output")?;
 
-    parsed.utxos.into_iter().map(WireUtxo::into_utxo).collect()
+    Ok(parsed.utxos.into_iter().map(flatten_utxo).collect())
 }
 
 pub fn explorer(home: &Path, provider: &str) -> miette::Result<Child> {
