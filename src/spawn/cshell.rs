@@ -339,12 +339,17 @@ pub fn tx_invoke_interactive(
         provider,
     )?;
 
-    cmd.stdout(Stdio::inherit())
+    let output = cmd
+        .stdout(Stdio::inherit())
         .stdin(Stdio::inherit())
         .stderr(Stdio::inherit())
         .output()
         .into_diagnostic()
         .context("running CShell transaction")?;
+
+    if !output.status.success() {
+        bail!("CShell failed to execute transaction");
+    }
 
     Ok(())
 }
