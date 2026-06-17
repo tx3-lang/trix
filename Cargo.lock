@@ -4417,7 +4417,7 @@ dependencies = [
 
 [[package]]
 name = "trix"
-version = "0.26.1"
+version = "0.26.2"
 dependencies = [
  "anyhow",
  "askama",
