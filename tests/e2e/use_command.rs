@@ -9,7 +9,11 @@ fn use_rejects_alias_only_reference() {
     assert_success(&init);
 
     let result = ctx.run_trix(&["use", "widget"]);
-    assert!(!result.success(), "expected failure, got: {:?}", result.stdout);
+    assert!(
+        !result.success(),
+        "expected failure, got: {:?}",
+        result.stdout
+    );
     let combined = format!("{}{}", result.stdout, result.stderr);
     assert!(
         combined.contains("alias")
@@ -174,9 +178,7 @@ fn trix_toml_rejects_alias_only_ref() {
     if !content.ends_with('\n') {
         content.push('\n');
     }
-    content.push_str(
-        "\n[interfaces.widget]\nref = \"widget\"\ndigest = \"sha256:deadbeef\"\n",
-    );
+    content.push_str("\n[interfaces.widget]\nref = \"widget\"\ndigest = \"sha256:deadbeef\"\n");
     ctx.write_file("trix.toml", &content);
 
     let result = ctx.run_trix(&["inspect", "tir", "--tx", "transfer"]);

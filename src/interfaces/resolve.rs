@@ -44,10 +44,7 @@ impl<'a> Resolver<'a> {
         Self { config }
     }
 
-    pub fn resolve_protocol(
-        &self,
-        r: &ProtocolRef,
-    ) -> Result<ResolvedProtocol<'a>, ResolveError> {
+    pub fn resolve_protocol(&self, r: &ProtocolRef) -> Result<ResolvedProtocol<'a>, ResolveError> {
         match r {
             ProtocolRef::Alias(a) => {
                 if a == &self.config.protocol.name {
@@ -65,7 +62,9 @@ impl<'a> Resolver<'a> {
             } => {
                 let candidate = self.config.interfaces.values().find(|d| {
                     if let ProtocolRef::Registry {
-                        scope: ds, name: dn, ..
+                        scope: ds,
+                        name: dn,
+                        ..
                     } = &d.reference
                     {
                         ds == scope && dn == name

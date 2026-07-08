@@ -55,7 +55,9 @@ pub enum ParseError {
     #[error("invalid tx reference '{0}': empty tx name")]
     EmptyTx(String),
 
-    #[error("'trix use' requires a full registry reference (e.g. acme/widget:0.1.0), got alias '{0}'")]
+    #[error(
+        "'trix use' requires a full registry reference (e.g. acme/widget:0.1.0), got alias '{0}'"
+    )]
     AliasOnlyNotAllowed(String),
 }
 

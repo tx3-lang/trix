@@ -195,7 +195,8 @@ fn resolve_requested_plugin(
     config: &RootConfig,
 ) -> miette::Result<Option<KnownCodegenPlugin>> {
     if let Some(name) = explicit {
-        let plugin: KnownCodegenPlugin = name.parse().map_err(|e: String| miette::miette!("{e}"))?;
+        let plugin: KnownCodegenPlugin =
+            name.parse().map_err(|e: String| miette::miette!("{e}"))?;
         return Ok(Some(plugin));
     }
 
@@ -214,12 +215,9 @@ fn resolve_requested_plugin(
         ));
     }
 
-    let choice = inquire::Select::new(
-        "Generate bindings for:",
-        KNOWN_CODEGEN_PLUGINS.to_vec(),
-    )
-    .prompt()
-    .into_diagnostic()?;
+    let choice = inquire::Select::new("Generate bindings for:", KNOWN_CODEGEN_PLUGINS.to_vec())
+        .prompt()
+        .into_diagnostic()?;
 
     Ok(Some(choice))
 }
@@ -236,7 +234,9 @@ fn seed_plugin_if_absent(
     no_save: bool,
 ) -> miette::Result<RootConfig> {
     let already = config.codegen.iter().any(|c| match c.plugin {
-        CodegenPlugin::Known(known) => std::mem::discriminant(&known) == std::mem::discriminant(&plugin),
+        CodegenPlugin::Known(known) => {
+            std::mem::discriminant(&known) == std::mem::discriminant(&plugin)
+        }
         CodegenPlugin::Custom(_) => false,
     });
 
