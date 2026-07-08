@@ -192,10 +192,7 @@ pub fn verify_cached(entry: &InterfaceEntry) -> Result<CacheStatus> {
 /// `design/003-protocol-interfaces.md`); promoting this to a hard error
 /// would block every consumer until the registry implements its half.
 /// Present pin with a real tier → strict comparison.
-fn check_trust(
-    entry: &InterfaceEntry,
-    manifest: &ProtocolManifest,
-) -> Option<TrustViolation> {
+fn check_trust(entry: &InterfaceEntry, manifest: &ProtocolManifest) -> Option<TrustViolation> {
     let pin = entry.trust.as_ref()?;
 
     if manifest.tier == VerificationTier::Unverified {
@@ -447,10 +444,7 @@ fn default_to_latest(reference: ProtocolRef) -> ProtocolRef {
 }
 
 /// Pin `request` to a concrete-version `ProtocolRef::Registry`.
-fn pin_reference(
-    request: &ProtocolRef,
-    metadata: &oci::ImageMetadata,
-) -> Result<ProtocolRef> {
+fn pin_reference(request: &ProtocolRef, metadata: &oci::ImageMetadata) -> Result<ProtocolRef> {
     let (scope, name) = match request {
         ProtocolRef::Registry { scope, name, .. } => (scope.clone(), name.clone()),
         ProtocolRef::Alias(a) => {

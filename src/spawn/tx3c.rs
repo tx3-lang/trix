@@ -1,6 +1,6 @@
 use std::{path::Path, process::Command};
 
-use miette::{bail, Context as _, IntoDiagnostic as _};
+use miette::{Context as _, IntoDiagnostic as _, bail};
 use serde::Deserialize;
 
 use crate::config::RootConfig;
@@ -142,10 +142,7 @@ fn capture_json(mut cmd: Command, what: &str) -> miette::Result<serde_json::Valu
 }
 
 /// Lower `tx_name` from project `source` and return its v1beta0 TIR as JSON.
-pub fn tir_from_source(
-    source: &Path,
-    tx_name: &str,
-) -> miette::Result<serde_json::Value> {
+pub fn tir_from_source(source: &Path, tx_name: &str) -> miette::Result<serde_json::Value> {
     let mut cmd = tx3c()?;
     cmd.args(["build", source.to_str().unwrap()]);
     cmd.args(["--emit", "tir-json"]);
@@ -155,10 +152,7 @@ pub fn tir_from_source(
 
 /// Decode `tx_name`'s TIR out of a published `.tii`. Same JSON shape as
 /// [`tir_from_source`], so callers can't tell source from artifact.
-pub fn decode_tir(
-    tii_path: &Path,
-    tx_name: &str,
-) -> miette::Result<serde_json::Value> {
+pub fn decode_tir(tii_path: &Path, tx_name: &str) -> miette::Result<serde_json::Value> {
     let mut cmd = tx3c()?;
     cmd.args(["decode", "--tii", tii_path.to_str().unwrap()]);
     cmd.args(["--emit", "tir-json"]);

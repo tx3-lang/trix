@@ -169,10 +169,7 @@ pub async fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
         ),
     ]);
     if let Some(sha) = &commit_sha {
-        annotations.insert(
-            "org.opencontainers.image.revision".to_string(),
-            sha.clone(),
-        );
+        annotations.insert("org.opencontainers.image.revision".to_string(), sha.clone());
     }
 
     let image_manifest = oci_client::manifest::OciImageManifest::build(

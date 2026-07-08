@@ -40,17 +40,16 @@ impl RepositoryUrl {
         // so the `url` crate can parse it. RFC 3986 reads the `:` after
         // the user as a port separator, so the SCP form isn't valid on
         // its own.
-        let normalized: std::borrow::Cow<'_, str> =
-            if let Some(rest) = stripped.strip_prefix("git@") {
-                let (host, path) = rest.split_once(':').ok_or_else(|| {
-                    miette::miette!(
-                        "repository SSH form must be 'git@host:owner/repo', got '{raw}'"
-                    )
-                })?;
-                format!("ssh://git@{host}/{path}").into()
-            } else {
-                stripped.into()
-            };
+        let normalized: std::borrow::Cow<'_, str> = if let Some(rest) =
+            stripped.strip_prefix("git@")
+        {
+            let (host, path) = rest.split_once(':').ok_or_else(|| {
+                miette::miette!("repository SSH form must be 'git@host:owner/repo', got '{raw}'")
+            })?;
+            format!("ssh://git@{host}/{path}").into()
+        } else {
+            stripped.into()
+        };
 
         let url = url::Url::parse(&normalized).map_err(|e| {
             miette::miette!(
@@ -165,8 +164,7 @@ mod tests {
 
     #[test]
     fn rejects_extra_path_segments() {
-        let err =
-            RepositoryUrl::parse("https://github.com/acme/widget/tree/main").unwrap_err();
+        let err = RepositoryUrl::parse("https://github.com/acme/widget/tree/main").unwrap_err();
         assert!(format!("{err:?}").contains("exactly two path segments"));
     }
 

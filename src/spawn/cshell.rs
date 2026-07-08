@@ -6,9 +6,9 @@ use std::{
 
 use askama::Template;
 
-use miette::{bail, Context as _, IntoDiagnostic as _};
-use serde::{de, Deserialize, Deserializer, Serialize};
-use utxorpc::spec::query::{any_utxo_data::ParsedState, AnyUtxoData};
+use miette::{Context as _, IntoDiagnostic as _, bail};
+use serde::{Deserialize, Deserializer, Serialize, de};
+use utxorpc::spec::query::{AnyUtxoData, any_utxo_data::ParsedState};
 
 use crate::config::{TrpConfig, U5cConfig};
 
@@ -131,12 +131,9 @@ fn flatten_utxo(any: AnyUtxoData) -> UTxO {
 
     // A no-datum output still carries an (empty) `datum` message; treat an empty
     // hash as "no datum" so `datum_equals` checks behave as before.
-    let datum = output
-        .datum
-        .filter(|d| !d.hash.is_empty())
-        .map(|d| Datum {
-            hash: d.hash.to_vec(),
-        });
+    let datum = output.datum.filter(|d| !d.hash.is_empty()).map(|d| Datum {
+        hash: d.hash.to_vec(),
+    });
 
     UTxO {
         coin,
