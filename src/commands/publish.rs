@@ -131,6 +131,9 @@ pub async fn run(_args: Args, config: &RootConfig) -> miette::Result<()> {
             name: name.clone(),
             scope: scope.clone(),
             published_date,
+            // OCI-standard creation time so registries (zot) can order tags and
+            // resolve the newest version; mirrors the image.created annotation.
+            created: oci::created_timestamp(published_date),
             repository_url: Some(repository_url.clone()),
             description: config.protocol.description.clone(),
             version: Some(version.clone()),

@@ -29,6 +29,12 @@ pub struct ImageMetadata {
     pub name: String,
     pub scope: String,
     pub published_date: i64,
+    /// OCI-standard creation time (RFC3339), derived from `published_date` via
+    /// [`created_timestamp`]. Registries such as zot order a repo's tags by the
+    /// config blob's `created` field to pick the "newest" image; without it they
+    /// fall back to zero time and the first-pushed tag stays newest forever.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
     /// GitHub `https://github.com/<owner>/<repo>` URL. Mirrors the
     /// `org.opencontainers.image.source` annotation.
     pub repository_url: Option<String>,
@@ -49,6 +55,14 @@ pub struct ImageMetadata {
     /// OIDC-tier publishes will overwrite this from the workflow claim.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit_sha: Option<String>,
+}
+
+/// OCI-standard `created` timestamp (RFC3339) for an image config, derived from
+/// a Unix-seconds `published_date`. This is the field registries read to order a
+/// repo's tags; see [`ImageMetadata::created`]. Returns `None` only if the
+/// timestamp is out of representable range.
+pub fn created_timestamp(published_date: i64) -> Option<String> {
+    chrono::DateTime::from_timestamp(published_date, 0).map(|dt| dt.to_rfc3339())
 }
 
 pub fn client_for(registry_url: &str) -> oci_client::Client {
@@ -184,6 +198,50 @@ pub async fn pull(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn config_blob_carries_oci_created_for_version_ordering() {
+        // Regression guard. Registries like zot pick a repo's "newest" tag from
+        // the config blob's OCI `created` field (falling back to `history`, else
+        // zero time). With no `created`, every version reads as zero-time and the
+        // FIRST-pushed tag stays "newest" forever — so a GraphQL query for the
+        // latest version of a protocol never advances past the first publish.
+        // The fix: derive an OCI-standard `created` from `published_date` and
+        // serialize it into the image config.
+        let published_date = 1_782_145_366; // 2026-06-22T16:22:46+00:00
+
+        let created = created_timestamp(published_date);
+        assert_eq!(created.as_deref(), Some("2026-06-22T16:22:46+00:00"));
+
+        let meta = ImageMetadata {
+            name: "prueba_zot".into(),
+            scope: "local".into(),
+            published_date,
+            created: created.clone(),
+            repository_url: None,
+            description: None,
+            version: Some("0.2.0".into()),
+            repository: None,
+            commit_sha: None,
+        };
+        let json = serde_json::to_value(&meta).unwrap();
+        assert_eq!(json["created"], "2026-06-22T16:22:46+00:00");
+    }
+
+    #[test]
+    fn config_without_created_still_deserializes() {
+        // Artifacts published before this fix have no `created` field; pulling
+        // them must keep working with `created` defaulting to None.
+        let legacy = r#"{
+            "name": "widget",
+            "scope": "acme",
+            "published_date": 0,
+            "version": "0.1.0"
+        }"#;
+        let meta: ImageMetadata = serde_json::from_str(legacy).unwrap();
+        assert_eq!(meta.created, None);
+        assert_eq!(meta.version.as_deref(), Some("0.1.0"));
+    }
 
     #[test]
     fn reference_lowercases_scope_and_name_for_oci_compliance() {
