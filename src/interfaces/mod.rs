@@ -134,7 +134,12 @@ pub enum CacheStatus {
 /// reserved for unexpected I/O failures.
 pub fn verify_cached(entry: &InterfaceEntry) -> Result<CacheStatus> {
     let paths = cache_paths(entry)?;
+    verify_cache_at(entry, &paths)
+}
 
+/// The verification rules themselves, decoupled from the project-rooted
+/// cache location so they are unit-testable against any directory.
+fn verify_cache_at(entry: &InterfaceEntry, paths: &CachePaths) -> Result<CacheStatus> {
     let manifest_bytes = match std::fs::read(&paths.manifest) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(CacheStatus::Missing),
@@ -693,5 +698,215 @@ mod tests {
             git_ref: Some("main".into()),
         };
         assert!(check_trust(&entry(Some(pin)), &m).is_none());
+    }
+
+    // ------------------------------------------------------------------
+    // verify_cache_at — the cache verification rules against an arbitrary
+    // directory (no project root involved).
+    // ------------------------------------------------------------------
+
+    fn paths_in(dir: &std::path::Path) -> CachePaths {
+        CachePaths {
+            root: dir.to_path_buf(),
+            source: dir.join(CACHE_SOURCE_FILE),
+            tii: dir.join(CACHE_TII_FILE),
+            readme: dir.join(CACHE_README_FILE),
+            manifest: dir.join(CACHE_MANIFEST_FILE),
+        }
+    }
+
+    /// Write a fully consistent cache for the `entry()` fixture into `dir`.
+    fn write_valid_cache(paths: &CachePaths) {
+        let m = manifest(VerificationTier::Unverified, None);
+        std::fs::write(&paths.manifest, serde_json::to_vec(&m).unwrap()).unwrap();
+        std::fs::write(&paths.source, "// informative copy\n").unwrap();
+        std::fs::write(&paths.tii, r#"{"transactions":{"widget_transfer":{}}}"#).unwrap();
+    }
+
+    fn report_of(status: CacheStatus) -> String {
+        match status {
+            CacheStatus::Invalid(report) => format!("{report}"),
+            CacheStatus::Valid => panic!("expected Invalid, got Valid"),
+            CacheStatus::Missing => panic!("expected Invalid, got Missing"),
+        }
+    }
+
+    #[test]
+    fn consistent_cache_is_valid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        write_valid_cache(&paths);
+        assert!(matches!(
+            verify_cache_at(&entry(None), &paths).unwrap(),
+            CacheStatus::Valid
+        ));
+    }
+
+    #[test]
+    fn absent_files_are_missing_not_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+
+        // Nothing on disk at all.
+        assert!(matches!(
+            verify_cache_at(&entry(None), &paths).unwrap(),
+            CacheStatus::Missing
+        ));
+
+        // Manifest alone (source missing).
+        write_valid_cache(&paths);
+        std::fs::remove_file(&paths.source).unwrap();
+        assert!(matches!(
+            verify_cache_at(&entry(None), &paths).unwrap(),
+            CacheStatus::Missing
+        ));
+
+        // TII missing.
+        write_valid_cache(&paths);
+        std::fs::remove_file(&paths.tii).unwrap();
+        assert!(matches!(
+            verify_cache_at(&entry(None), &paths).unwrap(),
+            CacheStatus::Missing
+        ));
+    }
+
+    #[test]
+    fn digest_mismatch_is_invalid_with_refresh_hint() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        write_valid_cache(&paths);
+
+        let mut tampered = entry(None);
+        tampered.digest =
+            "sha256:0000000000000000000000000000000000000000000000000000000000000bad".to_string();
+
+        let report = report_of(verify_cache_at(&tampered, &paths).unwrap());
+        assert!(report.contains("digest"), "got: {report}");
+        assert!(report.contains("trix use --force"), "got: {report}");
+    }
+
+    #[test]
+    fn malformed_metadata_is_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        write_valid_cache(&paths);
+        std::fs::write(&paths.manifest, "not json").unwrap();
+
+        let report = report_of(verify_cache_at(&entry(None), &paths).unwrap());
+        assert!(report.contains("malformed metadata.json"), "got: {report}");
+    }
+
+    #[test]
+    fn malformed_tii_is_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        write_valid_cache(&paths);
+        std::fs::write(&paths.tii, "not json").unwrap();
+
+        let report = report_of(verify_cache_at(&entry(None), &paths).unwrap());
+        assert!(report.contains("not valid JSON"), "got: {report}");
+    }
+
+    #[test]
+    fn trust_violation_surfaces_as_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = paths_in(dir.path());
+        // Cached manifest records GithubApp; the pin demands GithubOidc.
+        let m = manifest(VerificationTier::GithubApp, Some("acme/widget"));
+        std::fs::write(&paths.manifest, serde_json::to_vec(&m).unwrap()).unwrap();
+        std::fs::write(&paths.source, "//\n").unwrap();
+        std::fs::write(&paths.tii, "{}").unwrap();
+
+        let pin = TrustedPublisher {
+            tier: PublisherKind::GithubOidc,
+            repository: Some("acme/widget".into()),
+            git_ref: None,
+        };
+        let report = report_of(verify_cache_at(&entry(Some(pin)), &paths).unwrap());
+        assert!(report.contains("trust pin"), "got: {report}");
+    }
+
+    // ------------------------------------------------------------------
+    // validate — the [interfaces] table rules over a RootConfig, exactly
+    // as the consuming commands (invoke / codegen / inspect tir) run them.
+    // ------------------------------------------------------------------
+
+    const BASE_TOML: &str = "\
+[protocol]
+name = \"myproj\"
+version = \"0.1.0\"
+main = \"main.tx3\"
+[ledger]
+family = \"cardano\"
+";
+
+    fn config_with(interfaces_toml: &str) -> RootConfig {
+        toml::from_str(&format!("{BASE_TOML}{interfaces_toml}")).unwrap()
+    }
+
+    #[test]
+    fn no_interfaces_validates() {
+        assert!(validate(&config_with("")).is_ok());
+    }
+
+    #[test]
+    fn pinned_registry_ref_validates() {
+        let cfg = config_with(
+            "[interfaces.widget]\nref = \"acme/widget:0.1.0\"\ndigest = \"sha256:abc\"\n",
+        );
+        assert!(validate(&cfg).is_ok());
+    }
+
+    #[test]
+    fn alias_only_ref_is_rejected() {
+        let cfg = config_with("[interfaces.widget]\nref = \"widget\"\ndigest = \"sha256:abc\"\n");
+        let err = validate(&cfg).unwrap_err().to_string();
+        assert!(err.contains("alias-only"), "got: {err}");
+        assert!(err.contains("registry reference"), "got: {err}");
+    }
+
+    #[test]
+    fn unpinned_version_is_rejected() {
+        let cfg =
+            config_with("[interfaces.widget]\nref = \"acme/widget\"\ndigest = \"sha256:abc\"\n");
+        let err = validate(&cfg).unwrap_err().to_string();
+        assert!(err.contains("no version pinned"), "got: {err}");
+    }
+
+    #[test]
+    fn latest_ref_is_rejected() {
+        let cfg = config_with(
+            "[interfaces.widget]\nref = \"acme/widget:latest\"\ndigest = \"sha256:abc\"\n",
+        );
+        let err = validate(&cfg).unwrap_err().to_string();
+        assert!(err.contains("concrete version"), "got: {err}");
+    }
+
+    #[test]
+    fn duplicate_scope_name_is_rejected() {
+        let cfg = config_with(
+            "[interfaces.a]\nref = \"acme/widget:0.1.0\"\ndigest = \"sha256:abc\"\n\
+             [interfaces.b]\nref = \"acme/widget:0.2.0\"\ndigest = \"sha256:def\"\n",
+        );
+        let err = validate(&cfg).unwrap_err().to_string();
+        assert!(err.contains("distinct protocols"), "got: {err}");
+    }
+
+    #[test]
+    fn alias_clashing_with_project_name_is_rejected() {
+        let cfg = config_with(
+            "[interfaces.myproj]\nref = \"acme/widget:0.1.0\"\ndigest = \"sha256:abc\"\n",
+        );
+        let err = validate(&cfg).unwrap_err().to_string();
+        assert!(err.contains("project's own protocol name"), "got: {err}");
+    }
+
+    #[test]
+    fn invalid_alias_ident_is_rejected() {
+        let cfg = config_with(
+            "[interfaces.\"9bad\"]\nref = \"acme/widget:0.1.0\"\ndigest = \"sha256:abc\"\n",
+        );
+        let err = validate(&cfg).unwrap_err().to_string();
+        assert!(err.contains("not a valid identifier"), "got: {err}");
     }
 }
