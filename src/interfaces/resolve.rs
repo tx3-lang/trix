@@ -108,3 +108,96 @@ impl<'a> Resolver<'a> {
         Ok((protocol, r.tx.as_str()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config() -> RootConfig {
+        toml::from_str(
+            "\
+[protocol]
+name = \"myproj\"
+version = \"0.1.0\"
+main = \"main.tx3\"
+[ledger]
+family = \"cardano\"
+[interfaces.widget]
+ref = \"acme/widget:0.1.0\"
+digest = \"sha256:abc\"
+",
+        )
+        .unwrap()
+    }
+
+    fn tx(s: &str) -> TxRef {
+        TxRef::parse(s).unwrap()
+    }
+
+    #[test]
+    fn bare_tx_targets_project() {
+        let cfg = config();
+        let tx_ref = tx("transfer");
+        let (resolved, name) = Resolver::new(&cfg).resolve_tx(&tx_ref).unwrap();
+        assert!(matches!(resolved, ResolvedProtocol::Project));
+        assert_eq!(name, "transfer");
+    }
+
+    #[test]
+    fn project_name_as_alias_targets_project() {
+        let cfg = config();
+        let (resolved, _) = Resolver::new(&cfg)
+            .resolve_tx(&tx("myproj::transfer"))
+            .unwrap();
+        assert!(matches!(resolved, ResolvedProtocol::Project));
+    }
+
+    #[test]
+    fn declared_alias_targets_interface() {
+        let cfg = config();
+        let tx_ref = tx("widget::widget_transfer");
+        let (resolved, name) = Resolver::new(&cfg).resolve_tx(&tx_ref).unwrap();
+        match resolved {
+            ResolvedProtocol::Interface(entry) => assert_eq!(entry.alias, "widget"),
+            other => panic!("expected Interface, got {other:?}"),
+        }
+        assert_eq!(name, "widget_transfer");
+    }
+
+    #[test]
+    fn full_registry_ref_targets_interface() {
+        let cfg = config();
+        let (resolved, _) = Resolver::new(&cfg)
+            .resolve_tx(&tx("acme/widget:0.1.0::widget_transfer"))
+            .unwrap();
+        assert!(matches!(resolved, ResolvedProtocol::Interface(_)));
+    }
+
+    #[test]
+    fn unknown_alias_is_rejected_by_name() {
+        let cfg = config();
+        let err = Resolver::new(&cfg)
+            .resolve_tx(&tx("ghost::transfer"))
+            .unwrap_err();
+        assert!(matches!(err, ResolveError::UnknownAlias(ref a) if a == "ghost"));
+        assert!(err.to_string().contains("ghost"));
+    }
+
+    #[test]
+    fn version_mismatch_is_rejected() {
+        let cfg = config();
+        let err = Resolver::new(&cfg)
+            .resolve_tx(&tx("acme/widget:9.9.9::widget_transfer"))
+            .unwrap_err();
+        assert!(matches!(err, ResolveError::VersionMismatch { .. }));
+    }
+
+    #[test]
+    fn undeclared_registry_ref_is_rejected() {
+        let cfg = config();
+        let err = Resolver::new(&cfg)
+            .resolve_tx(&tx("acme/ghost:0.1.0::transfer"))
+            .unwrap_err();
+        assert!(matches!(err, ResolveError::UnknownRegistryRef(_)));
+    }
+}

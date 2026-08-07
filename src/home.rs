@@ -5,9 +5,15 @@ use cryptoxide::{digest::Digest as _, sha2::Sha256};
 use miette::{Context as _, IntoDiagnostic as _};
 
 pub fn tx3_dir() -> miette::Result<PathBuf> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| miette::miette!("failed to get home directory"))?
-        .join(".tx3");
+    // `TX3_HOME` overrides the `~/.tx3` root wholesale. Primarily an
+    // isolation seam for tests and CI (a per-process throwaway root that
+    // works on every OS, unlike faking `$HOME`), but honored anywhere.
+    let home = match std::env::var_os("TX3_HOME") {
+        Some(v) if !v.is_empty() => PathBuf::from(v),
+        _ => dirs::home_dir()
+            .ok_or_else(|| miette::miette!("failed to get home directory"))?
+            .join(".tx3"),
+    };
 
     if !home.exists() {
         std::fs::create_dir_all(&home)
