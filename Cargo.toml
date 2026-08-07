@@ -62,6 +62,7 @@ assert_cmd = "2.0"
 predicates = "3.1"
 insta = "1.42"
 libc = "0.2"
+sha2 = "0.10"
 
 [lib]
 name = "trix"

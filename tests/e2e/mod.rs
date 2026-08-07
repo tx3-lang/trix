@@ -189,6 +189,18 @@ impl TestContext {
             .to_string()
     }
 
+    /// Append a `[registry]` table to the project's trix.toml pointing at
+    /// `url` (e.g. an in-process stub registry). A fresh `trix init` writes
+    /// no `[registry]` section, so appending is always safe.
+    pub fn set_registry_url(&self, url: &str) {
+        let mut content = self.read_file("trix.toml");
+        if !content.ends_with('\n') {
+            content.push('\n');
+        }
+        content.push_str(&format!("\n[registry]\nurl = \"{url}\"\n"));
+        self.write_file("trix.toml", &content);
+    }
+
     /// Append an `[interfaces.<alias>]` table to the project's trix.toml so
     /// the rest of the project sees the primed cache as a declared interface.
     pub fn declare_interface(
@@ -275,6 +287,8 @@ pub fn is_process_running(_pid: u32) -> bool {
 pub mod codegen_deps;
 pub mod edge_cases;
 pub mod happy_path;
+pub mod oci_stub;
+pub mod regressions;
 pub mod smoke;
 pub mod use_command;
 
