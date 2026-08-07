@@ -262,12 +262,14 @@ impl TestContext {
     }
 
     /// The path of the codegen-template fixture, for `[[codegen]]` entries.
+    /// Forward slashes throughout: the value is interpolated into a TOML
+    /// basic string, where Windows backslashes would be escape sequences.
     pub fn codegen_template_dir(&self) -> String {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("tests/fixtures/codegen-template")
             .to_str()
             .expect("fixture path should be valid UTF-8")
-            .to_string()
+            .replace('\\', "/")
     }
 
     /// Append a `[[codegen]]` entry pointing at the local template fixture.
