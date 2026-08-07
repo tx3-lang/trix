@@ -96,7 +96,10 @@ fn check_validates_valid_project() {
     assert_output_contains(&result, "check passed, no errors found");
 }
 
+// Needs a dolos + cshell on the runner, which CI does not provide yet; the
+// other e2e cases only need tx3c. Run locally with `cargo test -- --ignored`.
 #[test]
+#[ignore = "requires dolos + cshell in PATH"]
 fn devnet_starts_and_cshell_connects() {
     let ctx = TestContext::new();
 
