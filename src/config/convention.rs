@@ -451,9 +451,7 @@ impl RootConfig {
 
         Ok(network)
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {

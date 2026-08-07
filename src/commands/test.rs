@@ -6,7 +6,7 @@ use std::{
 };
 
 use clap::Args as ClapArgs;
-use miette::{bail, Context as _, IntoDiagnostic, Result};
+use miette::{Context as _, IntoDiagnostic, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::{

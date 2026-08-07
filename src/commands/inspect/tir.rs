@@ -34,9 +34,7 @@ pub fn run(args: Args, config: &RootConfig) -> miette::Result<()> {
         // it. An interface is consumed via its published TII, whose encoded
         // TIR `tx3c` decodes. Both paths yield the same JSON shape, so the
         // caller can't tell which protocol it came from.
-        ResolvedProtocol::Project => {
-            tx3c::tir_from_source(&config.protocol.main, tx_name)?
-        }
+        ResolvedProtocol::Project => tx3c::tir_from_source(&config.protocol.main, tx_name)?,
         ResolvedProtocol::Interface(entry) => {
             tx3c::decode_tir(&interfaces::cache_paths(entry)?.tii, tx_name)?
         }

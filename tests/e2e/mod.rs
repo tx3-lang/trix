@@ -1,4 +1,4 @@
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
@@ -25,7 +25,7 @@ impl TestContext {
 
     /// Run trix command in this temp directory
     pub fn run_trix(&self, args: &[&str]) -> CommandResult {
-        let mut cmd = Command::cargo_bin("trix").expect("Failed to find trix binary");
+        let mut cmd = cargo_bin_cmd!("trix");
         cmd.args(args);
         cmd.current_dir(self.path());
 
@@ -42,9 +42,12 @@ impl TestContext {
         }
     }
 
-    /// Run trix command with environment overrides
+    /// Run trix command with environment overrides.
+    ///
+    /// Part of the harness surface; no e2e case exercises it today.
+    #[allow(dead_code)]
     pub fn run_trix_with_env(&self, args: &[&str], envs: &[(&str, &str)]) -> CommandResult {
-        let mut cmd = Command::cargo_bin("trix").expect("Failed to find trix binary");
+        let mut cmd = cargo_bin_cmd!("trix");
         cmd.args(args);
         cmd.current_dir(self.path());
 
@@ -259,12 +262,16 @@ pub fn wait_for_port(port: u16, timeout_secs: u64) -> bool {
     false
 }
 
-/// Check if a process is running by PID (Unix only)
+/// Check if a process is running by PID (Unix only).
+///
+/// Part of the harness surface; no e2e case exercises it today.
+#[allow(dead_code)]
 #[cfg(unix)]
 pub fn is_process_running(pid: u32) -> bool {
     unsafe { libc::kill(pid as i32, 0) == 0 }
 }
 
+#[allow(dead_code)]
 #[cfg(not(unix))]
 pub fn is_process_running(_pid: u32) -> bool {
     // On non-Unix systems, we can't easily check if a process is running

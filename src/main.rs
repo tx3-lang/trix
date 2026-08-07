@@ -2,13 +2,13 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
+use miette::{IntoDiagnostic as _, Result};
 use trix::{
     cli::{Cli, Commands},
     commands as cmds,
     config::RootConfig,
     global, telemetry, updates,
 };
-use miette::{IntoDiagnostic as _, Result};
 
 /// Walk up parent directories looking for a `trix.toml`, matching the same
 /// convention as `dirs::protocol_root`. Returns the loaded config and the
