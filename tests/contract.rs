@@ -19,8 +19,3 @@ mod codegen;
 mod compat;
 #[path = "contract/inspect.rs"]
 mod inspect;
-
-#[test]
-fn temporary_gate_enforcement_probe_must_be_reverted() {
-    panic!("deliberate failure verifying the CI gate is enforcing");
-}
