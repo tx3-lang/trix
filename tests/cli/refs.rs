@@ -56,3 +56,30 @@ fn scoped_commands_reject_invalid_interfaces_table() {
     let result = ctx.run_trix(&["inspect", "tir", "--tx", "transfer"]);
     assert_failure_mentioning(&result, "alias-only");
 }
+
+/// Regression (re-cut from PR #128): npm-style `@` version separators are
+/// forbidden in protocol references. The canonical grammar puts the version
+/// after `:` and `@` is not a valid identifier character, so `trix use`
+/// rejects the reference at clap parse time — before any registry traffic,
+/// which is why this belongs at the CLI layer and needs no stub.
+#[test]
+fn use_rejects_npm_style_at_version_separator() {
+    let ctx = TestContext::new();
+    assert_success(&ctx.run_trix(&["init", "--yes"]));
+
+    let result = ctx.run_trix(&["use", "acme/widget@0.1.0"]);
+    assert!(
+        !result.success(),
+        "npm-style '@' ref should be rejected, got success:\n{}",
+        result.stdout
+    );
+    let combined = result.combined();
+    assert!(
+        combined.contains("invalid"),
+        "error should call the reference invalid:\n{combined}"
+    );
+    assert!(
+        combined.contains("widget@0.1.0"),
+        "error should echo the offending reference:\n{combined}"
+    );
+}

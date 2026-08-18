@@ -59,6 +59,10 @@ url = "2.5"
 
 [dev-dependencies]
 assert_cmd = "2.0"
+# Real sha256 digests for the in-process OCI registry stub
+# (`tests/harness/oci_stub.rs`): `oci_client` verifies every blob against
+# its descriptor, so the stub cannot fake them.
+sha2 = "0.10"
 
 [lib]
 name = "trix"

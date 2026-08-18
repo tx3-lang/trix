@@ -298,10 +298,14 @@ pub async fn run(
         let templates_dir =
             extract_github_templates(&github_url, &template_temp, &plugin.path).await?;
 
+        // Plugin defaults merged with the entry's `options`, user values
+        // winning — the same options for every protocol in this entry.
+        let options = codegen.resolved_options();
+
         for (name, tii_path) in &targets {
             let dest = base_output_dir.join(name);
             std::fs::create_dir_all(&dest).into_diagnostic()?;
-            crate::spawn::tx3c::codegen(tii_path, &templates_dir, &dest)?;
+            crate::spawn::tx3c::codegen(tii_path, &templates_dir, &dest, &options)?;
             println!("Bindgen successful for '{}'", name);
         }
     }
