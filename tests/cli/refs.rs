@@ -57,7 +57,7 @@ fn scoped_commands_reject_invalid_interfaces_table() {
     assert_failure_mentioning(&result, "alias-only");
 }
 
-/// Regression (re-cut from PR #128): npm-style `@` version separators are
+/// Regression: npm-style `@` version separators are
 /// forbidden in protocol references. The canonical grammar puts the version
 /// after `:` and `@` is not a valid identifier character, so `trix use`
 /// rejects the reference at clap parse time — before any registry traffic,

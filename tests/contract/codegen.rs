@@ -81,7 +81,6 @@ fn interface_bindings_use_cached_tii_not_a_recompile() {
     );
 }
 
-// ---------------------------------------------------------------------
 // The `[[codegen]].options` channel
 //
 // What trix *sends*: the merged options ride as one JSON object under
@@ -89,7 +88,6 @@ fn interface_bindings_use_cached_tii_not_a_recompile() {
 // merge itself resolves to (plugin defaults, user override precedence) is
 // a rule, unit-tested on `CodegenConfig::resolved_options` in
 // `src/config/convention.rs`; these are the wiring probes.
-// ---------------------------------------------------------------------
 
 /// The `--options` value of the first `tx3c codegen` invocation, parsed.
 /// `None` when the flag was not passed at all.

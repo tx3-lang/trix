@@ -5,9 +5,6 @@
 //! the distribution protocol — so this stays in the CLI layer. The stub is
 //! bound to `127.0.0.1:<random>` and the project is pointed at it through
 //! `[registry].url`, keeping the suite offline (`tests/README.md`).
-//!
-//! Both tests here are regressions re-cut from PR #128 onto the #129
-//! layout: they lock defects that were fixed once and must not return.
 
 use crate::harness::oci_stub::{OciRegistryStub, StubProtocolImage};
 use crate::harness::*;
