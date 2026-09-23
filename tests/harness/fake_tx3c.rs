@@ -104,9 +104,16 @@ fn main() {
             let tii = flag_value(&args, "--tii").expect("--tii missing");
             let template = flag_value(&args, "--template").expect("--template missing");
             let output = flag_value(&args, "--output").expect("--output missing");
+            // Optional: the template-options channel. Absent means `{}` —
+            // real tx3c defaults it, so trix omits the flag when it has
+            // nothing to say.
+            let options = flag_value(&args, "--options").unwrap_or_else(|| "{}".to_string());
             let dest = std::path::Path::new(&output).join("bindings.txt");
-            std::fs::write(&dest, format!("tii={}\ntemplate={}\n", tii, template))
-                .expect("write bindings");
+            std::fs::write(
+                &dest,
+                format!("tii={}\ntemplate={}\noptions={}\n", tii, template, options),
+            )
+            .expect("write bindings");
         }
         other => {
             eprintln!("fake tx3c: unknown subcommand {:?}", other);
