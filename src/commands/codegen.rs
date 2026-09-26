@@ -2,8 +2,8 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 use crate::config::{
-    CodegenConfig, CodegenPlugin, CodegenPluginConfig, KNOWN_CODEGEN_PLUGINS, KnownCodegenPlugin,
-    ProfileConfig, RootConfig,
+    CodegenConfig, CodegenPlugin, KNOWN_CODEGEN_PLUGINS, KnownCodegenPlugin, ProfileConfig,
+    RootConfig,
 };
 use clap::Args as ClapArgs;
 use miette::IntoDiagnostic;
@@ -282,27 +282,45 @@ pub async fn run(
         let base_output_dir = codegen.output_dir()?;
         std::fs::create_dir_all(&base_output_dir).into_diagnostic()?;
 
-        let plugin = CodegenPluginConfig::from(codegen.plugin.clone());
-        let github_url = if PathBuf::from(&plugin.repo).is_dir() {
-            plugin.repo.clone()
-        } else {
-            format!(
-                "{}/{}",
-                &plugin.repo,
-                plugin.r#ref.as_deref().unwrap_or("main")
-            )
-        };
+        match &codegen.plugin {
+            // A built-in plugin names a template that ships inside tx3c:
+            // no download, and the template always matches the installed tx3c.
+            CodegenPlugin::Known(plugin) => {
+                let template = plugin.to_string();
+                for (name, tii_path) in &targets {
+                    let dest = base_output_dir.join(name);
+                    std::fs::create_dir_all(&dest).into_diagnostic()?;
+                    crate::spawn::tx3c::codegen(tii_path, &template, &dest)?;
+                    println!("Bindgen successful for '{}'", name);
+                }
+            }
+            CodegenPlugin::Custom(plugin) => {
+                let github_url = if PathBuf::from(&plugin.repo).is_dir() {
+                    plugin.repo.clone()
+                } else {
+                    format!(
+                        "{}/{}",
+                        &plugin.repo,
+                        plugin.r#ref.as_deref().unwrap_or("main")
+                    )
+                };
 
-        // Extract templates once per [[codegen]] entry, reuse across protocols.
-        let template_temp = TempDir::new().into_diagnostic()?;
-        let templates_dir =
-            extract_github_templates(&github_url, &template_temp, &plugin.path).await?;
+                // Extract templates once per [[codegen]] entry, reuse across protocols.
+                let template_temp = TempDir::new().into_diagnostic()?;
+                let templates_dir =
+                    extract_github_templates(&github_url, &template_temp, &plugin.path).await?;
 
-        for (name, tii_path) in &targets {
-            let dest = base_output_dir.join(name);
-            std::fs::create_dir_all(&dest).into_diagnostic()?;
-            crate::spawn::tx3c::codegen(tii_path, &templates_dir, &dest)?;
-            println!("Bindgen successful for '{}'", name);
+                for (name, tii_path) in &targets {
+                    let dest = base_output_dir.join(name);
+                    std::fs::create_dir_all(&dest).into_diagnostic()?;
+                    crate::spawn::tx3c::codegen(
+                        tii_path,
+                        templates_dir.to_str().unwrap_or_default(),
+                        &dest,
+                    )?;
+                    println!("Bindgen successful for '{}'", name);
+                }
+            }
         }
     }
 

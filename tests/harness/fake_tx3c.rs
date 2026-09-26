@@ -8,7 +8,7 @@
 //! by `src/spawn/tx3c.rs` + `src/spawn/compat.rs`) and is steered per test
 //! via environment variables:
 //!
-//! - `FAKE_TX3C_VERSION`    version reported by `--version` (default 0.22.0)
+//! - `FAKE_TX3C_VERSION`    version reported by `--version` (default 0.24.0)
 //! - `FAKE_TX3C_ARGS_LOG`   file to append each invocation's argv to,
 //!   US-separated (`\x1f`), one line per invocation
 //! - `FAKE_TX3C_DIAGNOSTICS` raw stdout for `build --diagnostics-format json`
@@ -42,7 +42,7 @@ fn main() {
     // so compat gating and failure simulation compose per invocation.
     if args.iter().any(|a| a == "--version") {
         let version =
-            std::env::var("FAKE_TX3C_VERSION").unwrap_or_else(|_| "0.22.0".to_string());
+            std::env::var("FAKE_TX3C_VERSION").unwrap_or_else(|_| "0.24.0".to_string());
         println!("tx3c {}", version);
         return;
     }
@@ -102,6 +102,7 @@ fn main() {
         }
         Some("codegen") => {
             let tii = flag_value(&args, "--tii").expect("--tii missing");
+            // --template is a built-in template name or a directory path.
             let template = flag_value(&args, "--template").expect("--template missing");
             let output = flag_value(&args, "--output").expect("--output missing");
             let dest = std::path::Path::new(&output).join("bindings.txt");
