@@ -29,13 +29,12 @@ struct Compat {
 }
 
 const COMPAT_MATRIX: &[Compat] = &[
-    // 0.22.0 introduced parametric tuple types: tx3c now emits TIR carrying the
-    // `Tuple` type/expression variants, a forward-incompatible addition that
-    // pre-0.22 readers cannot decode. Pin the floor here so the TIR `trix`
-    // consumes always matches the schema it supports.
+    // 0.24.0 generates the first-party clients itself, behind
+    // `tx3c codegen --language`, which the built-in codegen plugins call.
+    // (0.22.0 introduced the `Tuple` TIR variants; 0.24.0 keeps them.)
     Compat {
         tool: "tx3c",
-        min: "0.22.0",
+        min: "0.24.0",
     },
 ];
 

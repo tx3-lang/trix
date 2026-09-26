@@ -312,44 +312,16 @@ impl std::fmt::Display for KnownCodegenPlugin {
     }
 }
 
-// Codegen is delegated entirely to `tx3c`; the built-in SDK plugins are
-// pinned to the `codegen-v1beta0` bindgen templates that match it. (The old
-// `bindgen-v1alpha2` ref went with the now-removed legacy in-process codegen.)
-const CURRENT_CODEGEN_VERSION: &str = "codegen-v1beta0";
-
-impl From<KnownCodegenPlugin> for CodegenPluginConfig {
-    fn from(plugin: KnownCodegenPlugin) -> Self {
-        match plugin {
-            KnownCodegenPlugin::TsClient => CodegenPluginConfig {
-                repo: "tx3-lang/web-sdk".to_string(),
-                // When web-sdk get updated, we need to change this path to bindgen/client-lib when we update the ref
-                path: ".trix/client-lib".to_string(),
-                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
-            },
-            KnownCodegenPlugin::RustClient => CodegenPluginConfig {
-                repo: "tx3-lang/rust-sdk".to_string(),
-                path: ".trix/client-lib".to_string(),
-                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
-            },
-            KnownCodegenPlugin::PythonClient => CodegenPluginConfig {
-                repo: "tx3-lang/python-sdk".to_string(),
-                path: ".trix/client-lib".to_string(),
-                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
-            },
-            KnownCodegenPlugin::GoClient => CodegenPluginConfig {
-                repo: "tx3-lang/go-sdk".to_string(),
-                path: ".trix/client-lib".to_string(),
-                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
-            },
-        }
-    }
-}
-
-impl From<CodegenPlugin> for CodegenPluginConfig {
-    fn from(plugin: CodegenPlugin) -> Self {
-        match plugin {
-            CodegenPlugin::Known(plugin) => CodegenPluginConfig::from(plugin),
-            CodegenPlugin::Custom(plugin) => plugin,
+impl KnownCodegenPlugin {
+    /// The `tx3c codegen --language` value that renders this built-in
+    /// client. tx3c owns the first-party client templates, so a built-in plugin
+    /// needs no download and always matches the installed tx3c.
+    pub fn tx3c_language(&self) -> &'static str {
+        match self {
+            KnownCodegenPlugin::TsClient => "typescript",
+            KnownCodegenPlugin::RustClient => "rust",
+            KnownCodegenPlugin::PythonClient => "python",
+            KnownCodegenPlugin::GoClient => "go",
         }
     }
 }

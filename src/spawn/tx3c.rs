@@ -74,11 +74,25 @@ pub fn build_tii(source: &Path, output: &Path, config: &RootConfig) -> miette::R
     Ok(())
 }
 
+/// Render a custom template directory.
 pub fn codegen(tii_path: &Path, templates: &Path, output: &Path) -> miette::Result<()> {
+    run_codegen(
+        tii_path,
+        ["--template", templates.to_str().unwrap()],
+        output,
+    )
+}
+
+/// Render tx3c's first-party client for `language`.
+pub fn codegen_language(tii_path: &Path, language: &str, output: &Path) -> miette::Result<()> {
+    run_codegen(tii_path, ["--language", language], output)
+}
+
+fn run_codegen(tii_path: &Path, source: [&str; 2], output: &Path) -> miette::Result<()> {
     let mut cmd = tx3c()?;
 
     cmd.args(["codegen", "--tii", tii_path.to_str().unwrap()]);
-    cmd.args(["--template", templates.to_str().unwrap()]);
+    cmd.args(source);
     cmd.args(["--output", output.to_str().unwrap()]);
 
     let output = cmd
