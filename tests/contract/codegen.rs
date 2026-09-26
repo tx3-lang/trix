@@ -1,8 +1,11 @@
 //! `trix codegen` ↔ `tx3c build --emit tii` + `tx3c codegen`.
 //!
 //! Trix's side of the contract: which TII feeds each target (project built
-//! from source, interfaces from their cached published TII) and the
-//! unconditional per-protocol output layout `gen/<name>/`.
+//! from source, interfaces from their cached published TII), how a plugin
+//! selects its template (built-in plugins by template name, custom plugins
+//! by downloaded directory, both through `--template`), and the
+//! unconditional per-protocol output layout
+//! `gen/<name>/`.
 
 use crate::harness::*;
 
@@ -78,5 +81,44 @@ fn interface_bindings_use_cached_tii_not_a_recompile() {
     assert_eq!(
         tii_builds, 1,
         "only the project compiles; the interface is consumed from cache: {invocations:?}"
+    );
+}
+
+/// Built-in plugins name a template that ships inside tx3c:
+/// `--template <plugin name>`, with no template download.
+#[test]
+fn builtin_plugins_render_the_tx3c_template_by_name() {
+    let ctx = TestContext::new();
+    assert_success(&ctx.run_trix(&["init", "--yes"]));
+
+    let mut trix_toml = ctx.read_file("trix.toml");
+    trix_toml.push_str("\n[[codegen]]\noutput_dir = \"gen\"\nplugin = \"python-client\"\n");
+    ctx.write_file("trix.toml", &trix_toml);
+
+    let project_name = ctx.load_trix_config().protocol.name;
+
+    let result = ctx.run_trix_with_fake_tx3c(&["codegen"], &[]);
+    assert_success(&result);
+    assert!(
+        !result.combined().contains("Reading template from"),
+        "built-in plugins must not download templates: {}",
+        result.combined()
+    );
+
+    ctx.assert_file_contains(
+        format!("gen/{project_name}/bindings.txt"),
+        "template=python-client",
+    );
+
+    let invocations = ctx.tx3c_invocations();
+    let codegen = invocations
+        .iter()
+        .find(|i| i[0] == "codegen")
+        .expect("codegen must delegate to tx3c codegen");
+    assert!(
+        codegen
+            .windows(2)
+            .any(|w| w[0] == "--template" && w[1] == "python-client"),
+        "built-in plugin must pass its name as --template: {codegen:?}"
     );
 }

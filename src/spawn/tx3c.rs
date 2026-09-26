@@ -74,11 +74,14 @@ pub fn build_tii(source: &Path, output: &Path, config: &RootConfig) -> miette::R
     Ok(())
 }
 
-pub fn codegen(tii_path: &Path, templates: &Path, output: &Path) -> miette::Result<()> {
+/// Render `template`: the name of a template built into tx3c (a built-in
+/// plugin name such as `rust-client`) or the path of a custom template
+/// directory. tx3c resolves which one it is.
+pub fn codegen(tii_path: &Path, template: &str, output: &Path) -> miette::Result<()> {
     let mut cmd = tx3c()?;
 
     cmd.args(["codegen", "--tii", tii_path.to_str().unwrap()]);
-    cmd.args(["--template", templates.to_str().unwrap()]);
+    cmd.args(["--template", template]);
     cmd.args(["--output", output.to_str().unwrap()]);
 
     let output = cmd

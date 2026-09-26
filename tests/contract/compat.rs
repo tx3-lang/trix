@@ -50,11 +50,11 @@ fn project_toolchain_floor_is_enforced() {
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
     let mut content = ctx.read_file("trix.toml");
-    content.push_str("\n[toolchain]\ntx3c = \"0.23.0\"\n");
+    content.push_str("\n[toolchain]\ntx3c = \"0.25.0\"\n");
     ctx.write_file("trix.toml", &content);
 
-    // 0.22.0 satisfies the built-in matrix but not the project floor.
-    let result = ctx.run_trix_with_fake_tx3c(&["check"], &[("FAKE_TX3C_VERSION", "0.22.0")]);
+    // 0.24.0 satisfies the built-in matrix but not the project floor.
+    let result = ctx.run_trix_with_fake_tx3c(&["check"], &[("FAKE_TX3C_VERSION", "0.24.0")]);
     assert_failure_mentioning(&result, "this protocol requires");
 }
 
