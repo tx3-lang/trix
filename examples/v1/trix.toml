@@ -13,3 +13,9 @@ plugin = "ts-client"
 
 [[codegen]]
 plugin = "rust-client"
+
+[[codegen]]
+plugin = "java-client"
+
+[[codegen]]
+plugin = "swift-client"

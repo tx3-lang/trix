@@ -14,7 +14,7 @@ fn below_floor_is_rejected_before_any_real_invocation() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
-    let result = ctx.run_trix_with_fake_tx3c(&["check"], &[("FAKE_TX3C_VERSION", "0.21.0")]);
+    let result = ctx.run_trix_with_fake_tx3c(&["check"], &[("FAKE_TX3C_VERSION", "0.24.0")]);
     assert_failure_mentioning(&result, "incompatible tx3 toolchain");
 
     // The gate stopped everything after the probe.

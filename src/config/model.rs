@@ -184,6 +184,7 @@ pub enum KnownCodegenPlugin {
     RustClient,
     PythonClient,
     GoClient,
+    JavaClient,
     SwiftClient,
 }
 
