@@ -92,7 +92,7 @@ fn builtin_plugins_render_the_tx3c_template_by_name() {
     assert_success(&ctx.run_trix(&["init", "--yes"]));
 
     let mut trix_toml = ctx.read_file("trix.toml");
-    trix_toml.push_str("\n[[codegen]]\noutput_dir = \"gen\"\nplugin = \"python-client\"\n");
+    trix_toml.push_str("\n[[codegen]]\noutput_dir = \"gen\"\nplugin = \"swift-client\"\n");
     ctx.write_file("trix.toml", &trix_toml);
 
     let project_name = ctx.load_trix_config().protocol.name;
@@ -107,7 +107,7 @@ fn builtin_plugins_render_the_tx3c_template_by_name() {
 
     ctx.assert_file_contains(
         format!("gen/{project_name}/bindings.txt"),
-        "template=python-client",
+        "template=swift-client",
     );
 
     let invocations = ctx.tx3c_invocations();
@@ -118,8 +118,39 @@ fn builtin_plugins_render_the_tx3c_template_by_name() {
     assert!(
         codegen
             .windows(2)
-            .any(|w| w[0] == "--template" && w[1] == "python-client"),
+            .any(|w| w[0] == "--template" && w[1] == "swift-client"),
         "built-in plugin must pass its name as --template: {codegen:?}"
+    );
+}
+
+#[test]
+fn swift_client_cli_selection_seeds_the_default_config() {
+    let ctx = TestContext::new();
+    assert_success(&ctx.run_trix(&["init", "--yes"]));
+
+    let result = ctx.run_trix_with_fake_tx3c(&["codegen", "--plugin", "swift-client"], &[]);
+    assert_success(&result);
+
+    ctx.assert_file_contains("trix.toml", "plugin = \"swift-client\"");
+    let config = ctx.load_trix_config();
+    let target = config
+        .codegen
+        .last()
+        .expect("swift-client target is seeded");
+    assert!(target.job_id.is_none());
+    assert!(target.output_dir.is_none());
+    assert!(target.options.is_none());
+
+    let invocations = ctx.tx3c_invocations();
+    let codegen = invocations
+        .iter()
+        .find(|i| i[0] == "codegen")
+        .expect("codegen must delegate to tx3c codegen");
+    assert!(
+        codegen
+            .windows(2)
+            .any(|w| w[0] == "--template" && w[1] == "swift-client"),
+        "swift-client must pass its name as --template: {codegen:?}"
     );
 }
 

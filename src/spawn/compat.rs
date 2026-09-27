@@ -29,8 +29,8 @@ struct Compat {
 }
 
 const COMPAT_MATRIX: &[Compat] = &[
-    // 0.25.0 adds the built-in java-client template alongside the existing
-    // templates (`tx3c codegen --template java-client`, …).
+    // 0.25.0 adds the built-in java-client and swift-client templates
+    // alongside the existing templates (`tx3c codegen --template ...`).
     // (0.22.0 introduced the `Tuple` TIR variants; 0.25.0 keeps them.)
     Compat {
         tool: "tx3c",

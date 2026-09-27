@@ -248,6 +248,7 @@ pub const KNOWN_CODEGEN_PLUGINS: &[KnownCodegenPlugin] = &[
     KnownCodegenPlugin::PythonClient,
     KnownCodegenPlugin::GoClient,
     KnownCodegenPlugin::JavaClient,
+    KnownCodegenPlugin::SwiftClient,
 ];
 
 impl KnownCodegenPlugin {
@@ -273,6 +274,8 @@ impl KnownCodegenPlugin {
             Some(KnownCodegenPlugin::GoClient)
         } else if lower.contains("java") || lower == "jvm" {
             Some(KnownCodegenPlugin::JavaClient)
+        } else if lower.contains("swift") {
+            Some(KnownCodegenPlugin::SwiftClient)
         } else {
             None
         }
@@ -310,6 +313,7 @@ impl std::fmt::Display for KnownCodegenPlugin {
             KnownCodegenPlugin::PythonClient => "python-client",
             KnownCodegenPlugin::GoClient => "go-client",
             KnownCodegenPlugin::JavaClient => "java-client",
+            KnownCodegenPlugin::SwiftClient => "swift-client",
         };
 
         write!(f, "{str}")
@@ -457,6 +461,7 @@ mod tests {
                 "python-client",
                 "go-client",
                 "java-client",
+                "swift-client",
             ]
         );
     }
@@ -475,10 +480,21 @@ mod tests {
     }
 
     #[test]
+    fn plugin_from_str_suggests_swift_client() {
+        let err: String = "swift".parse::<KnownCodegenPlugin>().unwrap_err();
+        assert!(err.contains("swift-client"), "no suggestion in: {err}");
+    }
+
+    #[test]
     fn plugin_from_str_lists_available_when_no_suggestion() {
         let err: String = "zzz".parse::<KnownCodegenPlugin>().unwrap_err();
         assert!(!err.contains("did you mean"));
-        assert!(err.contains("ts-client") && err.contains("rust-client"));
+        assert!(
+            err.contains("ts-client")
+                && err.contains("rust-client")
+                && err.contains("java-client")
+                && err.contains("swift-client")
+        );
     }
 
     #[test]

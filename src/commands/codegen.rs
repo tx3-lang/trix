@@ -14,11 +14,12 @@ use zip::ZipArchive;
 #[derive(ClapArgs, Debug)]
 pub struct Args {
     /// Codegen plugin to use, e.g. `ts-client`, `rust-client`,
-    /// `python-client`, `go-client`, `java-client`. If no `[[codegen]]`
-    /// entry exists for this plugin yet, one is appended to `trix.toml`
-    /// before generation runs. With this flag, `trix codegen` is the only
-    /// path that needs to know plugin names; hand-editing `trix.toml` stays
-    /// supported for custom plugins and bespoke `output_dir`s.
+    /// `python-client`, `go-client`, `java-client`, `swift-client`. If no
+    /// `[[codegen]]` entry exists for this plugin yet, one is appended to
+    /// `trix.toml` before generation runs. With this flag, `trix codegen`
+    /// is the only path that needs to know plugin names; hand-editing
+    /// `trix.toml` stays supported for custom plugins and bespoke
+    /// `output_dir`s.
     #[arg(long, value_name = "NAME")]
     pub plugin: Option<String>,
 
