@@ -14,7 +14,7 @@ use zip::ZipArchive;
 #[derive(ClapArgs, Debug)]
 pub struct Args {
     /// Codegen plugin to use, e.g. `ts-client`, `rust-client`,
-    /// `python-client`, `go-client`. If no `[[codegen]]` entry exists for
+    /// `python-client`, `go-client`, `swift-client`. If no `[[codegen]]` entry exists for
     /// this plugin yet, one is appended to `trix.toml` before generation
     /// runs. With this flag, `trix codegen` is the only path that needs
     /// to know plugin names; hand-editing `trix.toml` stays supported for

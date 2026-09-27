@@ -184,6 +184,7 @@ pub enum KnownCodegenPlugin {
     RustClient,
     PythonClient,
     GoClient,
+    SwiftClient,
 }
 
 pub type CodegenPlugin = KnownOrCustom<KnownCodegenPlugin, CodegenPluginConfig>;
