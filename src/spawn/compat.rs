@@ -29,12 +29,11 @@ struct Compat {
 }
 
 const COMPAT_MATRIX: &[Compat] = &[
-    // 0.24.0 ships the built-in templates the built-in codegen plugins name
-    // (`tx3c codegen --template rust-client`, …).
-    // (0.22.0 introduced the `Tuple` TIR variants; 0.24.0 keeps them.)
+    // 0.25.0 adds the built-in Swift client template while retaining the
+    // existing built-in client templates and `Tuple` TIR variants.
     Compat {
         tool: "tx3c",
-        min: "0.24.0",
+        min: "0.25.0",
     },
 ];
 
