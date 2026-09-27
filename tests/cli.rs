@@ -11,6 +11,8 @@
 #[path = "harness/mod.rs"]
 mod harness;
 
+#[path = "cli/codegen.rs"]
+mod codegen;
 #[path = "cli/init.rs"]
 mod init;
 #[path = "cli/interfaces.rs"]

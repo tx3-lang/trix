@@ -247,6 +247,7 @@ pub const KNOWN_CODEGEN_PLUGINS: &[KnownCodegenPlugin] = &[
     KnownCodegenPlugin::RustClient,
     KnownCodegenPlugin::PythonClient,
     KnownCodegenPlugin::GoClient,
+    KnownCodegenPlugin::JavaClient,
 ];
 
 impl KnownCodegenPlugin {
@@ -270,6 +271,8 @@ impl KnownCodegenPlugin {
             Some(KnownCodegenPlugin::PythonClient)
         } else if lower.contains("golang") || lower == "go" {
             Some(KnownCodegenPlugin::GoClient)
+        } else if lower.contains("java") || lower == "jvm" {
+            Some(KnownCodegenPlugin::JavaClient)
         } else {
             None
         }
@@ -306,6 +309,7 @@ impl std::fmt::Display for KnownCodegenPlugin {
             KnownCodegenPlugin::RustClient => "rust-client",
             KnownCodegenPlugin::PythonClient => "python-client",
             KnownCodegenPlugin::GoClient => "go-client",
+            KnownCodegenPlugin::JavaClient => "java-client",
         };
 
         write!(f, "{str}")
@@ -440,10 +444,34 @@ mod tests {
     }
 
     #[test]
+    fn known_codegen_plugin_names_are_stable() {
+        let names = KNOWN_CODEGEN_PLUGINS
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            [
+                "ts-client",
+                "rust-client",
+                "python-client",
+                "go-client",
+                "java-client",
+            ]
+        );
+    }
+
+    #[test]
     fn plugin_from_str_suggests_close_alias() {
         let err: String = "typescript".parse::<KnownCodegenPlugin>().unwrap_err();
         assert!(err.contains("ts-client"), "no suggestion in: {err}");
         assert!(err.contains("available:"));
+    }
+
+    #[test]
+    fn plugin_from_str_suggests_java_for_jvm() {
+        let err: String = "jvm".parse::<KnownCodegenPlugin>().unwrap_err();
+        assert!(err.contains("java-client"), "no suggestion in: {err}");
     }
 
     #[test]
