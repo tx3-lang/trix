@@ -122,3 +122,37 @@ fn builtin_plugins_render_the_tx3c_template_by_name() {
         "built-in plugin must pass its name as --template: {codegen:?}"
     );
 }
+
+/// The Java plugin is selectable through the normal CLI seed flow and keeps
+/// the standard job-id/output defaults while delegating to tx3c by name.
+#[test]
+fn java_client_uses_default_output_and_tx3c_template() {
+    let ctx = TestContext::new();
+    assert_success(&ctx.run_trix(&["init", "--yes"]));
+
+    let project_name = ctx.load_trix_config().protocol.name;
+    let result =
+        ctx.run_trix_with_fake_tx3c(&["codegen", "--plugin", "java-client", "--no-save"], &[]);
+    assert_success(&result);
+
+    ctx.assert_file_contains(
+        format!(".tx3/codegen/java-client/{project_name}/bindings.txt"),
+        "template=java-client",
+    );
+    assert!(
+        !ctx.read_file("trix.toml").contains("java-client"),
+        "--no-save must keep the seeded Java plugin ephemeral"
+    );
+
+    let invocations = ctx.tx3c_invocations();
+    let codegen = invocations
+        .iter()
+        .find(|i| i[0] == "codegen")
+        .expect("codegen must delegate to tx3c codegen");
+    assert!(
+        codegen
+            .windows(2)
+            .any(|w| w[0] == "--template" && w[1] == "java-client"),
+        "Java plugin must pass its name as --template: {codegen:?}"
+    );
+}
