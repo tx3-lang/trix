@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.28.0] - 2026-09-28
+
+### 🚀 Features
+
+- *(codegen)* Register java client plugin (#133)
+- *(codegen)* Register Swift client plugin (#134)
+
 ## [0.27.0] - 2026-09-26
 
 ### 🚀 Features
@@ -11,6 +18,10 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - *(publish)* Write OCI `created` into image config so registries order tags (#125)
+
+### 💼 Other
+
+- V0.27.0
 
 ### 🧪 Testing
 
