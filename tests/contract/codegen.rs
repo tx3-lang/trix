@@ -1,8 +1,11 @@
 //! `trix codegen` ↔ `tx3c build --emit tii` + `tx3c codegen`.
 //!
 //! Trix's side of the contract: which TII feeds each target (project built
-//! from source, interfaces from their cached published TII) and the
-//! unconditional per-protocol output layout `gen/<name>/`.
+//! from source, interfaces from their cached published TII), how a plugin
+//! selects its template (built-in plugins by template name, custom plugins
+//! by downloaded directory, both through `--template`), and the
+//! unconditional per-protocol output layout
+//! `gen/<name>/`.
 
 use crate::harness::*;
 
@@ -81,6 +84,110 @@ fn interface_bindings_use_cached_tii_not_a_recompile() {
     );
 }
 
+/// Built-in plugins name a template that ships inside tx3c:
+/// `--template <plugin name>`, with no template download.
+#[test]
+fn builtin_plugins_render_the_tx3c_template_by_name() {
+    let ctx = TestContext::new();
+    assert_success(&ctx.run_trix(&["init", "--yes"]));
+
+    let mut trix_toml = ctx.read_file("trix.toml");
+    trix_toml.push_str("\n[[codegen]]\noutput_dir = \"gen\"\nplugin = \"swift-client\"\n");
+    ctx.write_file("trix.toml", &trix_toml);
+
+    let project_name = ctx.load_trix_config().protocol.name;
+
+    let result = ctx.run_trix_with_fake_tx3c(&["codegen"], &[]);
+    assert_success(&result);
+    assert!(
+        !result.combined().contains("Reading template from"),
+        "built-in plugins must not download templates: {}",
+        result.combined()
+    );
+
+    ctx.assert_file_contains(
+        format!("gen/{project_name}/bindings.txt"),
+        "template=swift-client",
+    );
+
+    let invocations = ctx.tx3c_invocations();
+    let codegen = invocations
+        .iter()
+        .find(|i| i[0] == "codegen")
+        .expect("codegen must delegate to tx3c codegen");
+    assert!(
+        codegen
+            .windows(2)
+            .any(|w| w[0] == "--template" && w[1] == "swift-client"),
+        "built-in plugin must pass its name as --template: {codegen:?}"
+    );
+}
+
+#[test]
+fn swift_client_cli_selection_seeds_the_default_config() {
+    let ctx = TestContext::new();
+    assert_success(&ctx.run_trix(&["init", "--yes"]));
+
+    let result = ctx.run_trix_with_fake_tx3c(&["codegen", "--plugin", "swift-client"], &[]);
+    assert_success(&result);
+
+    ctx.assert_file_contains("trix.toml", "plugin = \"swift-client\"");
+    let config = ctx.load_trix_config();
+    let target = config
+        .codegen
+        .last()
+        .expect("swift-client target is seeded");
+    assert!(target.job_id.is_none());
+    assert!(target.output_dir.is_none());
+    assert!(target.options.is_none());
+
+    let invocations = ctx.tx3c_invocations();
+    let codegen = invocations
+        .iter()
+        .find(|i| i[0] == "codegen")
+        .expect("codegen must delegate to tx3c codegen");
+    assert!(
+        codegen
+            .windows(2)
+            .any(|w| w[0] == "--template" && w[1] == "swift-client"),
+        "swift-client must pass its name as --template: {codegen:?}"
+    );
+}
+
+/// The Java plugin is selectable through the normal CLI seed flow and keeps
+/// the standard job-id/output defaults while delegating to tx3c by name.
+#[test]
+fn java_client_uses_default_output_and_tx3c_template() {
+    let ctx = TestContext::new();
+    assert_success(&ctx.run_trix(&["init", "--yes"]));
+
+    let project_name = ctx.load_trix_config().protocol.name;
+    let result =
+        ctx.run_trix_with_fake_tx3c(&["codegen", "--plugin", "java-client", "--no-save"], &[]);
+    assert_success(&result);
+
+    ctx.assert_file_contains(
+        format!(".tx3/codegen/java-client/{project_name}/bindings.txt"),
+        "template=java-client",
+    );
+    assert!(
+        !ctx.read_file("trix.toml").contains("java-client"),
+        "--no-save must keep the seeded Java plugin ephemeral"
+    );
+
+    let invocations = ctx.tx3c_invocations();
+    let codegen = invocations
+        .iter()
+        .find(|i| i[0] == "codegen")
+        .expect("codegen must delegate to tx3c codegen");
+    assert!(
+        codegen
+            .windows(2)
+            .any(|w| w[0] == "--template" && w[1] == "java-client"),
+        "Java plugin must pass its name as --template: {codegen:?}"
+    );
+}
+
 // The `[[codegen]].options` channel
 //
 // What trix *sends*: the merged options ride as one JSON object under
@@ -145,13 +252,12 @@ fn plugin_without_defaults_forwards_user_options_unchanged() {
 
 /// The built-in `ts-client` default reaching the wire: with no `options`
 /// in `trix.toml`, `tx3c codegen` still receives `{"standalone":true}` —
-/// the knob the `codegen-v1beta0` templates gate `package.json.hbs` and
+/// the knob tx3c's built-in `ts-client` template gates `package.json.hbs` and
 /// `tsconfig.json.hbs` on.
 #[test]
 fn ts_client_default_injects_standalone_on_the_wire() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
-    ctx.stage_local_ts_client_templates();
 
     assert_success(&ctx.run_trix_with_fake_tx3c(&["codegen", "--plugin", "ts-client"], &[]));
 
@@ -168,7 +274,6 @@ fn ts_client_default_injects_standalone_on_the_wire() {
 fn ts_client_explicit_standalone_false_overrides_the_default() {
     let ctx = TestContext::new();
     assert_success(&ctx.run_trix(&["init", "--yes"]));
-    ctx.stage_local_ts_client_templates();
 
     let mut trix_toml = ctx.read_file("trix.toml");
     trix_toml.push_str("\n[[codegen]]\nplugin = \"ts-client\"\noptions = { standalone = false }\n");

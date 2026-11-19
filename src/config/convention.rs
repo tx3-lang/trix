@@ -247,6 +247,8 @@ pub const KNOWN_CODEGEN_PLUGINS: &[KnownCodegenPlugin] = &[
     KnownCodegenPlugin::RustClient,
     KnownCodegenPlugin::PythonClient,
     KnownCodegenPlugin::GoClient,
+    KnownCodegenPlugin::JavaClient,
+    KnownCodegenPlugin::SwiftClient,
 ];
 
 impl KnownCodegenPlugin {
@@ -270,6 +272,10 @@ impl KnownCodegenPlugin {
             Some(KnownCodegenPlugin::PythonClient)
         } else if lower.contains("golang") || lower == "go" {
             Some(KnownCodegenPlugin::GoClient)
+        } else if lower.contains("java") || lower == "jvm" {
+            Some(KnownCodegenPlugin::JavaClient)
+        } else if lower.contains("swift") {
+            Some(KnownCodegenPlugin::SwiftClient)
         } else {
             None
         }
@@ -306,16 +312,13 @@ impl std::fmt::Display for KnownCodegenPlugin {
             KnownCodegenPlugin::RustClient => "rust-client",
             KnownCodegenPlugin::PythonClient => "python-client",
             KnownCodegenPlugin::GoClient => "go-client",
+            KnownCodegenPlugin::JavaClient => "java-client",
+            KnownCodegenPlugin::SwiftClient => "swift-client",
         };
 
         write!(f, "{str}")
     }
 }
-
-// Codegen is delegated entirely to `tx3c`; the built-in SDK plugins are
-// pinned to the `codegen-v1beta0` bindgen templates that match it. (The old
-// `bindgen-v1alpha2` ref went with the now-removed legacy in-process codegen.)
-const CURRENT_CODEGEN_VERSION: &str = "codegen-v1beta0";
 
 /// Template options every built-in plugin gets unless the project says
 /// otherwise.
@@ -324,9 +327,9 @@ const CURRENT_CODEGEN_VERSION: &str = "codegen-v1beta0";
 /// generic — it forwards whatever options it is handed into the template
 /// data and has no idea which plugin they came from. The one default today
 /// is `ts-client`'s `standalone`, which drives the `package.json.hbs` /
-/// `tsconfig.json.hbs` gate in the `codegen-v1beta0` templates: a generated
-/// TS binding is a self-contained package by default, and a project
-/// consuming the bindings from inside a host package opts out with
+/// `tsconfig.json.hbs` gate in tx3c's built-in `ts-client` template: a
+/// generated TS binding is a self-contained package by default, and a
+/// project consuming the bindings from inside a host package opts out with
 /// `options = { standalone = false }`.
 impl KnownCodegenPlugin {
     pub fn default_options(&self) -> BTreeMap<String, serde_json::Value> {
@@ -336,7 +339,9 @@ impl KnownCodegenPlugin {
             }
             KnownCodegenPlugin::RustClient
             | KnownCodegenPlugin::PythonClient
-            | KnownCodegenPlugin::GoClient => BTreeMap::new(),
+            | KnownCodegenPlugin::GoClient
+            | KnownCodegenPlugin::JavaClient
+            | KnownCodegenPlugin::SwiftClient => BTreeMap::new(),
         }
     }
 }
@@ -348,43 +353,6 @@ impl CodegenPlugin {
         match self {
             CodegenPlugin::Known(plugin) => plugin.default_options(),
             CodegenPlugin::Custom(_) => BTreeMap::new(),
-        }
-    }
-}
-
-impl From<KnownCodegenPlugin> for CodegenPluginConfig {
-    fn from(plugin: KnownCodegenPlugin) -> Self {
-        match plugin {
-            KnownCodegenPlugin::TsClient => CodegenPluginConfig {
-                repo: "tx3-lang/web-sdk".to_string(),
-                // When web-sdk get updated, we need to change this path to bindgen/client-lib when we update the ref
-                path: ".trix/client-lib".to_string(),
-                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
-            },
-            KnownCodegenPlugin::RustClient => CodegenPluginConfig {
-                repo: "tx3-lang/rust-sdk".to_string(),
-                path: ".trix/client-lib".to_string(),
-                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
-            },
-            KnownCodegenPlugin::PythonClient => CodegenPluginConfig {
-                repo: "tx3-lang/python-sdk".to_string(),
-                path: ".trix/client-lib".to_string(),
-                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
-            },
-            KnownCodegenPlugin::GoClient => CodegenPluginConfig {
-                repo: "tx3-lang/go-sdk".to_string(),
-                path: ".trix/client-lib".to_string(),
-                r#ref: Some(CURRENT_CODEGEN_VERSION.to_string()),
-            },
-        }
-    }
-}
-
-impl From<CodegenPlugin> for CodegenPluginConfig {
-    fn from(plugin: CodegenPlugin) -> Self {
-        match plugin {
-            CodegenPlugin::Known(plugin) => CodegenPluginConfig::from(plugin),
-            CodegenPlugin::Custom(plugin) => plugin,
         }
     }
 }
@@ -531,6 +499,25 @@ mod tests {
     }
 
     #[test]
+    fn known_codegen_plugin_names_are_stable() {
+        let names = KNOWN_CODEGEN_PLUGINS
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            [
+                "ts-client",
+                "rust-client",
+                "python-client",
+                "go-client",
+                "java-client",
+                "swift-client",
+            ]
+        );
+    }
+
+    #[test]
     fn plugin_from_str_suggests_close_alias() {
         let err: String = "typescript".parse::<KnownCodegenPlugin>().unwrap_err();
         assert!(err.contains("ts-client"), "no suggestion in: {err}");
@@ -538,10 +525,27 @@ mod tests {
     }
 
     #[test]
+    fn plugin_from_str_suggests_java_for_jvm() {
+        let err: String = "jvm".parse::<KnownCodegenPlugin>().unwrap_err();
+        assert!(err.contains("java-client"), "no suggestion in: {err}");
+    }
+
+    #[test]
+    fn plugin_from_str_suggests_swift_client() {
+        let err: String = "swift".parse::<KnownCodegenPlugin>().unwrap_err();
+        assert!(err.contains("swift-client"), "no suggestion in: {err}");
+    }
+
+    #[test]
     fn plugin_from_str_lists_available_when_no_suggestion() {
         let err: String = "zzz".parse::<KnownCodegenPlugin>().unwrap_err();
         assert!(!err.contains("did you mean"));
-        assert!(err.contains("ts-client") && err.contains("rust-client"));
+        assert!(
+            err.contains("ts-client")
+                && err.contains("rust-client")
+                && err.contains("java-client")
+                && err.contains("swift-client")
+        );
     }
 
     fn codegen_entry(toml_src: &str) -> CodegenConfig {
@@ -600,7 +604,13 @@ mod tests {
 
     #[test]
     fn plugins_without_defaults_resolve_to_user_options_only() {
-        for plugin in ["rust-client", "python-client", "go-client"] {
+        for plugin in [
+            "rust-client",
+            "python-client",
+            "go-client",
+            "java-client",
+            "swift-client",
+        ] {
             let bare = codegen_entry(&format!(
                 "{PROJECT_HEAD}\n[[codegen]]\nplugin = \"{plugin}\"\n"
             ));

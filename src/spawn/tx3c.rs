@@ -74,7 +74,10 @@ pub fn build_tii(source: &Path, output: &Path, config: &RootConfig) -> miette::R
     Ok(())
 }
 
-/// Render `templates` against `tii_path` into `output`.
+/// Render `template` against `tii_path` into `output`. `template` is the
+/// name of a template built into tx3c (a built-in plugin name such as
+/// `rust-client`) or the path of a custom template directory; tx3c resolves
+/// which one it is.
 ///
 /// `options` is the template-options channel: the merged
 /// `[[codegen]].options` (see [`crate::config::CodegenConfig::resolved_options`]),
@@ -84,14 +87,14 @@ pub fn build_tii(source: &Path, output: &Path, config: &RootConfig) -> miette::R
 /// channel existed.
 pub fn codegen(
     tii_path: &Path,
-    templates: &Path,
+    template: &str,
     output: &Path,
     options: &BTreeMap<String, serde_json::Value>,
 ) -> miette::Result<()> {
     let mut cmd = tx3c()?;
 
     cmd.args(["codegen", "--tii", tii_path.to_str().unwrap()]);
-    cmd.args(["--template", templates.to_str().unwrap()]);
+    cmd.args(["--template", template]);
     cmd.args(["--output", output.to_str().unwrap()]);
 
     if !options.is_empty() {

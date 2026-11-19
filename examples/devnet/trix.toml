@@ -23,13 +23,9 @@ chain = "CardanoPreprod"
 [profiles.mainnet]
 chain = "CardanoMainnet"
 
-[[bindings]]
+[[codegen]]
+plugin = "ts-client"
 output_dir = "./gen/typescript"
-
-[bindings.template]
-repo = "tx3-lang/web-sdk"
-path = ".trix/client-lib"
-ref = "codegen-v1beta0"
 
 [[wallets]]
 name = "alice"

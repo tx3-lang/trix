@@ -295,28 +295,6 @@ impl TestContext {
         self.write_file("trix.toml", &trix_toml);
     }
 
-    /// Stage the codegen-template fixture where the built-in `ts-client`
-    /// plugin's own coordinates resolve to it, so a *known* plugin can be
-    /// exercised without leaving the machine.
-    ///
-    /// `codegen`'s template resolution treats `plugin.repo` as a local
-    /// template root whenever it names a directory, falling back to a
-    /// GitHub archive fetch otherwise — the seam `declare_codegen` already
-    /// uses. `ts-client` resolves to `repo = "tx3-lang/web-sdk"`,
-    /// `path = ".trix/client-lib"`, and `repo` is tested relative to the
-    /// process CWD, which is this project directory. Materializing that
-    /// path here keeps the run hermetic (`tests/README.md`: no network).
-    pub fn stage_local_ts_client_templates(&self) {
-        let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/codegen-template");
-        let dest = self.path().join("tx3-lang/web-sdk/.trix/client-lib");
-        fs::create_dir_all(&dest).expect("create local ts-client template root");
-        for entry in fs::read_dir(&src).expect("read codegen-template fixture") {
-            let entry = entry.expect("fixture entry");
-            let path = entry.path();
-            fs::copy(&path, dest.join(path.file_name().unwrap())).expect("copy template file");
-        }
-    }
-
     /// Point the project at `url` as its OCI registry, so pull paths hit an
     /// in-process stub instead of the public one.
     pub fn set_registry_url(&self, url: &str) {
