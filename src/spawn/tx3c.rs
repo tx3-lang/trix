@@ -1,4 +1,4 @@
-use std::{path::Path, process::Command};
+use std::{collections::BTreeMap, path::Path, process::Command};
 
 use miette::{Context as _, IntoDiagnostic as _, bail};
 use serde::Deserialize;
@@ -74,15 +74,35 @@ pub fn build_tii(source: &Path, output: &Path, config: &RootConfig) -> miette::R
     Ok(())
 }
 
-/// Render `template`: the name of a template built into tx3c (a built-in
-/// plugin name such as `rust-client`) or the path of a custom template
-/// directory. tx3c resolves which one it is.
-pub fn codegen(tii_path: &Path, template: &str, output: &Path) -> miette::Result<()> {
+/// Render `template` against `tii_path` into `output`. `template` is the
+/// name of a template built into tx3c (a built-in plugin name such as
+/// `rust-client`) or the path of a custom template directory; tx3c resolves
+/// which one it is.
+///
+/// `options` is the template-options channel: the merged
+/// `[[codegen]].options` (see [`crate::config::CodegenConfig::resolved_options`]),
+/// forwarded as one JSON object under `--options` and surfacing in the
+/// templates as `options.*`. An empty map is omitted entirely, so a project
+/// that asks for nothing produces exactly the argv trix sent before the
+/// channel existed.
+pub fn codegen(
+    tii_path: &Path,
+    template: &str,
+    output: &Path,
+    options: &BTreeMap<String, serde_json::Value>,
+) -> miette::Result<()> {
     let mut cmd = tx3c()?;
 
     cmd.args(["codegen", "--tii", tii_path.to_str().unwrap()]);
     cmd.args(["--template", template]);
     cmd.args(["--output", output.to_str().unwrap()]);
+
+    if !options.is_empty() {
+        let json = serde_json::to_string(options)
+            .into_diagnostic()
+            .context("serializing codegen options")?;
+        cmd.args(["--options", json.as_str()]);
+    }
 
     let output = cmd
         .status()

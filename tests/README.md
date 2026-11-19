@@ -13,7 +13,7 @@ The three layers, innermost first:
 | Layer | Where | Spawns | Asks |
 |---|---|---|---|
 | **Unit** | `src/**` `#[cfg(test)]` | nothing | Are the rules right? (ref grammar, `[interfaces]` validation, cache integrity, resolver, compat window) |
-| **CLI** (`tests/cli.rs`) | `tests/cli/` | `trix` only | Is the binary wired to the rules? (arg parsing, exit codes, `init` filesystem behavior, fail-before-spawn error paths) |
+| **CLI** (`tests/cli.rs`) | `tests/cli/` | `trix` only | Is the binary wired to the rules? (arg parsing, exit codes, `init` filesystem behavior, fail-before-spawn error paths, registry pulls against the in-process OCI stub) |
 | **Contract** (`tests/contract.rs`) | `tests/contract/` | `trix` + a **fake** `tx3c` | Is trix's side of the tx3c contract right? (argv, paths, ordering, output interpretation, version gate) |
 
 There is deliberately no fourth layer. A trix test that needs a real `tx3c`
@@ -51,6 +51,20 @@ If trix's spawn contract changes (new flag, new subcommand), update the
 fake alongside `src/spawn/` — and expect the umbrella journeys to catch any
 drift between the fake's pretense and the real tool at release time.
 
+## The OCI registry stub
+
+`tests/harness/oci_stub.rs` is an in-process OCI Distribution registry
+serving the read side of an anonymous pull (`/v2/` probe, manifest, blobs)
+on `127.0.0.1:<random>`, with real sha256 digests because `oci_client`
+verifies every blob against its descriptor. A test builds a
+`StubProtocolImage`, serves its routes, and points the project at it with
+`TestContext::set_registry_url`. It records every request path, so a test
+can assert *which* repository path the client addressed — the way the
+lowercase-addressing regression is locked.
+
+Pulls are trix's own code, not a helper binary, so registry tests belong to
+the CLI layer and the suite stays offline.
+
 ## Running
 
 ```bash
@@ -71,7 +85,8 @@ Ask what the assertion is about:
   extract it (see `interfaces::verify_cache_at` for the pattern).
 - **Wiring** (does command X actually run rule Y, with which exit code and
   message) → `tests/cli/`. One probe per chokepoint; don't re-enumerate the
-  rule's variants here.
+  rule's variants here. A pull-path assertion goes here too, against the
+  OCI stub.
 - **The tx3c contract** (what trix passes, which artifact feeds which
   subcommand, how output/failures are interpreted) → `tests/contract/`,
   asserting on `ctx.tx3c_invocations()` and the fake's file outputs.
@@ -79,6 +94,7 @@ Ask what the assertion is about:
   install flows) → not here; add a journey in the umbrella's `solution/e2e/`
   (see its README and the `add-e2e-journey` skill).
 
-Fixtures live in `tests/fixtures/` (`use-stub/` — a cached interface;
-`codegen-template/` — a minimal codegen plugin). `tests/infra/` is
+Fixtures live in `tests/fixtures/` (`use-stub/` — a cached interface, also
+the layer payload the OCI stub serves; `codegen-template/` — a minimal
+codegen plugin). `tests/infra/` is
 unrelated observability tooling, not part of the suites.

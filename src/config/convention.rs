@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::PathBuf,
 };
 
@@ -320,6 +320,43 @@ impl std::fmt::Display for KnownCodegenPlugin {
     }
 }
 
+/// Template options every built-in plugin gets unless the project says
+/// otherwise.
+///
+/// Plugin knowledge lives here, in trix's config layer: `tx3c codegen` is
+/// generic — it forwards whatever options it is handed into the template
+/// data and has no idea which plugin they came from. The one default today
+/// is `ts-client`'s `standalone`, which drives the `package.json.hbs` /
+/// `tsconfig.json.hbs` gate in tx3c's built-in `ts-client` template: a
+/// generated TS binding is a self-contained package by default, and a
+/// project consuming the bindings from inside a host package opts out with
+/// `options = { standalone = false }`.
+impl KnownCodegenPlugin {
+    pub fn default_options(&self) -> BTreeMap<String, serde_json::Value> {
+        match self {
+            KnownCodegenPlugin::TsClient => {
+                BTreeMap::from([("standalone".to_string(), serde_json::Value::Bool(true))])
+            }
+            KnownCodegenPlugin::RustClient
+            | KnownCodegenPlugin::PythonClient
+            | KnownCodegenPlugin::GoClient
+            | KnownCodegenPlugin::JavaClient
+            | KnownCodegenPlugin::SwiftClient => BTreeMap::new(),
+        }
+    }
+}
+
+impl CodegenPlugin {
+    /// Defaults for this entry's plugin. A custom plugin is unknown to trix,
+    /// so it contributes none — its options are whatever the project writes.
+    pub fn default_options(&self) -> BTreeMap<String, serde_json::Value> {
+        match self {
+            CodegenPlugin::Known(plugin) => plugin.default_options(),
+            CodegenPlugin::Custom(_) => BTreeMap::new(),
+        }
+    }
+}
+
 impl CodegenPlugin {
     pub fn name(&self) -> String {
         match self {
@@ -336,6 +373,20 @@ impl CodegenConfig {
         }
 
         self.plugin.name()
+    }
+
+    /// The template options this entry sends to `tx3c codegen`: the
+    /// plugin's defaults with the project's `[[codegen]].options` merged on
+    /// top, key by key — the user always wins, including when they set a
+    /// default's key back to `false`.
+    ///
+    /// Ordered (`BTreeMap`) so the JSON trix forwards is stable across runs.
+    pub fn resolved_options(&self) -> BTreeMap<String, serde_json::Value> {
+        let mut options = self.plugin.default_options();
+        for (key, value) in self.options.iter().flatten() {
+            options.insert(key.clone(), value.clone());
+        }
+        options
     }
 
     pub fn output_dir(&self) -> miette::Result<PathBuf> {
@@ -494,6 +545,101 @@ mod tests {
                 && err.contains("rust-client")
                 && err.contains("java-client")
                 && err.contains("swift-client")
+        );
+    }
+
+    fn codegen_entry(toml_src: &str) -> CodegenConfig {
+        let config: RootConfig = toml::from_str(toml_src).unwrap();
+        config.codegen.into_iter().next().expect("a [[codegen]]")
+    }
+
+    const PROJECT_HEAD: &str = r#"
+        [protocol]
+        name = "demo"
+        version = "0.0.0"
+        main = "main.tx3"
+
+        [ledger]
+        family = "cardano"
+    "#;
+
+    #[test]
+    fn ts_client_defaults_to_standalone() {
+        let entry = codegen_entry(&format!(
+            "{PROJECT_HEAD}\n[[codegen]]\nplugin = \"ts-client\"\n"
+        ));
+        assert_eq!(
+            entry.resolved_options(),
+            BTreeMap::from([("standalone".to_string(), serde_json::Value::Bool(true))])
+        );
+    }
+
+    #[test]
+    fn explicit_options_win_over_plugin_defaults() {
+        let entry = codegen_entry(&format!(
+            "{PROJECT_HEAD}\n[[codegen]]\nplugin = \"ts-client\"\noptions = {{ standalone = false }}\n"
+        ));
+        assert_eq!(
+            entry.resolved_options(),
+            BTreeMap::from([("standalone".to_string(), serde_json::Value::Bool(false))])
+        );
+    }
+
+    #[test]
+    fn explicit_options_merge_alongside_defaults() {
+        let entry = codegen_entry(&format!(
+            "{PROJECT_HEAD}\n[[codegen]]\nplugin = \"ts-client\"\noptions = {{ package_name = \"acme\" }}\n"
+        ));
+        assert_eq!(
+            entry.resolved_options(),
+            BTreeMap::from([
+                ("standalone".to_string(), serde_json::Value::Bool(true)),
+                (
+                    "package_name".to_string(),
+                    serde_json::Value::String("acme".to_string())
+                ),
+            ])
+        );
+    }
+
+    #[test]
+    fn plugins_without_defaults_resolve_to_user_options_only() {
+        for plugin in [
+            "rust-client",
+            "python-client",
+            "go-client",
+            "java-client",
+            "swift-client",
+        ] {
+            let bare = codegen_entry(&format!(
+                "{PROJECT_HEAD}\n[[codegen]]\nplugin = \"{plugin}\"\n"
+            ));
+            assert!(
+                bare.resolved_options().is_empty(),
+                "{plugin} should contribute no defaults"
+            );
+
+            let with_options = codegen_entry(&format!(
+                "{PROJECT_HEAD}\n[[codegen]]\nplugin = \"{plugin}\"\noptions = {{ flavor = \"lean\" }}\n"
+            ));
+            assert_eq!(
+                with_options.resolved_options(),
+                BTreeMap::from([(
+                    "flavor".to_string(),
+                    serde_json::Value::String("lean".to_string())
+                )])
+            );
+        }
+    }
+
+    #[test]
+    fn custom_plugin_contributes_no_defaults() {
+        let entry = codegen_entry(&format!(
+            "{PROJECT_HEAD}\n[[codegen]]\nplugin = {{ repo = \"acme/lib\", path = \".\" }}\noptions = {{ standalone = true }}\n"
+        ));
+        assert_eq!(
+            entry.resolved_options(),
+            BTreeMap::from([("standalone".to_string(), serde_json::Value::Bool(true))])
         );
     }
 

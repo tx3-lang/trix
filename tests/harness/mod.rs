@@ -11,7 +11,9 @@
 //!
 //! Consequently no test here can depend on an installed toolchain: a test
 //! either needs no tool at all (`tests/cli/`) or drives the fake `tx3c`
-//! (`tests/contract/`, see [`fake_tx3c_path`]).
+//! (`tests/contract/`, see [`fake_tx3c_path`]). Registry-facing tests get
+//! the same treatment through [`oci_stub`], an in-process stub the project
+//! is pointed at with [`TestContext::set_registry_url`].
 
 #![allow(dead_code)] // shared by multiple test crates; each uses a subset
 
@@ -20,6 +22,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tempfile::TempDir;
+
+pub mod oci_stub;
 
 use trix::commands::test::Test as TestConfig;
 use trix::config::RootConfig;
@@ -274,11 +278,31 @@ impl TestContext {
 
     /// Append a `[[codegen]]` entry pointing at the local template fixture.
     pub fn declare_codegen(&self) {
+        self.declare_codegen_with_options(None);
+    }
+
+    /// Same, with an inline TOML value for `options` (e.g.
+    /// `Some("{ standalone = false }")`). `None` omits the key entirely.
+    pub fn declare_codegen_with_options(&self, options: Option<&str>) {
         let mut trix_toml = self.read_file("trix.toml");
         trix_toml.push_str(&format!(
             "\n[[codegen]]\noutput_dir = \"gen\"\nplugin = {{ repo = \"{}\", path = \".\" }}\n",
             self.codegen_template_dir()
         ));
+        if let Some(options) = options {
+            trix_toml.push_str(&format!("options = {options}\n"));
+        }
+        self.write_file("trix.toml", &trix_toml);
+    }
+
+    /// Point the project at `url` as its OCI registry, so pull paths hit an
+    /// in-process stub instead of the public one.
+    pub fn set_registry_url(&self, url: &str) {
+        let mut trix_toml = self.read_file("trix.toml");
+        if !trix_toml.ends_with('\n') {
+            trix_toml.push('\n');
+        }
+        trix_toml.push_str(&format!("\n[registry]\nurl = \"{url}\"\n"));
         self.write_file("trix.toml", &trix_toml);
     }
 }

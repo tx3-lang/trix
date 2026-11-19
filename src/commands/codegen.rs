@@ -283,6 +283,10 @@ pub async fn run(
         let base_output_dir = codegen.output_dir()?;
         std::fs::create_dir_all(&base_output_dir).into_diagnostic()?;
 
+        // Plugin defaults merged with the entry's `options`, user values
+        // winning — the same options for every protocol in this entry.
+        let options = codegen.resolved_options();
+
         match &codegen.plugin {
             // A built-in plugin names a template that ships inside tx3c:
             // no download, and the template always matches the installed tx3c.
@@ -291,7 +295,7 @@ pub async fn run(
                 for (name, tii_path) in &targets {
                     let dest = base_output_dir.join(name);
                     std::fs::create_dir_all(&dest).into_diagnostic()?;
-                    crate::spawn::tx3c::codegen(tii_path, &template, &dest)?;
+                    crate::spawn::tx3c::codegen(tii_path, &template, &dest, &options)?;
                     println!("Bindgen successful for '{}'", name);
                 }
             }
@@ -318,6 +322,7 @@ pub async fn run(
                         tii_path,
                         templates_dir.to_str().unwrap_or_default(),
                         &dest,
+                        &options,
                     )?;
                     println!("Bindgen successful for '{}'", name);
                 }

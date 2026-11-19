@@ -19,3 +19,5 @@ mod init;
 mod interfaces;
 #[path = "cli/refs.rs"]
 mod refs;
+#[path = "cli/registry.rs"]
+mod registry;
